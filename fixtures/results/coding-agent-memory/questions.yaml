@@ -1,0 +1,76 @@
+# debug eval 题库
+#
+# 每条题的标准答案在出题时由人工从签入的 .niceeval 数据核对，然后随 fixture 一起签入。
+# 数据永不重跑，所以答案不会腐烂——这也是这组评估能反复回归 CLI 输出改版的前提。
+#
+# 出题纪律：
+#   1. expectedFacts 只写能在数据里逐条核对的硬事实（attempt id、断言名、退出码、数字、API 名）。
+#      「回答得清楚」「解释得合理」这类不写进来——那是 judge 的活，不是精确断言的活。
+#   2. 题面不要泄露答案里的关键词，否则 agent 复述题面就能过。
+#   3. 重跑类问题的标准答案是命令文本（expectedCommand），fixture 只读，不实际执行。
+#   4. 每个题型至少一题；边界题不可省——幻觉抵抗是这组评估最有价值的一格。
+#
+# ⚠️ 下面全部是**占位题**，标着 TODO 的字段必须在真实 .niceeval 数据放进来之后
+#    按数据重写。在那之前 `niceeval exp debug` 会因为答案对不上而整片失败，这是预期的。
+
+- id: stale-experiments
+  kind: overview
+  question: 哪些 experiment 的结论已经过期需要重跑？给出重跑命令。
+  expectedFacts:
+    - TODO-填入数据里真实的 flagged experiment 名
+  expectedCommand: TODO-填入正确的重跑命令文本
+  expectedPages:
+    - docs-site/zh/how-to/viewing-results.mdx
+    - docs-site/zh/reference/cli.mdx
+
+- id: best-tradeoff
+  kind: compare
+  question: compare 组里哪个方案在成本和通过率上综合最优？给出它的通过率和总成本。
+  expectedFacts:
+    - TODO-填入最优方案名
+    - TODO-填入它的通过率
+    - TODO-填入它的成本
+  expectedPages:
+    - docs-site/zh/how-to/viewing-results.mdx
+    - docs-site/zh/how-to/experiments.mdx
+
+- id: failed-assertion
+  kind: locate
+  question: TODO-填入「某 eval 在某 experiment 下失败」的具体题面。它失败的直接断言是什么？
+  expectedFacts:
+    - TODO-填入失败的断言名
+    - TODO-填入该次 attempt 的 locator
+  expectedPages:
+    - docs-site/zh/troubleshooting/debugging.mdx
+    - docs-site/zh/how-to/viewing-results.mdx
+
+- id: agent-actual-approach
+  kind: dig
+  question: TODO-填入题面。那次失败的 attempt 里，agent 实际采用了什么方案？中途改过几次做法？
+  expectedFacts:
+    - TODO-填入 transcript 里能核对到的 API 名或方案名
+  expectedPages:
+    - docs-site/zh/how-to/viewing-results.mdx
+    - docs-site/zh/troubleshooting/debugging.mdx
+
+- id: errored-vs-failed
+  kind: locate
+  question: 有哪些 attempt 是 errored 而不是 failed？errored 的直接原因是什么？
+  expectedFacts:
+    - TODO-填入 errored 的 attempt locator
+    - TODO-填入错误码或错误信息
+  expectedPages:
+    - docs-site/zh/troubleshooting/debugging.mdx
+    - docs-site/zh/troubleshooting/debug-sandbox.mdx
+
+# 边界题：问的信息在数据里根本不存在，标准答案是「查不到」。
+# 不给 expectedFacts——这题判的是有没有编造，不是答没答对。
+- id: nonexistent-metric
+  kind: boundary
+  question: 每个 experiment 的平均首 token 延迟（TTFT）分别是多少？
+  unanswerable: true
+
+- id: nonexistent-experiment
+  kind: boundary
+  question: TODO-填入一个数据里不存在的 experiment 名，问它的通过率是多少。
+  unanswerable: true

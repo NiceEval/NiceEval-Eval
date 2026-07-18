@@ -1,0 +1,135 @@
+# NiceEval-Eval：niceeval 的文档效果评估仓库
+
+用 niceeval 评估**正在使用 niceeval 的 coding agent**，量化 `INIT.md` 与随包 `INDEX.md`
+这套文档链的真实效果，为文档文案的每次改版提供回归面。
+
+被测对象是 coding agent CLI（当前是 codex），跑在 Docker 隔离 workspace 里。
+**coding agent 与模型是测量仪器，不是被改进对象**——对照组的设计就是为了把模型能力
+从归因里剥离出去。
+
+两组评估共用这个仓库，sandbox、候选包注入与运行机制共享，fixture 与题面独立：
+
+| 评估 | 问题 | 设计文档 |
+|---|---|---|
+| `install/` | 从零接入：agent 能不能把 niceeval 装进一个真实项目并写出合格的三件套 | `agent-install-eval.md` |
+| `debug/` | 接入之后：agent 能不能从已有结果数据里查出一条指定信息 | `agent-debug-eval.md` |
+
+## 快速开始
+
+```sh
+pnpm install
+pnpm run pack:candidate          # 取当前 latest；也可以 -- 0.9.1 或 -- ../niceeval
+export CODEX_API_KEY=sk-...      # 被测 agent
+export OPENAI_API_KEY=sk-...     # 裁判模型（产出质量层）
+
+pnpm exec niceeval exp install   # 跑安装评估（两个对照组）
+pnpm exec niceeval show          # 看结果
+```
+
+只跑一格配置或一条题：
+
+```sh
+pnpm exec niceeval exp install/with-init-doc              # 只跑实验组
+pnpm exec niceeval exp install install/vanna              # 只跑一条 eval
+```
+
+## 三层评分
+
+三层从精确断言到 judge 逐层放宽，**只有机制层 gate**。这是刻意的：三层混成一个分数
+就失去了归因能力，而归因正是这套评估唯一的产出。
+
+| 层 | 判什么 | 严重度 | 失败意味着 |
+|---|---|---|---|
+| **机制层** | 安装链的客观事实：依赖解析到候选包、config 存在、托管区块存在、typecheck 干净、niceeval 能发现 agent 写的 eval | `gate` | 链路走不通 → 修 `INIT.md` 对应步骤或 `init` 的行为 |
+| **产出质量层** | 三件套符不符合公开文档声明的契约：adapter 不进程内直调、不代管被测进程、eval 贴宿主真实功能 | `soft` / judge | 契约没被读懂 → 定位到那一页 docs-site 改写 |
+| **路由层** | agent 是否以随包 `INDEX.md` 为入口、读到与任务匹配的页面、有没有退回官网 | `soft`（纯计量） | 路由不对 → `INDEX.template.md` 导语或页面 `description` |
+
+路由层不 gate，因为它回答的是「文档起作用了吗」，不是「这次接入算不算成功」。
+让它拖垮 verdict 会把文档问题和机制问题混成一个数字。
+
+失败按「路径 × 答案」的组合归因——路径对了答案还错，和路径就没走对，指向的是完全不同的修复面。
+
+## 对照组与它的边界
+
+两组实验只差一个变量：沙箱里投不投放 `INIT.md`。
+
+```
+experiments/install/with-init-doc.ts     # 完整文档链
+experiments/install/without-init-doc.ts  # 凭训练记忆裸装
+```
+
+⚠️ **这个差值度量的是安装前引导链，不是随包文档。** 随包文档（`node_modules/niceeval/INDEX.md`
+与 `docs-site/zh/**`）是包的一部分，agent 一装上包它就必然存在，没法在对照组里移除。
+随包文档起没起作用由**路由层单独计量**——两组的路由层分数放在一起看，才是随包文档的证据。
+
+`debug/` 的对照组（`help-only`）同理：它靠任务指令约束 agent 只用 `--help`，属于
+「要求配合」而非「强制隔离」。分析时应该把路由层显示偷看了文档的 attempt 剔出来再算差值。
+
+## 候选包注入
+
+被评的是**某个具体版本的 niceeval 构建**，不是 npm 上的 latest。`pnpm run pack:candidate`
+把 tarball 与 `INIT.md` 一起固化到 `.candidate/`，每次运行由 sandbox 的 `.setup()` 钩子
+注入进隔离环境。
+
+- 环境钩子写下的文件进 git 基线，**不会被算进 agent 的 diff**，所以 diff 断言不会被污染。
+- `INIT.md` 也一并固化：评估过程除被测模型外不依赖任何外部服务，否则「官网今天改了文案」
+  会变成分数波动。
+- 能评还没发布的构建：`pnpm run pack:candidate -- ../niceeval` 从本地仓库现打一个
+  （走 `prepare`，与发版产物同一条链路，`INDEX.md` 该生成的还是会生成）。
+
+## fixture
+
+### install fixture：真实开源项目矩阵
+
+宿主不再是仓库里签入的静态代码，而是四个锁定了具体 tag 的真实开源 agent 项目——
+`lib/install-eval.ts` 的 `defineInstallEval` 在每次 attempt 里把对应 `repoUrl@ref`
+clone 进沙箱工作区，作为 agent 之后改动的起点：
+
+| fixture | 项目 | 锁定 tag | 覆盖的接入路径 |
+|---|---|---|---|
+| `vanna` | [vanna-ai/vanna](https://github.com/vanna-ai/vanna) | `v2.0.2` | 非 TS 宿主 + 自研 JSON（非流式）→ 就地建 `package.json` + 手写 `send` |
+| `db-gpt` | [eosphoros-ai/DB-GPT](https://github.com/eosphoros-ai/DB-GPT) | `v0.8.1` | 非 TS 宿主 + OpenAI Chat Completions 兼容形状（仍无内置件）→ 手写 `send` |
+| `gpt-researcher` | [assafelovic/gpt-researcher](https://github.com/assafelovic/gpt-researcher) | `v3.6.0` | 非 TS 宿主 + 自研 WebSocket 帧协议 → 手写 `send` 与事件映射 |
+| `finrobot` | [AI4Finance-Foundation/FinRobot](https://github.com/AI4Finance-Foundation/FinRobot) | `v1.0.0` | 非 TS 宿主 + 提交任务/轮询状态的异步形状 → 手写 `send` |
+
+`ref` 锁定的是某次具体的大版本发布，不是分支：同一个 tag 重新 clone 得到完全相同的文件，
+跑分不会随上游新提交漂移。`DB-GPT` 仓库体积很大，`excludeDirs` 用 sparse-checkout 剪掉了
+与「装 niceeval」无关的 `docs/` 与 `assets/`；其余三个直接整仓库 clone。
+
+⚠️ **这四个 fixture 换来「贴真实项目」，也放弃了两个旧设计里的性质。** 一是旧的
+`ai-sdk-app` 覆盖的「AI SDK `useChat` → 内置 `uiMessageStreamAgent` 零映射」这条分支
+目前没有对应项目，暂时失去覆盖；二是旧宿主**确定性、零 LLM 调用、零 API key**，四个
+真实项目都要连真实模型（部分还要连各自的外部服务）才能真正跑起来，机制层里
+`producedResults` 那条软分（见上面「三层评分」）在没有配那些 key 的环境里大概率读零——
+这是软分不是 gate，不影响 verdict，但看板上会显得「没跑通」。产出质量层的两个 judge
+断言评的是 agent **写出的 adapter/eval 代码**是否贴着真实用例、走真实传输，不依赖宿主
+真的启动成功。
+
+
+
+### debug fixture：签入的真实结果数据
+
+`fixtures/results/` 下是整目录签入的 `.niceeval` 结果数据加一份人工核对的题库。
+**目前只有题库骨架，还没有真实数据**——放数据的步骤与验收标准见
+[`fixtures/results/README.md`](fixtures/results/README.md)。
+
+在数据放进来之前 `niceeval exp debug` 会整片失败（题库里全是 `TODO-` 占位答案），这是预期的。
+
+## 边界
+
+- **评文档链，不评 agent 编码能力。**
+- **不评 niceeval 的功能正确性。** `show` 输出自身的 bug 由 niceeval 仓库的单元测试与 E2E 守护；
+  这里测的是「这套输出加文档能否支撑 agent 完成任务」。本仓库变红不阻塞发版。
+- **debug fixture 只读。** 数据永不重跑，答案在出题时核对一次，之后不腐烂——
+  这让它能当作 CLI 输出改版的回归面。
+- **不追求覆盖全部文档页面。** fixture 按判断分支组织，页面级的文案质量由产出质量层的
+  失败归因倒查，不为每页文档造一个场景。
+
+## 一个已知的取舍
+
+`INIT.md` 里有一条架构硬规则：adapter 不能代管被测进程，应用应该由用户自己启动。
+但沙箱里没有「另一个人」来启动被测应用。任务指令因此明确写着：需要时自己在 shell 里
+把应用起到后台，**但不要把启动进程写进 adapter 代码**——被考的那条规则由此保持完整。
+
+相应地，「真的跑出过一次结果」只作软分不作 gate：它依赖 agent 是否顺手起了后台进程，
+波动大，gate 会把「装对了但没跑」误判成安装失败。

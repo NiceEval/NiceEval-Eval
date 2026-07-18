@@ -1,0 +1,32 @@
+{
+  "name": "niceeval-eval",
+  "version": "1.0.0",
+  "description": "niceeval 的文档效果评估仓库：用 niceeval 评估正在使用 niceeval 的 coding agent",
+  "private": true,
+  "type": "module",
+  "scripts": {
+    "pack:candidate": "tsx scripts/pack-candidate.ts",
+    "export:debug-fixture": "tsx scripts/export-debug-fixture.ts",
+    "typecheck": "tsx scripts/typecheck.ts",
+    "install-eval": "niceeval exp install",
+    "debug-eval": "niceeval exp debug",
+    "show": "niceeval show",
+    "view": "niceeval view"
+  },
+  "devEngines": {
+    "packageManager": {
+      "name": "pnpm",
+      "version": "^11.12.0",
+      "onFail": "download"
+    }
+  },
+  "devDependencies": {
+    "@types/dockerode": "^4.0.1",
+    "@types/node": "^26.1.1",
+    "dockerode": "^5.0.1",
+    "niceeval": "^0.9.1",
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2",
+    "yaml": "^2.9.0"
+  }
+}

@@ -1,0 +1,7 @@
+allowBuilds:
+  cpu-features: true
+  esbuild: true
+  protobufjs: true
+  ssh2: true
+minimumReleaseAgeExclude:
+  - niceeval@0.9.1
