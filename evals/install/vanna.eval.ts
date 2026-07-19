@@ -1,7 +1,7 @@
 import { defineEval } from "niceeval";
 import { excludes, isFalse, isTrue } from "niceeval/expect";
 import { SANDBOX_INIT_DOC_PATH } from "../../lib/candidate.ts";
-import { assertNiceevalInstalled, collectMechanismFacts } from "../../lib/mechanism.ts";
+import { assertNiceevalInstalled } from "../../lib/mechanism.ts";
 import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../../lib/fixture.ts";
 import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "../../lib/routing.ts";
 
@@ -34,7 +34,7 @@ export default defineEval({
   async test(t) {
     const candidateLabel = t.flags.candidateVersion as string | undefined;
 
-    await cloneFixture(t.sandbox as never, {
+    await cloneFixture(t.sandbox, {
       repoUrl: "https://github.com/vanna-ai/vanna.git",
       ref: "v2.0.2",
     });
@@ -42,8 +42,7 @@ export default defineEval({
     const turn = await t.send(`READ ${SANDBOX_INIT_DOC_PATH} and install niceeval for this repo.`);
 
     // ── 第一层：检查 niceeval 是否安装好（gate）。四条接入路径共用同一套判定。 ──
-    const facts = await collectMechanismFacts(t.sandbox as never, { candidateLabel });
-    await assertNiceevalInstalled(t, facts);
+    await assertNiceevalInstalled(t, { candidateLabel });
 
     // ── 第二层：产出质量层（rubric / judge）。三件套符不符合公开文档声明的契约。 ──
     const src = await t.sandbox.readSourceFiles({
