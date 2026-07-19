@@ -23,9 +23,11 @@ const EXPECTED_PAGES = [
 ];
 
 const CORE_USE_CASE =
-  "一个自然语言转 SQL 的数据库问答 agent（Vanna）：问「上个月的销售总额是多少」应该生成一条" +
+  "一个自然语言转 SQL 的数据库问答 agent（Vanna）：问「2010 年的销售总额是多少」应该生成一条" +
   "含 SELECT 与聚合函数（如 SUM）的 SQL，并执行后返回具体数值；问知识库训练数据之外的表" +
-  "应该明确答不知道，而不是编造字段名";
+  "应该明确答不知道，而不是编造字段名" +
+  "（注：常见 demo 库 Chinook 的发票数据落在 2009–2013 年，若被测方连的是这份 demo 数据，" +
+  "问「上个月」在当前日期下会合法地查到零行——问题特意钉在数据范围内的年份，避免这类假阴性）";
 
 const TRANSPORT = "HTTP POST /api/vanna/v2/chat_poll（Vanna 自研 JSON 请求/响应，非流式）";
 

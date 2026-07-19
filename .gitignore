@@ -9,3 +9,7 @@ node_modules/
 /.niceeval/
 
 .DS_Store
+
+# 本地密钥：被测目标应用（DB-GPT/FinRobot/GPT Researcher/Vanna）自己要连的 LLM/数据源凭证。
+# 只在跑 install eval 时由 sandbox setup 钩子读取并注入沙箱，不签入仓库。
+.env

@@ -9,6 +9,7 @@
 import { codexAgent } from "niceeval/adapter";
 import { dockerSandbox } from "niceeval/sandbox";
 import { injectCandidate } from "../lib/candidate.ts";
+import { provisionTargetAppEnv } from "../lib/fixture-env.ts";
 
 /** 被测 coding agent。模型写在各实验的 model 字段，不写在这里。 */
 export const agentUnderTest = codexAgent();
@@ -25,5 +26,5 @@ export const agentUnderTest = codexAgent();
  *   这层拿哪个候选核对版本，两处各自读一遍这个值，niceeval 不会替你同步。
  */
 export function sandboxWith(opts: { candidateLabel?: string } = {}) {
-  return dockerSandbox({ runtime: "node24" }).setup(injectCandidate(opts));
+  return dockerSandbox({ runtime: "node24" }).setup(injectCandidate(opts)).setup(provisionTargetAppEnv());
 }

@@ -108,9 +108,9 @@ eval 集合都钉死，只让 `candidateVersion`（连带对应的 `candidateLab
 
 ### install fixture：真实开源项目矩阵
 
-宿主不再是仓库里签入的静态代码，而是四个锁定了具体 tag 的真实开源 agent 项目——每条
+宿主不再是仓库里签入的静态代码，而是三个锁定了具体 tag 的真实开源 agent 项目——每条
 `evals/install/*.eval.ts` 用 `lib/fixture.ts` 的 `cloneFixture` 在每次 attempt 里把对应
-`repoUrl@ref` clone 进沙箱工作区，作为 agent 之后改动的起点。四条 eval 各写各的
+`repoUrl@ref` clone 进沙箱工作区，作为 agent 之后改动的起点。三条 eval 各写各的
 `send()` 文案、核心用例 rubric 与合格文档落点——`cloneFixture`、`collectMechanismFacts`、
 路由层判定这些机械的、跟具体宿主无关的部分留在 `lib/` 里当工具函数复用，但每条接入
 路径要考什么、断言怎么写，都是各文件自己的判断，不经过一个通用骨架来间接决定：
@@ -120,16 +120,20 @@ eval 集合都钉死，只让 `candidateVersion`（连带对应的 `candidateLab
 | `vanna` | [vanna-ai/vanna](https://github.com/vanna-ai/vanna) | `v2.0.2` | 非 TS 宿主 + 自研 JSON（非流式）→ 就地建 `package.json` + 手写 `send` |
 | `db-gpt` | [eosphoros-ai/DB-GPT](https://github.com/eosphoros-ai/DB-GPT) | `v0.8.1` | 非 TS 宿主 + OpenAI Chat Completions 兼容形状（仍无内置件）→ 手写 `send` |
 | `gpt-researcher` | [assafelovic/gpt-researcher](https://github.com/assafelovic/gpt-researcher) | `v3.6.0` | 非 TS 宿主 + 自研 WebSocket 帧协议 → 手写 `send` 与事件映射 |
-| `finrobot` | [AI4Finance-Foundation/FinRobot](https://github.com/AI4Finance-Foundation/FinRobot) | `v1.0.0` | 非 TS 宿主 + 提交任务/轮询状态的异步形状 → 手写 `send` |
 
 `ref` 锁定的是某次具体的大版本发布，不是分支：同一个 tag 重新 clone 得到完全相同的文件，
 跑分不会随上游新提交漂移。`DB-GPT` 仓库体积很大，`excludeDirs` 用 sparse-checkout 剪掉了
-与「装 niceeval」无关的 `docs/` 与 `assets/`；其余三个直接整仓库 clone。
+与「装 niceeval」无关的 `docs/` 与 `assets/`；其余两个直接整仓库 clone。
 
-⚠️ **这四个 fixture 换来「贴真实项目」，也放弃了两个旧设计里的性质。** 一是旧的
+之前还接入过 `finrobot`（[AI4Finance-Foundation/FinRobot](https://github.com/AI4Finance-Foundation/FinRobot)
+`v1.0.0`），已移除：它拉财务数据打的是 FMP 已下线的 `/api/v3/`/`/api/v4/` legacy 端点
+（FMP 2025-08-31 后只认 `/stable/*`），拿真实 key 也全 403；上游 issue 开了近一年没修，
+唯一的修复 PR 也晾了一个多月没人理，判定为这个模块事实上停止维护，不是环境配置能解决的。
+
+⚠️ **这三个 fixture 换来「贴真实项目」，也放弃了两个旧设计里的性质。** 一是旧的
 `ai-sdk-app` 覆盖的「AI SDK `useChat` → 内置 `uiMessageStreamAgent` 零映射」这条分支
-目前没有对应项目，暂时失去覆盖；二是旧宿主**确定性、零 LLM 调用、零 API key**，四个
-真实项目都要连真实模型（部分还要连各自的外部服务）才能真正跑起来，「检查 niceeval 是否
+目前没有对应项目，暂时失去覆盖；二是旧宿主**确定性、零 LLM 调用、零 API key**，三个
+真实项目都要连真实模型才能真正跑起来，「检查 niceeval 是否
 安装好」这层里 `producedResults` 那条软分（见上面「三层评分」）在没有配那些 key 的环境里大概率读零——
 这是软分不是 gate，不影响 verdict，但看板上会显得「没跑通」。产出质量层的 judge 断言评的是
 agent **写出的 experiment/eval 代码**是否真的关联到被测系统、贴着真实用例、走真实传输，
