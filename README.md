@@ -72,10 +72,37 @@ experiments/install/without-init-doc.ts  # 凭训练记忆裸装
 注入进隔离环境。
 
 - 环境钩子写下的文件进 git 基线，**不会被算进 agent 的 diff**，所以 diff 断言不会被污染。
-- `INIT.md` 也一并固化：评估过程除被测模型外不依赖任何外部服务，否则「官网今天改了文案」
-  会变成分数波动。
+- `INIT.md` 跟 tarball 钉在同一个版本上，不是每次都抓 niceeval.com 当前的最新文案：
+  niceeval.com/INIT.md 只有「现在」这一份，没有历史版本；真正按版本存档的是
+  [`CorrectRoadH/niceeval`](https://github.com/CorrectRoadH/niceeval) 仓库的 tag，
+  所以 `pack:candidate` 按 tarball 解析出的版本号去对应 tag 抓 `INIT.md`
+  （`https://raw.githubusercontent.com/CorrectRoadH/niceeval/v<version>/INIT.md`）。
+  这样候选包和它的安装引导文档永远是同一个版本切出来的东西——评「某个版本的文案改版有没有
+  效果」时，读到的是那个版本发布时的 INIT.md，不会被网站今天的最新修订悄悄替换掉。
 - 能评还没发布的构建：`pnpm run pack:candidate -- ../niceeval` 从本地仓库现打一个
-  （走 `prepare`，与发版产物同一条链路，`INDEX.md` 该生成的还是会生成）。
+  （走 `prepare`，与发版产物同一条链路，`INDEX.md` 该生成的还是会生成；INIT.md 直接读本地
+  工作区那份，不查 GitHub）。
+
+### 对比不同 niceeval 版本
+
+默认候选（上面这份）供两个对照组共用。要横向对比「niceeval 换个版本，全自动安装的效果
+差多少」，额外打几份具名候选，每份独立存放、互不覆盖：
+
+```sh
+pnpm run pack:candidate -- 0.4.1 v0.4    # 固化到 .candidate/versions/v0.4/
+pnpm run pack:candidate -- 0.9.1 v0.9    # 固化到 .candidate/versions/v0.9/
+```
+
+`experiments/install/compare-versions/` 下每个文件通过 `flags.candidateVersion` +
+`sandboxWith({ candidateLabel })` 引用一个 label，两者必须填同一个值——一个决定
+sandbox 里注入哪份候选，一个决定机制层拿哪份候选核对版本号，niceeval 不会替你同步这两处：
+
+```sh
+pnpm exec niceeval exp compare-versions   # 同一批 eval、同一个模型，只有候选版本不同
+```
+
+跟 `compare-models` 一样，这组对照只应该有一个变量：写新的版本对比组时把 `model`、
+`flags.initDoc`、eval 集合都钉死，只让 `candidateVersion`（连带对应的 `candidateLabel`）变化。
 
 ## fixture
 

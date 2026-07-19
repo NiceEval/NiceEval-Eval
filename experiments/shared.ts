@@ -17,8 +17,13 @@ export const agentUnderTest = codexAgent();
  *
  * runtime 固定 node24：安装链里 agent 要跑 pnpm / npx / tsc，Node 版本漂移会
  * 变成一类与文档无关的失败噪声。
+ *
+ * @param opts.candidateLabel 对比不同 niceeval 版本时传入，取 .candidate/versions/<label>/
+ *   下单独 pack 的候选；省略 = 用默认候选（.candidate/）。这个值要跟同一个 experiment
+ *   的 `flags.candidateVersion` 保持一致——sandbox 注入哪个候选、机制层拿哪个候选核对版本，
+ *   两处各自读一遍这个值，niceeval 不会替你同步。
  */
-export function sandboxWith(opts: { withInitDoc: boolean }) {
+export function sandboxWith(opts: { withInitDoc: boolean; candidateLabel?: string }) {
   return dockerSandbox({ runtime: "node24" }).setup(injectCandidate(opts));
 }
 

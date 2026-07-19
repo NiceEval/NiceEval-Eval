@@ -5,17 +5,20 @@
  * 所以每次运行都把一个确定的 tarball 注入进 sandbox，agent 从本地文件安装——
  * 这样评估结果能钉到版本，也能评还没发布的构建。
  *
- * tarball 由 `pnpm run pack:candidate` 预先准备到 .candidate/ 下（见 scripts/pack-candidate.ts）。
+ * 默认候选（`pnpm run pack:candidate`）固化到 .candidate/ 下（见 scripts/pack-candidate.ts），
+ * 供两个对照组（有/无安装前引导文档）共用。要横向对比不同 niceeval 版本时，
+ * 额外用 `pnpm run pack:candidate -- <target> <label>` 把候选打到 .candidate/versions/<label>/，
+ * 每个 label 是一次独立的、可钉版本的候选，experiment 用 `candidateVersion` flag 选用哪个。
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { SandboxHook } from "niceeval/sandbox";
 
-/** 候选包在宿主机上的位置，由 pack:candidate 写入 */
+/** 默认候选包在宿主机上的位置，由 pack:candidate 写入 */
 export const CANDIDATE_DIR = resolve(import.meta.dirname, "../.candidate");
-export const CANDIDATE_TARBALL = resolve(CANDIDATE_DIR, "niceeval.tgz");
-export const CANDIDATE_MANIFEST = resolve(CANDIDATE_DIR, "manifest.json");
+/** 具名候选（用于版本对比）的根目录，每个 label 一个子目录，结构与默认候选一致 */
+export const CANDIDATE_VERSIONS_DIR = resolve(CANDIDATE_DIR, "versions");
 
 /** sandbox 内候选包与安装前引导文档的落点。放在 workdir 之外，避免混进 agent 的 diff。 */
 export const SANDBOX_CANDIDATE_PATH = "/opt/niceeval-candidate/niceeval.tgz";
@@ -30,13 +33,26 @@ export interface CandidateManifest {
   source: string;
 }
 
-export function readCandidateManifest(): CandidateManifest {
-  if (!existsSync(CANDIDATE_MANIFEST)) {
-    throw new Error(
-      `候选包还没准备好：找不到 ${CANDIDATE_MANIFEST}。先运行 pnpm run pack:candidate`,
-    );
+/** 某个候选（默认候选，或 versions/ 下某个具名 label）在宿主机上的三个文件路径 */
+export function candidatePaths(label?: string): { dir: string; tarball: string; manifest: string; initDoc: string } {
+  const dir = label ? resolve(CANDIDATE_VERSIONS_DIR, label) : CANDIDATE_DIR;
+  return {
+    dir,
+    tarball: resolve(dir, "niceeval.tgz"),
+    manifest: resolve(dir, "manifest.json"),
+    initDoc: resolve(dir, "INIT.md"),
+  };
+}
+
+export function readCandidateManifest(label?: string): CandidateManifest {
+  const { manifest } = candidatePaths(label);
+  if (!existsSync(manifest)) {
+    const hint = label
+      ? `pnpm run pack:candidate -- <target> ${label}`
+      : `pnpm run pack:candidate`;
+    throw new Error(`候选包还没准备好：找不到 ${manifest}。先运行 ${hint}`);
   }
-  return JSON.parse(readFileSync(CANDIDATE_MANIFEST, "utf8")) as CandidateManifest;
+  return JSON.parse(readFileSync(manifest, "utf8")) as CandidateManifest;
 }
 
 /**
@@ -47,22 +63,24 @@ export function readCandidateManifest(): CandidateManifest {
  *
  * @param opts.withInitDoc 是否投放 INIT.md。这是两个对照组的唯一环境差异：
  *   投放 = agent 有安装前引导文档链；不投放 = agent 只能凭训练记忆装。
+ * @param opts.candidateLabel 省略 = 用默认候选（.candidate/）；传值 = 用
+ *   .candidate/versions/<label>/ 下那次单独 pack 的候选，用于版本对比 experiment。
  */
-export function injectCandidate(opts: { withInitDoc: boolean }): SandboxHook {
+export function injectCandidate(opts: { withInitDoc: boolean; candidateLabel?: string }): SandboxHook {
   return async (sandbox, ctx) => {
-    const manifest = readCandidateManifest();
+    const { tarball: tarballPath, initDoc: initDocPath } = candidatePaths(opts.candidateLabel);
+    const manifest = readCandidateManifest(opts.candidateLabel);
     ctx.progress({ message: `注入候选包 niceeval@${manifest.version}` });
 
-    const tarball = readFileSync(CANDIDATE_TARBALL);
+    const tarball = readFileSync(tarballPath);
     await sandbox.uploadFiles([{ path: SANDBOX_CANDIDATE_PATH, content: tarball }]);
 
     if (opts.withInitDoc) {
-      const initDoc = resolve(CANDIDATE_DIR, "INIT.md");
-      if (!existsSync(initDoc)) {
-        throw new Error(`要求投放 INIT.md，但 ${initDoc} 不存在。重新运行 pnpm run pack:candidate`);
+      if (!existsSync(initDocPath)) {
+        throw new Error(`要求投放 INIT.md，但 ${initDocPath} 不存在。重新运行 pack:candidate`);
       }
       await sandbox.uploadFiles([
-        { path: SANDBOX_INIT_DOC_PATH, content: readFileSync(initDoc) },
+        { path: SANDBOX_INIT_DOC_PATH, content: readFileSync(initDocPath) },
       ]);
     }
 

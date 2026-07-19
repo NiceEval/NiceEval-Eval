@@ -110,6 +110,10 @@ export function defineInstallEval(spec: InstallFixtureSpec) {
     description: spec.description,
     async test(t) {
       const withInitDoc = t.flags.initDoc !== false;
+      // 对比不同 niceeval 版本时，experiment 用这个 flag 选用 .candidate/versions/<label>/
+      // 下哪次单独 pack 的候选；省略 = 用默认候选（.candidate/），机制层和 sandbox 注入的
+      // 候选必须是同一个，所以这个值要跟 experiment 的 sandbox: sandboxWith({ candidateLabel }) 对齐。
+      const candidateLabel = t.flags.candidateVersion as string | undefined;
 
       // 起始文件：锁定 tag 的真实宿主项目。agent 之后改动的文件才会进 diff。
       await cloneFixture(t.sandbox as never, spec);
@@ -117,7 +121,7 @@ export function defineInstallEval(spec: InstallFixtureSpec) {
       const turn = await t.send(buildTask(spec, withInitDoc));
 
       // ── 第一层：机制层（gate）。安装链的客观事实。 ──────────────────
-      const facts = await collectMechanismFacts(t.sandbox as never);
+      const facts = await collectMechanismFacts(t.sandbox as never, { candidateLabel });
 
       await t.group("机制层", async () => {
         t.check(facts.layout.found, isTrue("niceeval.config.ts 存在").gate());

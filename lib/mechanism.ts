@@ -85,7 +85,10 @@ export function countOwnTypeErrors(tscOutput: string): number {
 }
 
 /** 在 sandbox 里把机制层的全部客观事实收一遍，收完再断言，便于一次运行看清全貌 */
-export async function collectMechanismFacts(sandbox: SandboxLike): Promise<MechanismFacts> {
+export async function collectMechanismFacts(
+  sandbox: SandboxLike,
+  opts?: { candidateLabel?: string },
+): Promise<MechanismFacts> {
   const layout = await locateInstall(sandbox);
   const at = layout.root;
 
@@ -94,7 +97,7 @@ export async function collectMechanismFacts(sandbox: SandboxLike): Promise<Mecha
     { cwd: at },
   );
   const installedVersion = versionProbe.stdout.trim() || null;
-  const candidate = readCandidateManifest();
+  const candidate = readCandidateManifest(opts?.candidateLabel);
 
   const managed = await sandbox.runShell(
     `grep -l "node_modules/niceeval" AGENTS.md CLAUDE.md 2>/dev/null | head -1`,
