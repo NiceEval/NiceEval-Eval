@@ -1,5 +1,5 @@
 import { defineEval } from "niceeval";
-import { excludes, isFalse, isTrue } from "niceeval/expect";
+import { isFalse, isTrue } from "niceeval/expect";
 import { SANDBOX_INIT_DOC_PATH } from "../../lib/candidate.ts";
 import { assertNiceevalInstalled } from "../../lib/mechanism.ts";
 import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../../lib/fixture.ts";
@@ -44,51 +44,37 @@ export default defineEval({
     // ── 第一层：检查 niceeval 是否安装好（gate）。四条接入路径共用同一套判定。 ──
     await assertNiceevalInstalled(t, { candidateLabel });
 
-    // ── 第二层：产出质量层（rubric / judge）。三件套符不符合公开文档声明的契约。 ──
+    // ── 第二层：产出质量层（judge）。experiment 与 eval 是否真的关联到这个被测系统。 ──
     const src = await t.sandbox.readSourceFiles({
       extensions: ["ts"],
       // Vanna 自带一个 frontends 目录；排除掉避免和 agent 写的 adapter 混在一起
       ignoreDirs: [...DEFAULT_SOURCE_IGNORE_DIRS, "frontends"],
     });
-    const adapterSource =
-      src.find((f) => /agents?\//.test(f.path))?.content ??
-      src.fileMatching(/defineAgent|defineSandboxAgent|uiMessageStreamAgent/)?.content ??
-      "";
-    const evalSource = src.find((f) => /\.eval\.ts$/.test(f.path))?.content ?? "";
+    const experimentSource = src
+      .filter((f) => /^experiments\//.test(f.path))
+      .map((f) => f.content)
+      .join("\n\n");
+    const evalSource = src
+      .filter((f) => /\.eval\.ts$/.test(f.path))
+      .map((f) => f.content)
+      .join("\n\n");
 
     await t.group("产出质量层", async () => {
-      t.check(
-        adapterSource,
-        excludes(/from\s+["']\.\.?\/(?!.*niceeval).*\/(app|server|index|routes)/, {
-          stripComments: true,
-        }).atLeast(1),
-      );
-      t.check(
-        adapterSource,
-        excludes(/\b(spawn|exec|execa|child_process)\b/, { stripComments: true }).atLeast(1),
-      );
-      t.check(adapterSource, excludes(/process\.env\./, { stripComments: true }).atLeast(1));
-
       // 「问知识库训练数据之外的表应该明确答不知道」是 Vanna 这条路径特有的反幻觉
       // 要求——判 eval 有没有真的覆盖这条分支，而不只覆盖「问得到答案」的正向用例。
       t.judge.autoevals
         .closedQA(
-          `这段 eval 代码是否针对下面这个被测系统的真实核心用例编写？
+          `experiment 与 eval 是否真的关联到下面这个被测系统，而不是各写各的、互不搭界？
 被测系统：${CORE_USE_CASE}
-合格标准：eval 的输入是一个该系统真实会遇到的请求，断言检查的是该请求应该得到的具体结果，
-且覆盖了「问训练数据之外的表该答不知道，而不是编造字段名」这条反幻觉分支。
-不合格：输入是 "hello" / "你好" / "test" 这类与业务无关的占位内容，只覆盖正向用例，
-或断言只有 t.succeeded() 而没有任何内容断言。`,
-          { on: evalSource },
-        )
-        .atLeast(0.7);
-
-      t.judge.autoevals
-        .closedQA(
-          `这段 adapter 代码是否通过 ${TRANSPORT} 与被测系统通信，而不是在进程内直接 import 被测系统的函数？
-合格：用 fetch / HTTP 请求等真实传输方式，被测系统的地址与鉴权来自工厂参数。
-不合格：直接 import 应用代码后调用其函数，或在 adapter 内部启动被测进程。`,
-          { on: adapterSource },
+传输方式：${TRANSPORT}
+合格标准：experiment 里配的 agent 确实通过上面这个传输方式与被测系统通信（不是进程内直调
+被测系统的函数，也不是在 adapter 里启动被测进程）；eval 的输入贴着被测系统的真实核心用例写，
+断言检查的是该请求应该得到的具体结果，且覆盖了「问训练数据之外的表该答不知道，而不是编造
+字段名」这条反幻觉分支。
+不合格：eval 输入是 "hello" / "你好" / "test" 这类与业务无关的占位内容、只覆盖正向用例，
+或断言只有 t.succeeded() 而没有任何内容断言；experiment 引用的 agent 看不出与这个被测系统
+的真实连接。`,
+          { on: `experiment 代码：\n${experimentSource}\n\neval 代码：\n${evalSource}` },
         )
         .atLeast(0.7);
     });

@@ -41,7 +41,7 @@ pnpm exec niceeval exp install install/vanna              # 只跑一条 eval
 | 层 | 判什么 | 严重度 | 失败意味着 |
 |---|---|---|---|
 | **检查 niceeval 是否安装好** | 安装链的客观事实：依赖解析到候选包、config 存在、托管区块存在、typecheck 干净、niceeval 能发现 agent 写的 eval | `gate` | 链路走不通 → 修 `INIT.md` 对应步骤或 `init` 的行为 |
-| **产出质量层** | 三件套符不符合公开文档声明的契约：adapter 不进程内直调、不代管被测进程、eval 贴宿主真实功能 | `soft` / judge | 契约没被读懂 → 定位到那一页 docs-site 改写 |
+| **产出质量层** | agent 写出的 experiment 与 eval 是否真的关联到这个被测系统——不是各写各的、互不搭界 | `soft` / judge | 契约没被读懂 → 定位到那一页 docs-site 改写 |
 | **路由层** | agent 是否以随包 `INDEX.md` 为入口、读到与任务匹配的页面、有没有退回官网 | `soft`（纯计量） | 路由不对 → `INDEX.template.md` 导语或页面 `description` |
 
 路由层不 gate，因为它回答的是「文档起作用了吗」，不是「这次接入算不算成功」。
@@ -131,9 +131,9 @@ eval 集合都钉死，只让 `candidateVersion`（连带对应的 `candidateLab
 目前没有对应项目，暂时失去覆盖；二是旧宿主**确定性、零 LLM 调用、零 API key**，四个
 真实项目都要连真实模型（部分还要连各自的外部服务）才能真正跑起来，「检查 niceeval 是否
 安装好」这层里 `producedResults` 那条软分（见上面「三层评分」）在没有配那些 key 的环境里大概率读零——
-这是软分不是 gate，不影响 verdict，但看板上会显得「没跑通」。产出质量层的两个 judge
-断言评的是 agent **写出的 adapter/eval 代码**是否贴着真实用例、走真实传输，不依赖宿主
-真的启动成功。
+这是软分不是 gate，不影响 verdict，但看板上会显得「没跑通」。产出质量层的 judge 断言评的是
+agent **写出的 experiment/eval 代码**是否真的关联到被测系统、贴着真实用例、走真实传输，
+不依赖宿主真的启动成功。
 
 
 

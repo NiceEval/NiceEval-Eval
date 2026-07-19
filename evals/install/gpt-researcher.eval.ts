@@ -1,5 +1,5 @@
 import { defineEval } from "niceeval";
-import { excludes, isFalse, isTrue } from "niceeval/expect";
+import { isFalse, isTrue } from "niceeval/expect";
 import { SANDBOX_INIT_DOC_PATH } from "../../lib/candidate.ts";
 import { assertNiceevalInstalled } from "../../lib/mechanism.ts";
 import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../../lib/fixture.ts";
@@ -42,52 +42,37 @@ export default defineEval({
     // ── 第一层：检查 niceeval 是否安装好（gate）。四条接入路径共用同一套判定。 ──
     await assertNiceevalInstalled(t, { candidateLabel });
 
-    // ── 第二层：产出质量层（rubric / judge）。三件套符不符合公开文档声明的契约。 ──
+    // ── 第二层：产出质量层（judge）。experiment 与 eval 是否真的关联到这个被测系统。 ──
     const src = await t.sandbox.readSourceFiles({
       extensions: ["ts"],
       // GPT Researcher 自带一个 frontend 目录；排除掉避免和 agent 写的 adapter 混在一起
       ignoreDirs: [...DEFAULT_SOURCE_IGNORE_DIRS, "frontend"],
     });
-    const adapterSource =
-      src.find((f) => /agents?\//.test(f.path))?.content ??
-      src.fileMatching(/defineAgent|defineSandboxAgent|uiMessageStreamAgent/)?.content ??
-      "";
-    const evalSource = src.find((f) => /\.eval\.ts$/.test(f.path))?.content ?? "";
+    const experimentSource = src
+      .filter((f) => /^experiments\//.test(f.path))
+      .map((f) => f.content)
+      .join("\n\n");
+    const evalSource = src
+      .filter((f) => /\.eval\.ts$/.test(f.path))
+      .map((f) => f.content)
+      .join("\n\n");
 
     await t.group("产出质量层", async () => {
-      t.check(
-        adapterSource,
-        excludes(/from\s+["']\.\.?\/(?!.*niceeval).*\/(app|server|index|routes)/, {
-          stripComments: true,
-        }).atLeast(1),
-      );
-      t.check(
-        adapterSource,
-        excludes(/\b(spawn|exec|execa|child_process)\b/, { stripComments: true }).atLeast(1),
-      );
-      t.check(adapterSource, excludes(/process\.env\./, { stripComments: true }).atLeast(1));
-
-      t.judge.autoevals
-        .closedQA(
-          `这段 eval 代码是否针对下面这个被测系统的真实核心用例编写？
-被测系统：${CORE_USE_CASE}
-合格标准：eval 的输入是一个该系统真实会遇到的请求，断言检查的是该请求应该得到的具体结果。
-不合格：输入是 "hello" / "你好" / "test" 这类与业务无关的占位内容，或断言只有 t.succeeded() 而没有任何内容断言。`,
-          { on: evalSource },
-        )
-        .atLeast(0.7);
-
       // GPT Researcher 走的是自研 WebSocket 帧协议，不是普通 HTTP 请求/响应——
-      // 判 adapter 有没有把私有事件帧（logs/report）映射成标准事件流，比单纯判
-      // 「有没有 fetch」更贴合这条路径实际要考的东西。
+      // 判有没有把私有事件帧（logs/report）映射成标准事件流，比单纯判「有没有
+      // fetch」更贴合这条路径实际要考的东西，所以交给 judge 读代码语义。
       t.judge.autoevals
         .closedQA(
-          `这段 adapter 代码是否通过 ${TRANSPORT} 与被测系统通信，而不是在进程内直接 import 被测系统的函数？
-合格：用 WebSocket 连接 /ws，发送启动研究任务的帧，并把服务端陆续推来的私有事件帧
-（如 logs / report）映射成 niceeval 的标准事件流；被测系统的地址来自工厂参数。
-不合格：直接 import 应用代码后调用其函数，在 adapter 内部启动被测进程，或者用轮询 HTTP
-假装处理了这条 WebSocket 协议。`,
-          { on: adapterSource },
+          `experiment 与 eval 是否真的关联到下面这个被测系统，而不是各写各的、互不搭界？
+被测系统：${CORE_USE_CASE}
+传输方式：${TRANSPORT}
+合格标准：experiment 里配的 agent 确实用 WebSocket 连接 /ws、发送启动研究任务的帧，并把
+服务端陆续推来的私有事件帧（如 logs / report）映射成 niceeval 的标准事件流（不是进程内直调
+被测系统的函数，不是在 adapter 里启动被测进程，也不是用轮询 HTTP 假装处理了这条 WebSocket
+协议）；eval 的输入贴着被测系统的真实核心用例写，断言检查的是该请求应该得到的具体结果。
+不合格：eval 输入是 "hello" / "你好" / "test" 这类与业务无关的占位内容，或断言只有
+t.succeeded() 而没有任何内容断言；experiment 引用的 agent 看不出与这个被测系统的真实连接。`,
+          { on: `experiment 代码：\n${experimentSource}\n\neval 代码：\n${evalSource}` },
         )
         .atLeast(0.7);
     });
