@@ -63,5 +63,5 @@ export function fellBackToOnlineDocs(events: readonly StreamEvent[]): boolean {
  * 路由层的三个观测（入口、落点、有没有退回线上）全部用软分（.atLeast）挂断言，
  * 不用 gate：这一层回答的是「文档起作用了吗」，是归因用的计量，不是
  * 「这次接入算不算成功」的判据。让它拖垮 verdict 会把文档问题和机制问题
- * 混成一个分数，反而失去归因能力。具体挂法见 lib/install-eval.ts。
+ * 混成一个分数，反而失去归因能力。具体挂法见各 evals/install/*.eval.ts。
  */

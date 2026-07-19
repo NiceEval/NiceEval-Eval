@@ -6,8 +6,8 @@
  *   pnpm run pack:candidate -- 0.9.1           # 从 npm 取指定版本
  *   pnpm run pack:candidate -- ../niceeval     # 从本地仓库现打一个（评还没发布的构建）
  *
- * 加第二个参数 = 打一个具名候选，供版本对比 experiment 用（见 experiments/install/compare-versions/），
- * 不影响默认候选（两个对照组 with-init-doc / without-init-doc 用的仍是不带 label 的那份）：
+ * 加第二个参数 = 打一个具名候选，供版本对比 experiment 用（见 experiments/install/v0.4.ts、v0.9.ts），
+ * 不影响默认候选（baseline experiment 用的仍是不带 label 的那份）：
  *   pnpm run pack:candidate -- 0.9.1 v0.9      # 固化到 .candidate/versions/v0.9/
  *   pnpm run pack:candidate -- 0.4.1 v0.4      # 固化到 .candidate/versions/v0.4/
  *

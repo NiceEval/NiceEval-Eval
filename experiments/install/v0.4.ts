@@ -1,5 +1,5 @@
 import { defineExperiment } from "niceeval";
-import { RUN_PROFILE, agentUnderTest, sandboxWith } from "../shared.ts";
+import { agentUnderTest, sandboxWith } from "../shared.ts";
 
 /**
  * 版本对比组：niceeval@0.4.x。
@@ -17,9 +17,11 @@ export default defineExperiment({
   description: "niceeval@0.4.1（版本对比组）",
   agent: agentUnderTest,
   model: "gpt-5.4",
-  // flags.candidateVersion 给机制层核对版本；sandbox 的 candidateLabel 决定注入哪份候选。
+  // flags.candidateVersion 给「检查 niceeval 是否安装好」这层核对版本；sandbox 的
+  // candidateLabel 决定注入哪份候选。
   // niceeval 不会替这两处同步，同一个变量写两遍，至少不会在这个文件内部打错成两个值。
-  flags: { initDoc: true, candidateVersion: CANDIDATE_LABEL },
-  sandbox: sandboxWith({ withInitDoc: true, candidateLabel: CANDIDATE_LABEL }),
-  ...RUN_PROFILE,
+  flags: { candidateVersion: CANDIDATE_LABEL },
+  sandbox: sandboxWith({ candidateLabel: CANDIDATE_LABEL }),
+  runs: 3,
+  maxConcurrency: 2,
 });

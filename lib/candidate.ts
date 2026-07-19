@@ -56,17 +56,15 @@ export function readCandidateManifest(label?: string): CandidateManifest {
 }
 
 /**
- * 环境钩子：把候选 tarball（以及可选的安装前引导文档 INIT.md）放进 sandbox。
+ * 环境钩子：把候选 tarball 与安装前引导文档 INIT.md 放进 sandbox。
  *
  * 挂在 experiment 的 sandbox spec 上而不是写在 eval 里，是因为这属于「这次实验的环境」：
  * setup 钩子写下的文件进 git 基线，不会被算成 agent 改的文件，所以 diff 断言不会被污染。
  *
- * @param opts.withInitDoc 是否投放 INIT.md。这是两个对照组的唯一环境差异：
- *   投放 = agent 有安装前引导文档链；不投放 = agent 只能凭训练记忆装。
  * @param opts.candidateLabel 省略 = 用默认候选（.candidate/）；传值 = 用
  *   .candidate/versions/<label>/ 下那次单独 pack 的候选，用于版本对比 experiment。
  */
-export function injectCandidate(opts: { withInitDoc: boolean; candidateLabel?: string }): SandboxHook {
+export function injectCandidate(opts: { candidateLabel?: string }): SandboxHook {
   return async (sandbox, ctx) => {
     const { tarball: tarballPath, initDoc: initDocPath } = candidatePaths(opts.candidateLabel);
     const manifest = readCandidateManifest(opts.candidateLabel);
@@ -75,14 +73,10 @@ export function injectCandidate(opts: { withInitDoc: boolean; candidateLabel?: s
     const tarball = readFileSync(tarballPath);
     await sandbox.uploadFiles([{ path: SANDBOX_CANDIDATE_PATH, content: tarball }]);
 
-    if (opts.withInitDoc) {
-      if (!existsSync(initDocPath)) {
-        throw new Error(`要求投放 INIT.md，但 ${initDocPath} 不存在。重新运行 pack:candidate`);
-      }
-      await sandbox.uploadFiles([
-        { path: SANDBOX_INIT_DOC_PATH, content: readFileSync(initDocPath) },
-      ]);
+    if (!existsSync(initDocPath)) {
+      throw new Error(`找不到 ${initDocPath}。重新运行 pack:candidate`);
     }
+    await sandbox.uploadFiles([{ path: SANDBOX_INIT_DOC_PATH, content: readFileSync(initDocPath) }]);
 
     // fail-fast：候选包不可读的话，后面 agent 的每一步失败都会被误判成「agent 不会装」
     const check = await sandbox.runCommand("test", ["-s", SANDBOX_CANDIDATE_PATH]);

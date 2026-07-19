@@ -1,5 +1,5 @@
 import { defineExperiment } from "niceeval";
-import { RUN_PROFILE, agentUnderTest, sandboxWith } from "../../shared.ts";
+import { agentUnderTest, sandboxWith } from "../shared.ts";
 
 /**
  * 版本对比组：niceeval@0.9.x。
@@ -15,7 +15,8 @@ export default defineExperiment({
   description: "niceeval@0.9.1（版本对比组）",
   agent: agentUnderTest,
   model: "gpt-5.4",
-  flags: { initDoc: true, candidateVersion: CANDIDATE_LABEL },
-  sandbox: sandboxWith({ withInitDoc: true, candidateLabel: CANDIDATE_LABEL }),
-  ...RUN_PROFILE,
+  flags: { candidateVersion: CANDIDATE_LABEL },
+  sandbox: sandboxWith({ candidateLabel: CANDIDATE_LABEL }),
+  runs: 3,
+  maxConcurrency: 2,
 });

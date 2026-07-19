@@ -4,8 +4,9 @@
 这套文档链的真实效果，为文档文案的每次改版提供回归面。
 
 被测对象是 coding agent CLI（当前是 codex），跑在 Docker 隔离 workspace 里。
-**coding agent 与模型是测量仪器，不是被改进对象**——对照组的设计就是为了把模型能力
-从归因里剥离出去。
+**coding agent 与模型是测量仪器，不是被改进对象**——`debug/` 还留着一组对照组
+（`help-only` vs `with-bundled-docs`）把模型能力从归因里剥离出去；`install/` 只有
+一组配置，不再靠对照组度量，见下面「install 评估的任务指令」。
 
 两组评估共用这个仓库，sandbox、候选包注入与运行机制共享，fixture 与题面独立：
 
@@ -22,25 +23,24 @@ pnpm run pack:candidate          # 取当前 latest；也可以 -- 0.9.1 或 -- 
 export CODEX_API_KEY=sk-...      # 被测 agent
 export OPENAI_API_KEY=sk-...     # 裁判模型（产出质量层）
 
-pnpm exec niceeval exp install   # 跑安装评估（两个对照组）
+pnpm exec niceeval exp install   # 跑安装评估
 pnpm exec niceeval show          # 看结果
 ```
 
-只跑一格配置或一条题：
+只跑一条 eval：
 
 ```sh
-pnpm exec niceeval exp install/with-init-doc              # 只跑实验组
 pnpm exec niceeval exp install install/vanna              # 只跑一条 eval
 ```
 
 ## 三层评分
 
-三层从精确断言到 judge 逐层放宽，**只有机制层 gate**。这是刻意的：三层混成一个分数
-就失去了归因能力，而归因正是这套评估唯一的产出。
+三层从精确断言到 judge 逐层放宽，**只有「检查 niceeval 是否安装好」这层 gate**。这是刻意的：
+三层混成一个分数就失去了归因能力，而归因正是这套评估唯一的产出。
 
 | 层 | 判什么 | 严重度 | 失败意味着 |
 |---|---|---|---|
-| **机制层** | 安装链的客观事实：依赖解析到候选包、config 存在、托管区块存在、typecheck 干净、niceeval 能发现 agent 写的 eval | `gate` | 链路走不通 → 修 `INIT.md` 对应步骤或 `init` 的行为 |
+| **检查 niceeval 是否安装好** | 安装链的客观事实：依赖解析到候选包、config 存在、托管区块存在、typecheck 干净、niceeval 能发现 agent 写的 eval | `gate` | 链路走不通 → 修 `INIT.md` 对应步骤或 `init` 的行为 |
 | **产出质量层** | 三件套符不符合公开文档声明的契约：adapter 不进程内直调、不代管被测进程、eval 贴宿主真实功能 | `soft` / judge | 契约没被读懂 → 定位到那一页 docs-site 改写 |
 | **路由层** | agent 是否以随包 `INDEX.md` 为入口、读到与任务匹配的页面、有没有退回官网 | `soft`（纯计量） | 路由不对 → `INDEX.template.md` 导语或页面 `description` |
 
@@ -49,20 +49,18 @@ pnpm exec niceeval exp install install/vanna              # 只跑一条 eval
 
 失败按「路径 × 答案」的组合归因——路径对了答案还错，和路径就没走对，指向的是完全不同的修复面。
 
-## 对照组与它的边界
+## install 评估的任务指令
 
-两组实验只差一个变量：沙箱里投不投放 `INIT.md`。
+`install/` 只有一组配置（`experiments/install/baseline.ts`）：沙箱里始终投放 `INIT.md`，
+每条 eval 的 `send()` 都明确指向它（`READ ${SANDBOX_INIT_DOC_PATH} ...`），agent 按它走
+「读引导 → 探测项目 → 装候选包 → init → 交接给随包 INDEX.md」这条完整链路。
 
-```
-experiments/install/with-init-doc.ts     # 完整文档链
-experiments/install/without-init-doc.ts  # 凭训练记忆裸装
-```
+随包文档（`node_modules/niceeval/INDEX.md` 与 `docs-site/zh/**`）是包的一部分，agent 一
+装上包它就必然存在。随包文档起没起作用由**路由层单独计量**（有没有以 `INDEX.md` 为入口、
+有没有读到与宿主形态匹配的页面），不靠对照组。
 
-⚠️ **这个差值度量的是安装前引导链，不是随包文档。** 随包文档（`node_modules/niceeval/INDEX.md`
-与 `docs-site/zh/**`）是包的一部分，agent 一装上包它就必然存在，没法在对照组里移除。
-随包文档起没起作用由**路由层单独计量**——两组的路由层分数放在一起看，才是随包文档的证据。
-
-`debug/` 的对照组（`help-only`）同理：它靠任务指令约束 agent 只用 `--help`，属于
+`debug/` 的对照组（`help-only` vs `with-bundled-docs`）是另一回事，衡量的是「查已有结果」
+这条链路上随包文档相对 `--help` 的增量：它靠任务指令约束 agent 只用 `--help`，属于
 「要求配合」而非「强制隔离」。分析时应该把路由层显示偷看了文档的 attempt 剔出来再算差值。
 
 ## 候选包注入
@@ -85,32 +83,37 @@ experiments/install/without-init-doc.ts  # 凭训练记忆裸装
 
 ### 对比不同 niceeval 版本
 
-默认候选（上面这份）供两个对照组共用。要横向对比「niceeval 换个版本，全自动安装的效果
-差多少」，额外打几份具名候选，每份独立存放、互不覆盖：
+默认候选（上面这份）供 baseline experiment 用。要横向对比「niceeval 换个版本，全自动安装的
+效果差多少」，额外打几份具名候选，每份独立存放、互不覆盖：
 
 ```sh
 pnpm run pack:candidate -- 0.4.1 v0.4    # 固化到 .candidate/versions/v0.4/
 pnpm run pack:candidate -- 0.9.1 v0.9    # 固化到 .candidate/versions/v0.9/
 ```
 
-`experiments/install/compare-versions/` 下每个文件通过 `flags.candidateVersion` +
+`experiments/install/v0.4.ts`、`v0.9.ts` 各自通过 `flags.candidateVersion` +
 `sandboxWith({ candidateLabel })` 引用一个 label，两者必须填同一个值——一个决定
-sandbox 里注入哪份候选，一个决定机制层拿哪份候选核对版本号，niceeval 不会替你同步这两处：
+sandbox 里注入哪份候选，一个决定「检查 niceeval 是否安装好」这层拿哪份候选核对版本号，
+niceeval 不会替你同步这两处：
 
 ```sh
-pnpm exec niceeval exp compare-versions   # 同一批 eval、同一个模型，只有候选版本不同
+pnpm exec niceeval exp install/v0.4    # 只跑 niceeval@0.4.1 版本对比组
+pnpm exec niceeval exp install/v0.9    # 只跑 niceeval@0.9.1 版本对比组
 ```
 
 跟 `compare-models` 一样，这组对照只应该有一个变量：写新的版本对比组时把 `model`、
-`flags.initDoc`、eval 集合都钉死，只让 `candidateVersion`（连带对应的 `candidateLabel`）变化。
+eval 集合都钉死，只让 `candidateVersion`（连带对应的 `candidateLabel`）变化。
 
 ## fixture
 
 ### install fixture：真实开源项目矩阵
 
-宿主不再是仓库里签入的静态代码，而是四个锁定了具体 tag 的真实开源 agent 项目——
-`lib/install-eval.ts` 的 `defineInstallEval` 在每次 attempt 里把对应 `repoUrl@ref`
-clone 进沙箱工作区，作为 agent 之后改动的起点：
+宿主不再是仓库里签入的静态代码，而是四个锁定了具体 tag 的真实开源 agent 项目——每条
+`evals/install/*.eval.ts` 用 `lib/fixture.ts` 的 `cloneFixture` 在每次 attempt 里把对应
+`repoUrl@ref` clone 进沙箱工作区，作为 agent 之后改动的起点。四条 eval 各写各的
+`send()` 文案、核心用例 rubric 与合格文档落点——`cloneFixture`、`collectMechanismFacts`、
+路由层判定这些机械的、跟具体宿主无关的部分留在 `lib/` 里当工具函数复用，但每条接入
+路径要考什么、断言怎么写，都是各文件自己的判断，不经过一个通用骨架来间接决定：
 
 | fixture | 项目 | 锁定 tag | 覆盖的接入路径 |
 |---|---|---|---|
@@ -126,8 +129,8 @@ clone 进沙箱工作区，作为 agent 之后改动的起点：
 ⚠️ **这四个 fixture 换来「贴真实项目」，也放弃了两个旧设计里的性质。** 一是旧的
 `ai-sdk-app` 覆盖的「AI SDK `useChat` → 内置 `uiMessageStreamAgent` 零映射」这条分支
 目前没有对应项目，暂时失去覆盖；二是旧宿主**确定性、零 LLM 调用、零 API key**，四个
-真实项目都要连真实模型（部分还要连各自的外部服务）才能真正跑起来，机制层里
-`producedResults` 那条软分（见上面「三层评分」）在没有配那些 key 的环境里大概率读零——
+真实项目都要连真实模型（部分还要连各自的外部服务）才能真正跑起来，「检查 niceeval 是否
+安装好」这层里 `producedResults` 那条软分（见上面「三层评分」）在没有配那些 key 的环境里大概率读零——
 这是软分不是 gate，不影响 verdict，但看板上会显得「没跑通」。产出质量层的两个 judge
 断言评的是 agent **写出的 adapter/eval 代码**是否贴着真实用例、走真实传输，不依赖宿主
 真的启动成功。

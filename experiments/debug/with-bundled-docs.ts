@@ -1,5 +1,5 @@
 import { defineExperiment } from "niceeval";
-import { RUN_PROFILE, agentUnderTest, sandboxWith } from "../shared.ts";
+import { agentUnderTest, sandboxWith } from "../shared.ts";
 
 /**
  * 实验组：完整文档链。
@@ -12,7 +12,8 @@ export default defineExperiment({
   agent: agentUnderTest,
   model: "gpt-5.4",
   flags: { bundledDocs: true },
-  sandbox: sandboxWith({ withInitDoc: true }),
+  sandbox: sandboxWith(),
   evals: ["queries"],
-  ...RUN_PROFILE,
+  runs: 3,
+  maxConcurrency: 2,
 });
