@@ -8,18 +8,34 @@ experiment 与 eval 声明）加上**整目录签入的 `.niceeval` 结果数据
 
 ## 当前状态
 
-`coding-agent-memory/` 目前只有题库骨架（`questions.yaml`），**还没有 `.niceeval` 数据**。
-在真实导出放进来之前，`niceeval exp debug` 会因为标准答案对不上而整片失败——这是预期行为，
-不是 bug。
+`coding-agent-memory/` 的数据已就位，题库 8 条题的标准答案全部从数据核对完毕，无 TODO 残留。
 
-放数据的步骤：
+数据来源是 `coding-agent-memory-evals` 项目，niceeval **0.4.6** 产出（`schemaVersion: 8`），
+由 harness 0.9.1 读取核对通过——跨这么多个版本仍能完整复现视图，这本身也是结果格式向后
+兼容的一次验证。数据面：10 个 experiment / 84 attempt / 51 passed · 25 failed · 8 errored /
+总成本 $14.77，4 个 experiment 带 stale 警告。
+
+重新导出的步骤（注意 pnpm 11 会把 `--` 原样传进 argv，要绕开 `pnpm run`）：
 
 ```sh
-# 从一个真实评估项目导出并裁剪（见下方裁剪规则）
-pnpm run export:debug-fixture -- <真实项目路径> coding-agent-memory
+pnpm exec tsx scripts/export-debug-fixture.ts <真实项目路径> coding-agent-memory
 
 # 导出后人工核对题库：把 questions.yaml 里所有 TODO- 换成从数据里核对到的真实答案
 ```
+
+⚠️ **不要按下面的「裁剪规则」把历史快照删掉——那条规则与数据的实际需要冲突，已实测。**
+
+导出脚本 `cpSync` 整个 `.niceeval`（42 MB），docstring 却声称只收组成当前 view 的快照
+（1.7 MB）。看上去像 bug，实际反过来：**历史快照是承重的**。
+
+`show` 的 coverage 警告按「history 里见过多少条 eval」计算（原文 `covers 1 of 11 evals
+seen in history`）。实测把每个 experiment 裁到只剩最新快照后，首屏从 `! 4 experiments
+flagged` 塌成只剩 1 条——3 条 coverage 警告随历史一起消失，`stale-experiments` 那题
+4 条 expectedFacts 直接废掉 3 条，而且是静默废掉：`show` 不报错，只是不再警告。
+
+所以体积换的是题面：要么保留 42 MB 全量历史，要么改写 `stale-experiments` 只考那条
+按时间判定的 `claude-dp-v4--mempal`。真要瘦身，得先决定这题还考不考 coverage 语义，
+不能只看体积。
 
 ## 一份合格的 fixture 要有什么
 
