@@ -8,7 +8,7 @@
 
 import { defineEval } from "niceeval";
 import { includes, isFalse, isTrue } from "niceeval/expect";
-import { SANDBOX_CANDIDATE_PATH, assertPagesInCandidate } from "./candidate.ts";
+import { assertPagesInCandidate } from "./candidate.ts";
 import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "./routing.ts";
 import type { StreamEvent } from "niceeval";
 
@@ -79,16 +79,15 @@ export function defineDebugEval(spec: DebugFixtureSpec, q: DebugQuestion) {
     description: `[${q.kind}] ${q.question}`,
     tags: ["debug", q.kind],
     async test(t) {
-      const candidateLabel =
-        typeof t.flags.candidateVersion === "string" ? t.flags.candidateVersion : undefined;
+      const version = t.flags.candidateVersion as string;
 
       // 合格落点必须在这个候选里真实存在，否则路由层只会静默读零（见 assertPagesInCandidate）
-      assertPagesInCandidate(q.expectedPages ?? DEFAULT_PAGES, candidateLabel);
+      assertPagesInCandidate(q.expectedPages ?? DEFAULT_PAGES, version);
 
       // fixture 只读：数据永不重跑，agent 只做探查
       await t.sandbox.uploadDirectory(spec.fixtureDir);
 
-      // 装候选包，覆盖 fixture package.json 里那行 `niceeval: ^0.8.0`。
+      // 装候选版本，覆盖 fixture package.json 里那行 `niceeval: ^0.8.0`。
       //
       // 那行是导出时从源项目原样抄来的，照它装会从 npm 拉一个跟候选无关的版本，
       // 路由层就会去量那个版本的随包文档——对照组的前提当场作废。签入的 fixture
@@ -97,7 +96,7 @@ export function defineDebugEval(spec: DebugFixtureSpec, q: DebugQuestion) {
       //
       // 这步跑在第一次 t.send() 之前，属于 eval 归因，不会进 agent diff，
       // 所以下面路径层那条 diff.isEmpty() 不受影响。
-      const install = await t.sandbox.runCommand("pnpm", ["add", "-D", SANDBOX_CANDIDATE_PATH]);
+      const install = await t.sandbox.runCommand("pnpm", ["add", "-D", `niceeval@${version}`]);
       if (install.exitCode !== 0) {
         throw new Error(
           `候选包装不上，后面每一步失败都会被误判成 agent 不会查：\n${install.stderr || install.stdout}`,

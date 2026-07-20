@@ -1,6 +1,6 @@
 import { defineEval } from "niceeval";
 import { isFalse, isTrue } from "niceeval/expect";
-import { SANDBOX_INIT_DOC_PATH } from "../../lib/candidate.ts";
+import { SANDBOX_INIT_DOC_PATH, assertPagesInCandidate } from "../../lib/candidate.ts";
 import { assertNiceevalInstalled } from "../../lib/mechanism.ts";
 import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../../lib/fixture.ts";
 import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "../../lib/routing.ts";
@@ -30,17 +30,23 @@ const TRANSPORT = "WebSocket /ws（自研 JSON 帧协议：发起研究任务，
 export default defineEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
   async test(t) {
-    const candidateLabel = t.flags.candidateVersion as string | undefined;
+    const version = t.flags.candidateVersion as string;
+
+    // 合格落点必须在这个候选里真实存在，否则路由层只会静默读零
+    assertPagesInCandidate(EXPECTED_PAGES, version);
 
     await cloneFixture(t.sandbox, {
       repoUrl: "https://github.com/assafelovic/gpt-researcher.git",
       ref: "v3.6.0",
     });
 
-    const turn = await t.send(`READ ${SANDBOX_INIT_DOC_PATH} and install niceeval for this repo.`);
+    const turn = await t.send(
+      `READ ${SANDBOX_INIT_DOC_PATH} and install niceeval for this repo.\n\n` +
+        `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
+    );
 
     // ── 第一层：检查 niceeval 是否安装好（gate）。四条接入路径共用同一套判定。 ──
-    await assertNiceevalInstalled(t, { candidateLabel });
+    await assertNiceevalInstalled(t, { version });
 
     // ── 第二层：产出质量层（judge）。experiment 与 eval 是否真的关联到这个被测系统。 ──
     const src = await t.sandbox.readSourceFiles({

@@ -12,12 +12,14 @@ import { agentUnderTest, sandboxWith } from "../shared.ts";
  * 差值里不掺服从度。路由层照常计量：对照组要是自己摸到了 INDEX.md，那本身就是结论
  * （说明这套文档不靠指针也能被发现），不是需要剔掉的污染。
  */
+const CANDIDATE_VERSION = "0.9.1";
+
 export default defineExperiment({
   description: "查结果：AGENTS.md 无 init 托管区块",
   agent: agentUnderTest,
   model: "gpt-5.4",
   flags: { agentRules: false },
-  sandbox: sandboxWith(),
+  sandbox: sandboxWith(CANDIDATE_VERSION),
   evals: ["debug/"],
   runs: 3,
   maxConcurrency: 2,

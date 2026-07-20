@@ -5,13 +5,13 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "pack:candidate": "tsx scripts/pack-candidate.ts",
     "export:debug-fixture": "tsx scripts/export-debug-fixture.ts",
     "typecheck": "tsx scripts/typecheck.ts",
     "install-eval": "niceeval exp install",
     "debug-eval": "niceeval exp debug",
     "show": "niceeval show",
-    "view": "niceeval view"
+    "view": "niceeval view",
+    "pin:candidate": "tsx scripts/pin-candidate.ts"
   },
   "devEngines": {
     "packageManager": {

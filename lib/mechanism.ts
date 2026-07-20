@@ -45,7 +45,7 @@ function countOwnTypeErrors(tscOutput: string): number {
  */
 export async function assertNiceevalInstalled(
   t: TestContext,
-  opts?: { candidateLabel?: string },
+  opts: { version: string },
 ): Promise<void> {
   const sandbox = t.sandbox;
   const layout = await locateInstall(sandbox);
@@ -56,7 +56,7 @@ export async function assertNiceevalInstalled(
     { cwd: at },
   );
   const installedVersion = versionProbe.stdout.trim() || null;
-  const candidate = readCandidateManifest(opts?.candidateLabel);
+  const candidate = readCandidateManifest(opts.version);
 
   const managed = await sandbox.runShell(
     `grep -l "node_modules/niceeval" AGENTS.md CLAUDE.md 2>/dev/null | head -1`,
