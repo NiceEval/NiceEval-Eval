@@ -1,7 +1,11 @@
 /**
- * 烘焙一个带 Python 工具链的 e2b template，派生自 niceeval 官方发布的 codex template
- * （`NICEEVAL_CODEX_E2B_TEMPLATE`），不是另起一个独立基线——codex CLI 版本因此在
- * 「默认」与「python」这两个 environment profile 之间保持一致，不会变成一个新的自变量。
+ * 烘焙一个带 Python 工具链的 e2b template，派生自本仓库自己的 Node 24 template
+ * （见 scripts/build-e2b-node24-template.ts），不是直接从原始 codex template 派生——
+ * 官方 codex template 实测是 Node v20.9.0，「默认」与「python」这两个 environment profile
+ * 得共用同一条 Node 24 基线，否则 Python 组会漂回 v20，被 assertNodeMajor(24) 拦下。
+ *
+ * BASE_TEMPLATE 必须跟 experiments/shared.ts 里默认 `template` 字段填的那个 ref 一致——
+ * 重新烘焙 node24 template 换了新 tag 后，这里也要跟着换，两处手动同步。
  *
  * 装的东西对齐 `lib/fixture-env.ts` 里 `provisionTargetAppEnv()` 原本在运行时装的那一套：
  * DB-GPT / GPT Researcher / Vanna 三条接入路径都是真实 Python 项目要用到的最小工具链。
@@ -22,7 +26,6 @@
  */
 
 import { Template } from "e2b";
-import { NICEEVAL_CODEX_E2B_TEMPLATE } from "niceeval/sandbox/e2b-template";
 import { ENV_FILE, loadRepoEnv } from "../lib/env.ts";
 
 loadRepoEnv();
@@ -30,18 +33,21 @@ if (!process.env.E2B_API_KEY) {
   throw new Error(`${ENV_FILE} 里缺 E2B_API_KEY。去 https://e2b.dev/dashboard?tab=keys 拿一个，加进 .env。`);
 }
 
+// 跟 experiments/shared.ts 默认 template 字段手动保持一致
+const BASE_TEMPLATE = "niceeval-eval-codex-node24:2026-07-20";
+
 const tag = process.argv[2] ?? new Date().toISOString().slice(0, 10);
 const name = `niceeval-eval-python:${tag}`;
 
 const template = Template()
-  .fromTemplate(NICEEVAL_CODEX_E2B_TEMPLATE)
+  .fromTemplate(BASE_TEMPLATE)
   .aptInstall(["python3", "python3-pip", "python3-venv", "build-essential", "curl", "git", "sqlite3"])
   .runCmd('UV_INSTALL_DIR=/usr/local/bin sh -c "curl -LsSf https://astral.sh/uv/install.sh | sh"', {
     user: "root",
   })
   .runCmd('ln -sf "$(command -v python3)" /usr/local/bin/python', { user: "root" });
 
-console.log(`构建 ${name}（基于 ${NICEEVAL_CODEX_E2B_TEMPLATE}）…`);
+console.log(`构建 ${name}（基于 ${BASE_TEMPLATE}）…`);
 const info = await Template.build(template, name, {
   cpuCount: 2,
   memoryMB: 4096,

@@ -15,11 +15,16 @@ loadRepoEnv();
 
 export default defineConfig({
   judge: {
-    // 产出质量层用 judge 打分。裁判模型必须与被测模型分离：
-    // 被测 agent 是 codex（gpt-5.4），裁判固定用 mini 档，不让同一个模型给自己打分。
-    model: "gpt-5.4-mini",
-    // 复用被测 codexAgent() 那把 CODEX_API_KEY/网关，不单独开一份 judge 凭证。
-    baseUrl: "https://s2a.niceeval.com/v1",
+    // 产出质量层用 judge 打分。裁判模型本该与被测模型分离，不让同一个模型给自己打分——
+    // 但 gpt-5.4-mini 在 x1api.top 这把 key 下 404（这个网关这组账号不认这个模型名），
+    // 换成这把 key 下已确认可用的 gpt-5.6-luna。install/ 两组实验（v0.9.1.ts / v0.4.ts）
+    // 被测 agent 也用的是 gpt-5.6-luna，这组 judge 因此不再跟被测模型分离——如果产出质量层
+    // 的分数看着不对劲，先怀疑这个，而不是文档效果本身。
+    model: "gpt-5.6-luna",
+    // 复用被测 codexAgent() 那把 CODEX_API_KEY/网关，不单独开一份 judge 凭证。不写 baseUrl：
+    // niceeval 的 judge 解析链（node_modules/niceeval/src/scoring/judge.ts）省略时按
+    // NICEEVAL_JUDGE_BASE → CODEX_BASE_URL → OPENAI_BASE_URL 顺序找，CODEX_BASE_URL 排第二，
+    // 跟 codexAgent() 自己读的是同一个变量——这里手写字面量只会变成又一处要手动保持同步的地方。
     apiKeyEnv: "CODEX_API_KEY",
   },
 
