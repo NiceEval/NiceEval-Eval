@@ -5,7 +5,7 @@
 
 被测对象是 coding agent CLI（当前是 codex），跑在 Docker 隔离 workspace 里。
 **coding agent 与模型是测量仪器，不是被改进对象**——`debug/` 还留着一组对照组
-（`help-only` vs `with-bundled-docs`）把模型能力从归因里剥离出去；`install/` 只有
+（`with-agent-rules` vs `no-agent-rules`）把模型能力从归因里剥离出去；`install/` 只有
 一组配置，不再靠对照组度量，见下面「install 评估的任务指令」。
 
 两组评估共用这个仓库，sandbox、候选包注入与运行机制共享，fixture 与题面独立：
@@ -59,9 +59,17 @@ pnpm exec niceeval exp install install/vanna              # 只跑一条 eval
 装上包它就必然存在。随包文档起没起作用由**路由层单独计量**（有没有以 `INDEX.md` 为入口、
 有没有读到与宿主形态匹配的页面），不靠对照组。
 
-`debug/` 的对照组（`help-only` vs `with-bundled-docs`）是另一回事，衡量的是「查已有结果」
-这条链路上随包文档相对 `--help` 的增量：它靠任务指令约束 agent 只用 `--help`，属于
-「要求配合」而非「强制隔离」。分析时应该把路由层显示偷看了文档的 attempt 剔出来再算差值。
+`debug/` 的对照组（`with-agent-rules` vs `no-agent-rules`）是另一回事，衡量的是「查已有
+结果」这条链路上**那段指针**的增量。自变量是 `niceeval init` 往 `AGENTS.md` 写的托管
+区块在不在：区块告诉 agent「niceeval 不在你的训练数据里，先读
+`node_modules/niceeval/INDEX.md`」，随包文档由此被接上。
+
+随包文档本身摘不掉（它是包的一部分），能摘的只有通往它的指针，所以自变量取在指针上——
+这是**结构性隔离**，两组题面逐字相同，差值里不掺 agent 的服从度。对照组要是自己摸到了
+`INDEX.md`，那本身就是结论：说明这套文档不靠指针也能被发现，不是需要剔掉的污染。
+
+托管区块的文案是候选自己 `src/cli.ts` 里的常量、各版本不同，所以由候选的 `init` 现写，
+harness 不抄——抄了就永远停在抄的那个版本。
 
 ## 候选包注入
 

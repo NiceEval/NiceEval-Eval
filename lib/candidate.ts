@@ -11,6 +11,7 @@
  * 每个 label 是一次独立的、可钉版本的候选，experiment 用 `candidateVersion` flag 选用哪个。
  */
 
+import { execFileSync } from "node:child_process";
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { SandboxHook } from "niceeval/sandbox";
@@ -64,6 +65,67 @@ export function readCandidateManifest(label?: string): CandidateManifest {
  * @param opts.candidateLabel 省略 = 用默认候选（.candidate/）；传值 = 用
  *   .candidate/versions/<label>/ 下那次单独 pack 的候选，用于版本对比 experiment。
  */
+/**
+ * 候选 tarball 里随包文档的真实清单（路径相对包根，与路由层的观测口径一致）。
+ *
+ * 存在的意义是分辨路由层读出的两种 0——它们在分数上长得一模一样：
+ * 「这个版本压根没有随包文档」（0.4.1 就是，真 0，正是要测的东西）与
+ * 「有文档但题库写的路径过期了」（假 0，静默失准）。
+ */
+const bundledDocsCache = new Map<string, CandidateBundledDocs>();
+
+export interface CandidateBundledDocs {
+  /** 这个候选到底有没有随包文档这套机制 */
+  hasBundledDocs: boolean;
+  /** 随包文档页与索引入口，路径相对包根 */
+  pages: ReadonlySet<string>;
+}
+
+export function candidateBundledDocs(label?: string): CandidateBundledDocs {
+  const key = label ?? "";
+  const cached = bundledDocsCache.get(key);
+  if (cached) return cached;
+
+  const { tarball } = candidatePaths(label);
+  if (!existsSync(tarball)) {
+    throw new Error(`候选包还没准备好：找不到 ${tarball}。先运行 pack:candidate`);
+  }
+  const entries = execFileSync("tar", ["tzf", tarball], { encoding: "utf8" })
+    .split("\n")
+    // tarball 里每条路径都带 `package/` 前缀，剥掉后与 INDEX.md 里的树行一致
+    .map((line) => line.trim().replace(/^package\//, ""))
+    .filter((p) => p === "INDEX.md" || /^docs-site\/zh\/.+\.mdx$/.test(p));
+
+  const pages = new Set(entries);
+  const result = { hasBundledDocs: pages.has("INDEX.md"), pages };
+  bundledDocsCache.set(key, result);
+  return result;
+}
+
+/**
+ * 跑之前校验合格落点在候选里真实存在，不存在就直接失败。
+ *
+ * 路由层是软分、按设计不 gate，所以题库路径过期不会让任何东西变红——只会让分数
+ * 静默归零，看起来像「新版本的文档没起作用」。这条把那种静默变成响的。
+ *
+ * 候选没有随包文档时不报错：那是真 0，路由层如实读零就是正确行为。
+ */
+export function assertPagesInCandidate(pages: readonly string[], label?: string): void {
+  const { hasBundledDocs, pages: available } = candidateBundledDocs(label);
+  if (!hasBundledDocs) return;
+
+  const missing = pages.filter((page) => !available.has(page));
+  if (missing.length > 0) {
+    const { version } = readCandidateManifest(label);
+    throw new Error(
+      `题库的合格落点在候选 niceeval@${version} 里不存在，路由层会静默读零：\n` +
+        missing.map((p) => `  - ${p}`).join("\n") +
+        `\n\n这个候选带了 ${available.size - 1} 页随包文档，说明不是「这个版本没有文档」，` +
+        `而是页面被改名/搬走了。更新题库与 lib/debug-eval.ts 的合格落点，再跑。`,
+    );
+  }
+}
+
 export function injectCandidate(opts: { candidateLabel?: string }): SandboxHook {
   return async (sandbox, ctx) => {
     const { tarball: tarballPath, initDoc: initDocPath } = candidatePaths(opts.candidateLabel);

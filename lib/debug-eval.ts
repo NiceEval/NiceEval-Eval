@@ -8,6 +8,7 @@
 
 import { defineEval } from "niceeval";
 import { includes, isFalse, isTrue } from "niceeval/expect";
+import { SANDBOX_CANDIDATE_PATH, assertPagesInCandidate } from "./candidate.ts";
 import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "./routing.ts";
 import type { StreamEvent } from "niceeval";
 
@@ -78,22 +79,58 @@ export function defineDebugEval(spec: DebugFixtureSpec, q: DebugQuestion) {
     description: `[${q.kind}] ${q.question}`,
     tags: ["debug", q.kind],
     async test(t) {
+      const candidateLabel =
+        typeof t.flags.candidateVersion === "string" ? t.flags.candidateVersion : undefined;
+
+      // 合格落点必须在这个候选里真实存在，否则路由层只会静默读零（见 assertPagesInCandidate）
+      assertPagesInCandidate(q.expectedPages ?? DEFAULT_PAGES, candidateLabel);
+
       // fixture 只读：数据永不重跑，agent 只做探查
       await t.sandbox.uploadDirectory(spec.fixtureDir);
 
-      // 对照组只允许 --help 裸查，用来量随包文档对诊断链路的增量
-      const helpOnly = t.flags.bundledDocs === false;
+      // 装候选包，覆盖 fixture package.json 里那行 `niceeval: ^0.8.0`。
+      //
+      // 那行是导出时从源项目原样抄来的，照它装会从 npm 拉一个跟候选无关的版本，
+      // 路由层就会去量那个版本的随包文档——对照组的前提当场作废。签入的 fixture
+      // 保持「真实项目切片」不动，钉版本的责任在 harness 这边，所以在沙箱里覆盖装，
+      // 而不是改 fixture（改了下次 export-debug-fixture.ts 也会冲掉）。
+      //
+      // 这步跑在第一次 t.send() 之前，属于 eval 归因，不会进 agent diff，
+      // 所以下面路径层那条 diff.isEmpty() 不受影响。
+      const install = await t.sandbox.runCommand("pnpm", ["add", "-D", SANDBOX_CANDIDATE_PATH]);
+      if (install.exitCode !== 0) {
+        throw new Error(
+          `候选包装不上，后面每一步失败都会被误判成 agent 不会查：\n${install.stderr || install.stdout}`,
+        );
+      }
 
+      // ── 唯一的自变量：AGENTS.md 里有没有 init 写的托管区块 ──────────────
+      //
+      // 随包文档物理上没法从沙箱里摘掉（它是包的一部分），但**通往它的指针**可以。
+      // `niceeval init` 会在 AGENTS.md 写一段托管区块，内容是「niceeval 不在你的训练
+      // 数据里，先读 node_modules/niceeval/INDEX.md」——这段就是 agent-docs 机制赖以
+      // 起作用的入口。有它 / 没它，才是能被强制隔离的真实差异。
+      //
+      // 不用任务指令写「本次限制：只能用 --help」那种约束：那是「要求配合」，agent
+      // 听不听全凭自觉，量出来的差值混着服从度。这里改成结构性差异，两组的题面完全相同。
+      //
+      // 区块内容是候选自己 src/cli.ts 里的常量，各版本不同，所以必须由候选的 init
+      // 现写，不能由 harness 抄一份——抄了就永远停在抄的那个版本。
+      const withAgentRules = t.flags.agentRules !== false;
+      if (withAgentRules) {
+        const init = await t.sandbox.runCommand("pnpm", ["exec", "niceeval", "init"]);
+        if (init.exitCode !== 0) {
+          throw new Error(`niceeval init 没跑成，实验组的自变量就没立起来：\n${init.stderr || init.stdout}`);
+        }
+      }
+
+      // 两组题面完全一致，差异只在上面那段区块在不在
       const turn = await t.send(
         `这个项目已经用 niceeval 跑过评估，结果数据都在 .niceeval 里。
 
 请回答：${q.question}
 
-只查信息，不要修改任何文件，也不要重新运行任何实验。查不到就直说查不到。${
-          helpOnly
-            ? "\n\n本次限制：只能用 niceeval 命令自带的 --help 了解用法，不要读 node_modules 里的文档。"
-            : ""
-        }`,
+只查信息，不要修改任何文件，也不要重新运行任何实验。查不到就直说查不到。`,
       );
 
       // ── 答案层 ──────────────────────────────────────────────
