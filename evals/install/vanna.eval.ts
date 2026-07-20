@@ -33,6 +33,7 @@ const TRANSPORT = "HTTP POST /api/vanna/v2/chat_poll（Vanna 自研 JSON 请求/
 
 export default defineEval({
   description: "把 niceeval 接入 Vanna（自然语言转 SQL 的开源 agent 框架）",
+  environment: "python",
   async test(t) {
     const version = t.flags.candidateVersion as string;
 

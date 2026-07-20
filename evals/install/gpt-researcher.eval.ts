@@ -29,6 +29,7 @@ const TRANSPORT = "WebSocket /ws（自研 JSON 帧协议：发起研究任务，
 
 export default defineEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
+  environment: "python",
   async test(t) {
     const version = t.flags.candidateVersion as string;
 

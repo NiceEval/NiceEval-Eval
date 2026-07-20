@@ -12,6 +12,17 @@ import { NICEEVAL_CODEX_E2B_TEMPLATE } from "niceeval/sandbox/e2b-template";
 import type { SandboxHook } from "niceeval/sandbox";
 import { provisionTargetAppEnv } from "../lib/fixture-env.ts";
 
+/**
+ * Python 环境 profile 用的 template：从 NICEEVAL_CODEX_E2B_TEMPLATE 派生，烘焙了
+ * DB-GPT / GPT Researcher / Vanna 三条接入路径要用的 Python 工具链（见
+ * scripts/build-e2b-python-template.ts）。只有声明了 `environment: "python"` 的 eval
+ * 才会落到这个 template；没声明的（包括以后新增的 TS 项目 eval）用默认的
+ * NICEEVAL_CODEX_E2B_TEMPLATE，不会被拖慢也不需要 apt/root。
+ *
+ * 重新烘焙后把这个字符串换成新 tag，不用改调用方。
+ */
+const NICEEVAL_EVAL_PYTHON_E2B_TEMPLATE = "niceeval-eval-python:2026-07-20";
+
 /** 被测 coding agent。模型写在各实验的 model 字段，不写在这里。 */
 export const agentUnderTest = codexAgent();
 
@@ -49,9 +60,15 @@ function assertNodeMajor(major: number): SandboxHook {
  * `candidateInitDocUrl(version)`（见 lib/candidate.ts）。这份 sandbox 基线因此对候选版本
  * 无感——版本只活在 experiment 的 `flags.candidateVersion` 与 eval 的 `t.send()` 里，
  * 不用再在两处（sandbox 装配 + flags）之间手动保持同步。
+ *
+ * `environments.python` 给声明了 `environment: "python"` 的 eval（DB-GPT / GPT Researcher /
+ * Vanna 三条接入路径）换成烘焙好 Python 工具链的 template；其余 eval 落回默认 template。
  */
 export function sandboxWith() {
-  return e2bSandbox({ template: NICEEVAL_CODEX_E2B_TEMPLATE })
+  return e2bSandbox({
+    template: NICEEVAL_CODEX_E2B_TEMPLATE,
+    environments: { python: { template: NICEEVAL_EVAL_PYTHON_E2B_TEMPLATE } },
+  })
     .setup(assertNodeMajor(24))
     .setup(provisionTargetAppEnv());
 }

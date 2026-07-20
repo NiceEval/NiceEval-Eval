@@ -29,6 +29,7 @@ const TRANSPORT = "HTTP POST /api/v2/chat/completions（OpenAI Chat Completions 
 
 export default defineEval({
   description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
+  environment: "python",
   async test(t) {
     const version = t.flags.candidateVersion as string;
 

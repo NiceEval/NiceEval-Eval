@@ -1,12 +1,15 @@
 /**
  * 目标应用（DB-GPT / GPT Researcher / Vanna）运行时环境。
  *
- * 这三条接入路径的被测宿主都是真实 Python 项目，但 sandbox 基线（见 experiments/shared.ts）
- * 跑的是 `node:24-slim`——没有 Python，也没有这些项目自己要连的 LLM 凭证。装 niceeval 三件套
- * 这件事跟「目标应用能不能被 agent 实际启动起来」是两层问题：前者由 assertNiceevalInstalled
- * gate，后者只在「跑出过一次结果」那条软断言里体现（详见 lib/mechanism.ts 的注释）。这个钩子
- * 补的是后者的地基——把「能装 Python 依赖、能连一个真 LLM」这个前提准备好，但不替 agent 决定
- * 要不要启动目标进程，也不做任何 gate。
+ * 这三条接入路径的被测宿主都是真实 Python 项目，Python 工具链（python3 / pip / venv /
+ * build-essential / sqlite3 / uv）已经烘焙进专用 e2b template（见 scripts/build-e2b-python-template.ts
+ * 与 experiments/shared.ts 的 `environments.python`），这三条 eval 各自声明
+ * `environment: "python"` 换到那个 template。这个钩子不再装系统依赖，只做每次 attempt
+ * 都要重新写的动态内容——目标应用自己要连的 LLM 凭证。装 niceeval 三件套这件事跟
+ * 「目标应用能不能被 agent 实际启动起来」是两层问题：前者由 assertNiceevalInstalled gate，
+ * 后者只在「跑出过一次结果」那条软断言里体现（详见 lib/mechanism.ts 的注释）。这个钩子补的
+ * 是后者的地基——把「能连一个真 LLM」这个前提准备好，但不替 agent 决定要不要启动目标进程，
+ * 也不做任何 gate。
  *
  * 值不写进代码：从仓库根 `.env`（已加入 .gitignore）读，缺失就 fail-fast，避免「装完了但连不上
  * LLM」被误判成 agent 没写对 adapter。
@@ -31,7 +34,7 @@
  *   warning，SQL 生成本身不受影响，端到端验证过是好的（含反幻觉分支）。三个目标里资源最重
  *   （`uv sync` 是唯一装出 300MB+ 依赖的），其余两个都轻。
  * - `scripts/examples/load_examples.sh` 需要 `sqlite3` CLI（不是 python 自带的 sqlite3 模块），
- *   已经加进下面的 apt 列表。
+ *   已经烘焙进 python template。
  *
  * FinRobot（原第四条接入路径）已移除：它的财务数据源打的是 FMP 已下线的 legacy 端点，
  * 上游停摆了近一年没修，不是这个钩子能解决的问题——见 README 里的说明。
@@ -51,9 +54,10 @@ const REQUIRED_VARS = [
 export const TARGET_APP_ENV_PATH = "/opt/fixture-secrets/target-app.env";
 
 /**
- * 环境钩子：给 sandbox 装 Python 工具链 + 把目标应用要用的 LLM 凭证写成一份沙箱内可读的
- * env 文件。三条接入路径共用——装什么系统依赖、给哪些变量是「这次实验的环境」这一层的事，
- * 跟具体读哪个宿主仓库无关，所以挂在 sandbox spec 上（见 experiments/shared.ts 的 `.setup()` 链）。
+ * 环境钩子：把目标应用要用的 LLM 凭证写成一份沙箱内可读的 env 文件。三条接入路径共用——
+ * 给哪些变量是「这次实验的环境」这一层的事，跟具体读哪个宿主仓库无关，所以挂在 sandbox
+ * spec 上（见 experiments/shared.ts 的 `.setup()` 链）。Python 工具链不在这里装，见上面
+ * 文件头注释。
  */
 export function provisionTargetAppEnv(): SandboxHook {
   return async (sandbox, ctx) => {
@@ -62,24 +66,6 @@ export function provisionTargetAppEnv(): SandboxHook {
       if (!process.env[hostVar]) {
         throw new Error(`${ENV_FILE} 里缺 ${hostVar}，目标应用没有可用的 LLM 凭证。`);
       }
-    }
-
-    ctx.progress({ message: "装 Python 工具链（apt-get + uv）" });
-    const aptInstall = await sandbox.runShell(
-      `set -e
-export DEBIAN_FRONTEND=noninteractive
-apt-get update -qq
-apt-get install -y -qq python3 python3-pip python3-venv build-essential curl git sqlite3 >/dev/null
-ln -sf /usr/bin/python3 /usr/local/bin/python
-for i in 1 2 3; do
-  UV_INSTALL_DIR=/usr/local/bin sh -c "curl -LsSf https://astral.sh/uv/install.sh | sh" >/dev/null && break
-  [ "$i" = 3 ] && exit 1
-  sleep 2
-done`,
-      { root: true },
-    );
-    if (aptInstall.exitCode !== 0) {
-      throw new Error(`Python 工具链安装失败（exit ${aptInstall.exitCode}）:\n${aptInstall.stderr}`);
     }
 
     ctx.progress({ message: "注入目标应用 LLM 凭证" });
