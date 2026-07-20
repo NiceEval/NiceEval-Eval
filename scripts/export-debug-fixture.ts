@@ -1,7 +1,9 @@
 /**
  * 从一个真实评估项目导出 debug fixture。
  *
- *   pnpm run export:debug-fixture -- ../coding-agent-memory-evals coding-agent-memory
+ *   pnpm exec tsx scripts/export-debug-fixture.ts ../coding-agent-memory-evals coding-agent-memory
+ *
+ * 走 pnpm exec 而不是 pnpm run：pnpm 11 会把 `--` 原样传进 argv。
  *
  * 裁剪规则：只收组成当前 `show` 视图的快照及其 attempt 产物，历史快照不进 fixture。
  * 裁剪后必须仍能让 `niceeval show` 完整复现出题时的视图——脚本最后会验证这一点，
@@ -14,7 +16,7 @@ import { resolve } from "node:path";
 
 const [sourceArg, nameArg] = process.argv.slice(2);
 if (!sourceArg || !nameArg) {
-  console.error("用法: pnpm run export:debug-fixture -- <真实项目路径> <fixture 名>");
+  console.error("用法: pnpm exec tsx scripts/export-debug-fixture.ts <真实项目路径> <fixture 名>");
   process.exit(1);
 }
 

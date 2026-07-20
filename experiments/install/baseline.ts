@@ -10,6 +10,7 @@ export default defineExperiment({
   agent: agentUnderTest,
   model: "gpt-5.4",
   sandbox: sandboxWith(),
+  evals: ["install/"],
   runs: 3,
   maxConcurrency: 2,
 });

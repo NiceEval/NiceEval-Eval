@@ -22,6 +22,7 @@ export default defineExperiment({
   // niceeval 不会替这两处同步，同一个变量写两遍，至少不会在这个文件内部打错成两个值。
   flags: { candidateVersion: CANDIDATE_LABEL },
   sandbox: sandboxWith({ candidateLabel: CANDIDATE_LABEL }),
+  evals: ["install/"],
   runs: 3,
   maxConcurrency: 2,
 });

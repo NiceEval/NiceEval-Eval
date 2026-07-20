@@ -17,7 +17,7 @@ export default defineExperiment({
   model: "gpt-5.4",
   flags: { bundledDocs: false },
   sandbox: sandboxWith(),
-  evals: ["queries"],
+  evals: ["debug/"],
   runs: 3,
   maxConcurrency: 2,
 });

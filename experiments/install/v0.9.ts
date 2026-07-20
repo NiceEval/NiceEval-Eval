@@ -17,6 +17,7 @@ export default defineExperiment({
   model: "gpt-5.4",
   flags: { candidateVersion: CANDIDATE_LABEL },
   sandbox: sandboxWith({ candidateLabel: CANDIDATE_LABEL }),
+  evals: ["install/"],
   runs: 3,
   maxConcurrency: 2,
 });
