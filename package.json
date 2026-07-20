@@ -21,9 +21,8 @@
     }
   },
   "devDependencies": {
-    "@types/dockerode": "^4.0.1",
     "@types/node": "^26.1.1",
-    "dockerode": "^5.0.1",
+    "e2b": "^2.35.0",
     "niceeval": "^0.9.1",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",

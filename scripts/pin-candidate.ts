@@ -4,15 +4,13 @@
  *   pnpm exec tsx scripts/pin-candidate.ts            # 当前 latest
  *   pnpm exec tsx scripts/pin-candidate.ts 0.9.1      # 指定版本
  *
- * 固化下来的只有两样东西：版本号与那个版本发布时的 INIT.md。
+ * 固化下来的只有版本号（manifest.json，含随包文档清单）。不存 tarball——候选一律是
+ * 已发布版本，`pnpm add niceeval@<version>` 就能精确复现，npm 的同一个版本号不可重发，
+ * 版本号本身就是完整的身份，tarball 与 sha256 都不再提供任何额外信息。
  *
- * 不存 tarball。候选一律是已发布版本，`pnpm add niceeval@<version>` 就能精确复现——
- * npm 的同一个版本号不可重发，版本号本身就是完整的身份，tarball 与 sha256 都不再提供
- * 任何额外信息。
- *
- * INIT.md 必须单独固化：它不在包的 files 白名单里，装了包也拿不到。而且要按版本取——
- * niceeval.com/INIT.md 只有「现在」这一份，按版本存档的是 GitHub 仓库的 tag。评
- * 「0.4.1 的文案改版有没有效果」时，读到的就得是 0.4.1 发布时那份，不是今天的。
+ * 安装前引导文档 INIT.md 也不缓存到本地：eval 让 agent 直接读 `candidateInitDocUrl(version)`
+ * 那个 GitHub raw 地址（按 tag 存档，不是 niceeval.com 上「现在」那份）。但这一步仍然会探一次
+ * 那个 URL 有没有 200——链接失效要在钉版本这一步就响，不能等到某次评估中途才被 agent 读空。
  *
  * manifest 里还记下这个版本随包发了哪些文档页，给 assertPagesInCandidate 用来分辨
  * 「这个版本没有随包文档」与「题库路径过期了」——两者在路由层都读作 0（见 lib/candidate.ts）。
@@ -22,9 +20,9 @@ import { execFileSync } from "node:child_process";
 import { mkdirSync, readdirSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
+import { candidateInitDocUrl } from "../lib/candidate.ts";
 
 const CANDIDATE_ROOT = resolve(import.meta.dirname, "../.candidate");
-const NICEEVAL_REPO = "CorrectRoadH/niceeval";
 
 // pnpm 11 不会吃掉 `--`，它原样进 argv。显式滤掉，脚本行为不随 pnpm 版本变化。
 const args = process.argv.slice(2).filter((a) => a !== "--");
@@ -67,17 +65,16 @@ try {
   rmSync(scratch, { force: true });
 }
 
-// 按 tag 取这个版本发布时的 INIT.md，不是网站现在那份
-const initDocUrl = `https://raw.githubusercontent.com/${NICEEVAL_REPO}/v${version}/INIT.md`;
-console.log(`按版本抓取安装前引导文档：${initDocUrl}`);
-const initDoc = await fetch(initDocUrl);
+// 只探活，不落盘：eval 运行时让 agent 直接读这个 URL（见 lib/candidate.ts）
+const initDocUrl = candidateInitDocUrl(version);
+console.log(`核对安装前引导文档可达：${initDocUrl}`);
+const initDoc = await fetch(initDocUrl, { method: "HEAD" });
 if (!initDoc.ok) {
   throw new Error(
-    `拉取 ${initDocUrl} 失败：HTTP ${initDoc.status}。` +
+    `探活 ${initDocUrl} 失败：HTTP ${initDoc.status}。` +
       `niceeval@${version} 对应的 GitHub tag 可能没有 INIT.md（早期版本、或 tag 名与版本号对不上），换一个更新的版本试试。`,
   );
 }
-writeFileSync(resolve(dir, "INIT.md"), await initDoc.text());
 
 writeFileSync(
   resolve(dir, "manifest.json"),

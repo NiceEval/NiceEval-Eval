@@ -1,6 +1,6 @@
 import { defineEval } from "niceeval";
 import { isFalse, isTrue } from "niceeval/expect";
-import { SANDBOX_INIT_DOC_PATH, assertPagesInCandidate } from "../../lib/candidate.ts";
+import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { assertNiceevalInstalled } from "../../lib/mechanism.ts";
 import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../../lib/fixture.ts";
 import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "../../lib/routing.ts";
@@ -45,7 +45,7 @@ export default defineEval({
     });
 
     const turn = await t.send(
-      `READ ${SANDBOX_INIT_DOC_PATH} and install niceeval for this repo.\n\n` +
+      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\n\n` +
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 

@@ -53,7 +53,7 @@ export const TARGET_APP_ENV_PATH = "/opt/fixture-secrets/target-app.env";
 /**
  * 环境钩子：给 sandbox 装 Python 工具链 + 把目标应用要用的 LLM 凭证写成一份沙箱内可读的
  * env 文件。三条接入路径共用——装什么系统依赖、给哪些变量是「这次实验的环境」这一层的事，
- * 跟具体读哪个宿主仓库无关，所以跟 injectCandidate 一样挂在 sandbox spec 上。
+ * 跟具体读哪个宿主仓库无关，所以挂在 sandbox spec 上（见 experiments/shared.ts 的 `.setup()` 链）。
  */
 export function provisionTargetAppEnv(): SandboxHook {
   return async (sandbox, ctx) => {

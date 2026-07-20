@@ -4,22 +4,28 @@
  * 被评的对象是「某个具体版本的 niceeval + 它随包发布的文档」，而不是 npm 上的 latest。
  * 所以每个 experiment 明确钉一个版本号，eval 让 agent 装的就是它。
  *
- * 一个候选在宿主机上只有两个文件（`pnpm exec tsx scripts/pin-candidate.ts <version>` 写入）：
- * `manifest.json` 记版本号与随包文档清单，`INIT.md` 是那个版本发布时的安装前引导文档。
- * 没有 tarball——候选一律是已发布版本，版本号本身就是完整的身份。
+ * 一个候选在宿主机上只有一个文件（`pnpm exec tsx scripts/pin-candidate.ts <version>` 写入）：
+ * `manifest.json`，记版本号与随包文档清单。没有 tarball——候选一律是已发布版本，版本号
+ * 本身就是完整的身份。
  *
- * INIT.md 得单独固化：它不在包的 files 白名单里，装了包也拿不到。
+ * 安装前引导文档 INIT.md 不缓存到本地：它按 tag 存档在 GitHub 上（见 candidateInitDocUrl），
+ * eval 让 agent 直接读那个 URL，不由 harness 转发。`pin-candidate.ts` 仍会在钉版本时探一次
+ * 这个 URL 有没有 200——链接失效要在钉版本这一步就响，不能等到某次评估中途才被 agent 读空。
  */
 
 import { existsSync, readFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { SandboxHook } from "niceeval/sandbox";
 
 /** 候选根目录，每个版本一个子目录，由 pin-candidate.ts 写入 */
 export const CANDIDATE_ROOT = resolve(import.meta.dirname, "../.candidate");
 
-/** sandbox 内安装前引导文档的落点。放在 workdir 之外，避免混进 agent 的 diff。 */
-export const SANDBOX_INIT_DOC_PATH = "/opt/niceeval-candidate/INIT.md";
+/** niceeval 自己的仓库，候选版本按 tag 存档的地方 */
+export const NICEEVAL_REPO = "CorrectRoadH/niceeval";
+
+/** 某个版本发布时的安装前引导文档，按 tag 直接指向 GitHub raw；agent 在 send() 里直接读这个 URL。 */
+export function candidateInitDocUrl(version: string): string {
+  return `https://raw.githubusercontent.com/${NICEEVAL_REPO}/v${version}/INIT.md`;
+}
 
 export interface CandidateManifest {
   /** 被评的 niceeval 版本 */
@@ -30,10 +36,10 @@ export interface CandidateManifest {
   pages: string[];
 }
 
-/** 某个候选版本在宿主机上的两个文件 */
-export function candidatePaths(version: string): { dir: string; manifest: string; initDoc: string } {
+/** 某个候选版本在宿主机上的落点 */
+export function candidatePaths(version: string): { dir: string; manifest: string } {
   const dir = resolve(CANDIDATE_ROOT, version);
-  return { dir, manifest: resolve(dir, "manifest.json"), initDoc: resolve(dir, "INIT.md") };
+  return { dir, manifest: resolve(dir, "manifest.json") };
 }
 
 const manifestCache = new Map<string, CandidateManifest>();
@@ -79,26 +85,4 @@ export function assertPagesInCandidate(pages: readonly string[], version: string
         `而是页面被改名/搬走了。更新题库与各 eval 的合格落点，再跑。`,
     );
   }
-}
-
-/**
- * 环境钩子：把安装前引导文档 INIT.md 放进 sandbox。
- *
- * 挂在 experiment 的 sandbox spec 上而不是写在 eval 里，是因为这属于「这次实验的环境」：
- * setup 钩子写下的文件进 git 基线，不会被算成 agent 改的文件，所以 diff 断言不会被污染。
- */
-export function injectCandidate(version: string): SandboxHook {
-  return async (sandbox, ctx) => {
-    const manifest = readCandidateManifest(version);
-    ctx.progress({ message: `投放 niceeval@${manifest.version} 的引导文档` });
-
-    const { initDoc } = candidatePaths(version);
-    await sandbox.uploadFiles([{ path: SANDBOX_INIT_DOC_PATH, content: readFileSync(initDoc) }]);
-
-    // fail-fast：引导文档不可读的话，后面 agent 的每一步失败都会被误判成「agent 不会装」
-    const check = await sandbox.runCommand("test", ["-s", SANDBOX_INIT_DOC_PATH]);
-    if (check.exitCode !== 0) {
-      throw new Error(`引导文档上传后不可读：${SANDBOX_INIT_DOC_PATH}`);
-    }
-  };
 }

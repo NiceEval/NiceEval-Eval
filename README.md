@@ -51,9 +51,10 @@ pnpm exec niceeval exp install install/vanna              # 只跑一条 eval
 
 ## install 评估的任务指令
 
-`install/` 的每组配置只差被评的版本（`baseline` = 0.9.1，`v0.4` = 0.4.1）：沙箱里始终投放 `INIT.md`，
-每条 eval 的 `send()` 都明确指向它（`READ ${SANDBOX_INIT_DOC_PATH} ...`），agent 按它走
-「读引导 → 探测项目 → 装候选版本 → init → 交接给随包 INDEX.md」这条完整链路。
+`install/` 的每组配置只差被评的版本（`v0.9.1`、`v0.4` = 0.4.1）：每条 eval 的 `send()` 都
+明确指向那个版本按 tag 存档的 `INIT.md`（`READ ${candidateInitDocUrl(version)} ...`，
+GitHub raw 地址，不缓存进沙箱），agent 按它走「读引导 → 探测项目 → 装候选版本 → init →
+交接给随包 INDEX.md」这条完整链路。
 
 随包文档（`node_modules/niceeval/INDEX.md` 与 `docs-site/zh/**`）是包的一部分，agent 一
 装上包它就必然存在。随包文档起没起作用由**路由层单独计量**（有没有以 `INDEX.md` 为入口、
@@ -107,7 +108,7 @@ pnpm run pin:candidate 0.9.1      # 指定版本，固化到 .candidate/0.9.1/
 pnpm run pin:candidate 0.9.1
 pnpm run pin:candidate 0.4.1
 
-pnpm exec niceeval exp install/baseline   # niceeval@0.9.1
+pnpm exec niceeval exp install/v0.9.1     # niceeval@0.9.1
 pnpm exec niceeval exp install/v0.4       # niceeval@0.4.1
 ```
 
