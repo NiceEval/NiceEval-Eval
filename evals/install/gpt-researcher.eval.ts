@@ -2,6 +2,7 @@ import { defineEval } from "niceeval";
 import { isFalse, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { assertNiceevalInstalled } from "../../lib/mechanism.ts";
+import { saveAgentOutput } from "../../lib/agent-archive.ts";
 import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../../lib/fixture.ts";
 import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "../../lib/routing.ts";
 
@@ -42,7 +43,8 @@ export default defineEval({
     });
 
     const turn = await t.send(
-      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\n\n` +
+      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo, then finish the ` +
+        `integration yourself — adapter, eval, and experiment. Nobody is available to confirm decisions with.\n\n` +
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
@@ -110,6 +112,9 @@ t.succeeded() 而没有任何内容断言；experiment 引用的 agent 看不出
         data: { touched, expected: EXPECTED_PAGES },
       });
     }
+
+    // 生命周期收尾：把 agent 写出的三件套 copy 到本地 .agent-output/（gitignore）供人工 review。
+    await saveAgentOutput(t, "gpt-researcher");
 
     turn.succeeded();
   },
