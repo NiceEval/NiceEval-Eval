@@ -21,9 +21,14 @@ import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } fro
  * 保留「手写流式协议映射」这条最长路径的一个。
  */
 
+// 等价落点组，任意一页命中即算路由正确。how-to/ 与 tutorials/ 是同一批页面在
+// 新旧版本里的两代路径（0.10.x 起 how-to/ 并入 tutorials/），同时列上，
+// 同一份题库才能横跨新旧候选对比；候选里不存在的那代由 assertPagesInCandidate 兜底。
 const EXPECTED_PAGES = [
   "docs-site/zh/how-to/write-send.mdx",
   "docs-site/zh/how-to/connect-your-agent.mdx",
+  "docs-site/zh/tutorials/write-send.mdx",
+  "docs-site/zh/tutorials/connect-your-agent.mdx",
   "docs-site/zh/reference/events.mdx",
 ];
 
@@ -82,14 +87,14 @@ export default defineEval({
         threshold: 0.7,
         criteria: `被测系统的真实核心用例：${CORE_USE_CASE}
 判断：eval 的 t.send() 输入是否贴着这个真实用例写（一个具体的研究主题，要求生成研究报告）？
-不合格（N）：输入是 "hello" / "你好" / "test" 这类与研究任务无关的寒暄或占位内容。`,
+不合格（N）：输入是 "hello" / "你好" / "test" 这类与研究任务无关的寒暄或占位内容；或是「GPT Researcher 是什么 / 它有什么优点」这类**让被测系统研究它自己的自指元问题**——那不是用户拿它做研究的用例，且断言极易靠复读题目通过（v0.9.1 实测放过了一次，这条要判 N）。`,
       },
       {
         key: "断言具体",
         threshold: 0.7,
         criteria: `判断：eval 的断言是否检查了这份研究报告应有的具体结果，而不是只判跑通？
 合格（Y）：断言检查报告的实质内容——如带小标题/结构、至少引用一条真实来源链接、包含与主题相关的具体信息——用 matcher 或 judge 对内容做判定。
-不合格（N）：整个 eval 只有 turn.succeeded()，或只断言「回复长度>0」「有回复」这类与内容无关的判定。`,
+不合格（N）：整个 eval 只有 turn.succeeded()，或只断言「回复长度>0」「有回复」这类与内容无关的判定；或断言是**重言式**——断言的关键词在 t.send() 输入里本来就出现过（如输入含 "RAG" 再断言回复含 /RAG/、输入含 "GPT Researcher" 再断言回复含它），被测方复读题目即可通过，判 N。`,
       },
       {
         key: "负例覆盖",

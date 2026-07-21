@@ -5,10 +5,11 @@
  * 按任务读到对的页面」。这条主张必须能被证伪，所以这里不看 agent 说了什么，
  * 只看它的事件流里实际碰过哪些文件路径。
  *
- * 为什么用「对整段事件流跑正则」而不是 t.calledTool("Read", ...)：
+ * 为什么用「对工具调用输入跑正则」而不是 t.calledTool("Read", ...)：
  * coding agent 读文件的方式不统一——codex 大量走 shell（cat / sed / rg），
  * claude-code 走原生 Read 工具。按工具名断言会把「换了种读法」误判成「没读文档」。
- * 把事件序列化后找路径，对读法不敏感，只对「有没有碰到这一页」敏感。
+ * 对调用输入找路径，对读法不敏感，只对「有没有主动碰这一页」敏感；
+ * 为什么只看输入侧不看输出侧，见 calledInputs 的注释。
  */
 
 import type { StreamEvent } from "niceeval";
@@ -19,15 +20,31 @@ export const BUNDLED_INDEX = "node_modules/niceeval/INDEX.md";
 export const BUNDLED_DOCS_DIR = "node_modules/niceeval/docs-site/zh";
 
 /**
- * 把事件流里出现过的随包文档页抽出来。
+ * 只取工具调用的**输入**侧做匹配材料（action.called 的 input），不看输出。
+ *
+ * 之前对整段事件流（含 action.result 与消息文本）跑正则，会把「字符串路过」误判成
+ * 「读了 / 抓了」：`ls`/`find` 的输出里列出的文件路径会把没读过的页面全记成 touched；
+ * 包内 README 正文里的 niceeval.com/docs 链接被 cat 出来，会把「读了随包 README」
+ * 误判成「退回线上文档」（v0.9.1 两次运行的 fellBack 误报都来自这里）。
+ * 输入侧才对应「agent 主动指名要这个路径 / 这个 URL」；代价是经由脚本 glob 间接读到的
+ * 页面会漏计——路由层是软分计量，宁可少计不误计。
+ */
+function calledInputs(events: readonly StreamEvent[]): string {
+  return events
+    .filter((e) => e.type === "action.called")
+    .map((e) => JSON.stringify(e.input))
+    .join("\n");
+}
+
+/**
+ * 把事件流里 agent 主动读过的随包文档页抽出来。
  *
  * 返回的是相对包根的路径（如 `docs-site/zh/how-to/fixtures.mdx`），
  * 与 INDEX.md 里的树行一致，便于直接和「这道题应该读哪几页」比对。
  */
 export function bundledPagesTouched(events: readonly StreamEvent[]): string[] {
-  const haystack = events.map((e) => JSON.stringify(e)).join("\n");
   const pattern = /node_modules\/niceeval\/(INDEX\.md|docs-site\/zh\/[\w./-]+\.mdx)/g;
-  return [...new Set([...haystack.matchAll(pattern)].map((m) => m[1]))].sort();
+  return [...new Set([...calledInputs(events).matchAll(pattern)].map((m) => m[1]))].sort();
 }
 
 /** agent 是否读过随包索引入口 */
@@ -53,9 +70,8 @@ export function routedTo(events: readonly StreamEvent[], expected: string[]): bo
  * 读到的可能是另一个版本的 API。这是路由层最值得单独计量的失败形态。
  */
 export function fellBackToOnlineDocs(events: readonly StreamEvent[]): boolean {
-  const haystack = events.map((e) => JSON.stringify(e)).join("\n");
   return /niceeval\.com\/docs|github\.com\/CorrectRoadH\/niceeval\/(blob|tree|raw)\/main/.test(
-    haystack,
+    calledInputs(events),
   );
 }
 

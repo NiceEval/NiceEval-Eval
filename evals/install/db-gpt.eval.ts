@@ -21,9 +21,14 @@ import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } fro
  * 兼容标准形状不等于零映射，仍然要手写 send。
  */
 
+// 等价落点组，任意一页命中即算路由正确。how-to/ 与 tutorials/ 是同一批页面在
+// 新旧版本里的两代路径（0.10.x 起 how-to/ 并入 tutorials/），同时列上，
+// 同一份题库才能横跨新旧候选对比；候选里不存在的那代由 assertPagesInCandidate 兜底。
 const EXPECTED_PAGES = [
   "docs-site/zh/how-to/connect-your-agent.mdx",
   "docs-site/zh/how-to/write-send.mdx",
+  "docs-site/zh/tutorials/connect-your-agent.mdx",
+  "docs-site/zh/tutorials/write-send.mdx",
   "docs-site/zh/tutorials/quickstart.mdx",
 ];
 
@@ -68,11 +73,13 @@ export default defineEval({
     // 老版本一条 closedQA 把「传输对不对 / 输入贴不贴业务 / 断言够不够具体」揉成一个二值
     // 判定，红了也说不清红在哪。改成按维度拆成多条各自可证伪的 judge：分数因此是分维度的
     // （更高级），且能直接倒查是哪一维塌了。每条都喂全量源码（含 adapter）。
-    // 五个维度都用离线 judge-probe 对「理想好样本 / 占位 / 进程内直调 / 真传输弱断言 /
+    // 前五个维度都用离线 judge-probe 对「理想好样本 / 占位 / 进程内直调 / 真传输弱断言 /
     // 一次真实 attempt 的产出」五类样本验证过，逐维判定与预期一致：理想样本全 1；进程内直调
     // 与占位在 transport 上判 0；真实那次（真发 HTTP+SSE 的 adapter、但 eval 只问「怎么用
     // CSV 分析」这类元问题、无负例）落在 0.60——transport/assertion/coupling=1，usecase/
     // negative=0，正是想要的分维度反馈，而不是一个说不清的二值。
+    // 「能力对准」维度与「元问题 / 重言式断言」两条不合格形态是 v0.9.1 evd2 那次真实产出
+    // 暴露后补的（chat_normal 全绿、includes(/data|database|SQL/i) 判了 1），还没过 probe。
     const DIMENSIONS: QualityDimension[] = [
       {
         key: "传输保真",
@@ -83,18 +90,29 @@ export default defineEval({
 不合格（N）：adapter 进程内直接 import 并调用被测系统的 Python/函数；或在 adapter 里 spawn/启动被测系统进程；或根本没有对 DB-GPT 服务的网络请求。`,
       },
       {
+        // v0.9.1 实测漏洞：adapter 用 chat_mode:"chat_normal" 走纯 LLM 聊天，6 条回应全绿
+        // 但没有一条真的碰过数据源——传输保真（真发了 HTTP）和动态验证（真收到回应）都拦不住
+        // 「接通了产品外壳、绕开了产品能力」这种形态，所以单独立一维。
+        key: "能力对准",
+        threshold: 0.7,
+        criteria: `被测系统 DB-GPT 的核心能力是「连着数据源的对话式数据分析」，不是它顺带暴露的通用 LLM 聊天代理。
+判断：adapter 发起的请求是否真的走 DB-GPT 的数据对话能力？
+合格（Y）：chat_mode 是 chat_with_db_execute / chat_with_db_qa / chat_data / chat_dashboard 等连库模式，或请求参数里带 chat_param / 数据源名等指向具体数据源的配置。
+不合格（N）：chat_mode 是 "chat_normal"（或等价的纯聊天模式）且没有任何数据源指向——那评的是底层 LLM，不是 DB-GPT。`,
+      },
+      {
         key: "用例贴合",
         threshold: 0.7,
         criteria: `被测系统的真实核心用例：${CORE_USE_CASE}
 判断：eval 的 t.send() 输入是否贴着这个真实业务用例写（一个具体的、与业务数据库相关的自然语言分析问题）？
-不合格（N）：输入是 "hello" / "你好" / "test" / "帮我看看数据" 这类与具体业务无关的寒暄或占位内容。`,
+不合格（N）：输入是 "hello" / "你好" / "test" / "帮我看看数据" 这类与具体业务无关的寒暄或占位内容；或是「DB-GPT 能处理什么数据 / 你能做什么」这类**问被测系统它自己的元问题**——那不是用户拿它做数据分析的用例。`,
       },
       {
         key: "断言具体",
         threshold: 0.7,
         criteria: `判断：eval 的断言是否检查了该问题应得到的具体结果，而不是只判跑通？
 合格（Y）：断言检查回答里出现具体业务内容（商品名、取数依据的表名/字段名、具体数值等），用 matcher 或 judge 对内容做判定。
-不合格（N）：整个 eval 只有 turn.succeeded()，或只断言「回答长度>0」「有回答」这类与内容无关的判定。`,
+不合格（N）：整个 eval 只有 turn.succeeded()，或只断言「回答长度>0」「有回答」这类与内容无关的判定；或断言是**重言式**——断言的关键词/正则在 t.send() 的输入里本来就出现过（如问「数据分析」再断言回答含 /data|数据/），被测方复读题目即可通过，这种断言没有区分度，判 N。`,
       },
       {
         key: "负例覆盖",

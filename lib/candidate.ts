@@ -65,10 +65,16 @@ export function hasBundledDocs(version: string): boolean {
 }
 
 /**
- * 跑之前校验合格落点在候选里真实存在，不存在就直接失败。
+ * 跑之前校验合格落点在候选里真实存在，全部落空才失败。
  *
  * 路由层是软分、按设计不 gate，所以题库路径过期不会让任何东西变红——只会让分数
  * 静默归零，看起来像「新版本的文档没起作用」。这条把那种静默变成响的。
+ *
+ * 判「至少一条存在」而不是「全部存在」：expected 本来就是一组等价的合格落点
+ * （routedTo 任意一页命中即算路由正确），而文档页会随版本改名搬家——0.9.x 的
+ * how-to/ 到 0.10.x 变成了 tutorials/。题库同时列新旧两代路径，同一份题库才能
+ * 横跨新旧候选对比；某几条在这个候选里不存在是预期内的（那是另一代的路径），
+ * 一条都不存在才说明题库整体过期了，这时必须响。
  *
  * 候选没有随包文档时不报错：那是真 0，路由层如实读零就是正确行为。
  */
@@ -76,13 +82,12 @@ export function assertPagesInCandidate(pages: readonly string[], version: string
   if (!hasBundledDocs(version)) return;
 
   const available = new Set(readCandidateManifest(version).pages);
-  const missing = pages.filter((page) => !available.has(page));
-  if (missing.length > 0) {
-    throw new Error(
-      `题库的合格落点在候选 niceeval@${version} 里不存在，路由层会静默读零：\n` +
-        missing.map((p) => `  - ${p}`).join("\n") +
-        `\n\n这个候选带了 ${available.size - 1} 页随包文档，说明不是「这个版本没有文档」，` +
-        `而是页面被改名/搬走了。更新题库与各 eval 的合格落点，再跑。`,
-    );
-  }
+  if (pages.some((page) => available.has(page))) return;
+
+  throw new Error(
+    `题库的合格落点没有一条存在于候选 niceeval@${version}，路由层会静默读零：\n` +
+      pages.map((p) => `  - ${p}`).join("\n") +
+      `\n\n这个候选带了 ${available.size - 1} 页随包文档，说明不是「这个版本没有文档」，` +
+      `而是页面全被改名/搬走了。给题库落点补上这个候选那一代的路径，再跑。`,
+  );
 }
