@@ -23,7 +23,7 @@
  */
 
 import type { TestContext } from "niceeval";
-import { isTrue, satisfies } from "niceeval/expect";
+import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import { readCandidateManifest } from "./candidate.ts";
 
 /**
@@ -49,31 +49,6 @@ function countOwnTypeErrors(tscOutput: string): number {
     .split("\n")
     .filter((line) => /^\S+\(\d+,\d+\): error TS\d+:/.test(line))
     .filter((line) => !line.includes("node_modules")).length;
-}
-
-/**
- * 从事件流里抽「agent 实际执行过的 shell 命令」做匹配材料。
- *
- * 与 lib/routing.ts 的 calledInputs 同属输入侧，但更紧：只取命令字段（command/cmd/
- * script，兼容 codex 的 argv 数组形态）或字符串 input，不把 Write 类工具的整段 input
- * 算进来——agent 往文件里写一句含 `niceeval exp` 的说明文字不等于跑过这条命令。
- */
-function executedCommands(events: TestContext["events"]): string {
-  const parts: string[] = [];
-  for (const e of events) {
-    if (e.type !== "action.called") continue;
-    const input = e.input as unknown;
-    if (typeof input === "string") {
-      parts.push(input);
-    } else if (input && typeof input === "object") {
-      for (const key of ["command", "cmd", "script"]) {
-        const v = (input as Record<string, unknown>)[key];
-        if (typeof v === "string") parts.push(v);
-        else if (Array.isArray(v) && v.every((x) => typeof x === "string")) parts.push(v.join(" "));
-      }
-    }
-  }
-  return parts.join("\n");
 }
 
 /** `exp --dry --output ci` 里一格能加载成功的实验配置 */
@@ -162,7 +137,7 @@ export async function runGenericChecks(
       isTrue(`依赖解析到候选包（实际：${installedVersion ?? "未安装"}）`).gate(),
     );
     t.check(managed.stdout.trim().length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块").gate());
-    t.check(list.exitCode, satisfies((c) => c === 0, "niceeval list 退出码为 0").gate());
+    t.check(list, commandSucceeded());
     t.check(
       discoveredEvalCount,
       satisfies((n) => (n as number) >= 1, "niceeval 能发现 agent 写出的 eval").gate(),
@@ -211,17 +186,22 @@ export async function runGenericChecks(
 
   // 过程侧：agent 该敲的命令敲没敲。跟上面「安装链」的区别：安装链是 harness 事后
   // 自己去沙箱里跑命令验证产物，这里是回看 agent 自己的事件流——两者都绿才说明
-  // 「东西是对的」且「是 agent 自己走完流程做对的」。读没读对文档页是同一性质的
-  // 过程断言，但期望页面跟宿主强相关，留在各 eval 的路由层。
-  const cmds = executedCommands(t.events);
+  // 「东西是对的」且「是 agent 自己走完流程做对的」。
+  //
+  // 用官方 calledTool 断言，不自己抽命令串跑正则："shell" 是 canonical 工具名
+  // （codex 的 command_execution、claude-code 的 Bash 都归一到它，换被测 agent 不用改），
+  // input.command 挂正则只对上 shell 调用的命令串——agent 往文件里写一句含
+  // `niceeval exp` 的文字不会被 Write 类调用误计；命中/未命中的调用还会作为证据
+  // 带进报告。读没读对文档页是同一性质的过程断言，但期望页面跟宿主强相关，
+  // 留在各 eval 的路由层。
   await t.group("执行正确性", async () => {
-    t.check(cmds.trim().length > 0, isTrue("agent 在沙箱里真的执行过命令（而不是只写文件）").atLeast(1));
-    t.check(/\bniceeval\s+init\b/.test(cmds), isTrue("跑过 niceeval init（托管指引由 CLI 写入，不是手抄）").atLeast(1));
-    // 不要求写 --output agent：非 TTY 下 auto profile 本来就落到 agent，逼显式 flag 会误伤
-    t.check(
-      /\bniceeval\s+exp\b(?![^\n]*--dry)/.test(cmds),
-      isTrue("跑过 niceeval exp（真跑，不只 --dry）").atLeast(1),
-    );
-    t.check(/\bniceeval\s+show\b/.test(cmds), isTrue("跑过 niceeval show 查看过结果").atLeast(1));
+    // 真的执行过命令，而不是只写文件
+    t.calledTool("shell").atLeast(1);
+    // 托管指引该由 CLI 写入，不是手抄
+    t.calledTool("shell", { input: { command: /\bniceeval\s+init\b/ } }).atLeast(1);
+    // (?![\s\S]*--dry)：同一条命令里带 --dry 的不算真跑。不强制 --output agent——
+    // 非 TTY 下 auto profile 本来就落到 agent，逼显式 flag 会误伤
+    t.calledTool("shell", { input: { command: /\bniceeval\s+exp\b(?![\s\S]*--dry)/ } }).atLeast(1);
+    t.calledTool("shell", { input: { command: /\bniceeval\s+show\b/ } }).atLeast(1);
   });
 }

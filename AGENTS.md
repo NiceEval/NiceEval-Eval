@@ -49,9 +49,10 @@ pnpm exec niceeval exp install/v0.9.1 install/db-gpt --keep-sandbox
    （`experiment=` / `runs=` 字段）加一次 find，不 parse agent 写的 TS。
 3. **通用·执行正确性**（软分）— 同函数第三个 group，过程侧：回看 agent 自己的事件流，该敲的命令
    敲没敲——执行过命令、跑过 `niceeval init`（托管区块由 CLI 写入而非手抄）、真跑过 `niceeval exp`
-   （不只 `--dry`）、`niceeval show` 看过结果。匹配材料只取命令字段（`executedCommands`，比路由层的
-   `calledInputs` 更紧）：往文件里写一句含 `niceeval exp` 的文字不算跑过。与能动性互补——命令敲了
-   但能动性红 = 跑了没成；命令没敲 = 压根没试。
+   （不只 `--dry`）、`niceeval show` 看过结果。全部用官方 `t.calledTool("shell", { input: { command: /…/ } })`
+   断言："shell" 是 canonical 工具名（codex/claude-code 归一），正则只对上 shell 命令串——往文件里写一句
+   含 `niceeval exp` 的文字不算跑过，命中调用作为证据进报告。与能动性互补——命令敲了但能动性红 =
+   跑了没成；命令没敲 = 压根没试。
 4. **通用·能动性层**（软分）— `assertAdapterRanLive`：读 agent 内层真跑（niceeval exp）落盘的 events，
    独立数「从被测系统回来的实质 assistant 回应 vs 连接失败」，外加 `niceeval show` 能读出结果。比
    静态 judge 和 agent 自评（`t.succeeded()`）更能证明 adapter 没写错。send 文案里已要求 agent 真跑一次。
