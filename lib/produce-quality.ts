@@ -24,6 +24,8 @@
  *   await project.results()
  *   // niceeval/results 的 openResults 对沙箱安装打开：同形状的「实验 → 快照 →
  *   // eval → attempt」类型化层次，events() 等重 artifact 懒加载、缺失返回 null。
+ *   // 另补 results.attempts：全部 attempt 顶层平铺（快照层已有 snap.attempts 的
+ *   // 「不关心题目边界」形态，提到根上），消费方不用自己写两层循环摊平。
  */
 
 import type { TestContext } from "niceeval";
@@ -76,19 +78,11 @@ export async function assertAdapterRanLive(t: TestContext, systemName: string): 
   const project = await openProject(t.sandbox);
   const results = project ? await project.results() : null;
 
-  const attempts = [];
-  for (const exp of results?.experiments ?? []) {
-    for (const snap of exp.snapshots) attempts.push(...snap.attempts);
-  }
-
-  let adjudicated = 0;
-  const errors: string[] = [];
-  for (const attempt of attempts) {
-    const err = attempt.result.error;
-    if (err) errors.push(String(err.code ?? err.message ?? "unknown"));
-    else adjudicated++;
-  }
-  const dyn = { ranResults: attempts.length, adjudicated, errored: errors.length };
+  const attempts = results?.attempts ?? [];
+  const errorCodes = attempts
+    .filter((a) => a.result.error)
+    .map((a) => String(a.result.error.code ?? a.result.error.message));
+  const adjudicated = attempts.length - errorCodes.length;
 
   // agent 自己装的那个 CLI 能不能把跑出来的结果显示出来（niceeval show 看得到内容）。
   const show = await t.sandbox.runShell(`npx --no-install niceeval show --output ci 2>&1`, {
@@ -99,30 +93,30 @@ export async function assertAdapterRanLive(t: TestContext, systemName: string): 
 
   await t.group("能动性层", async () => {
     t.check(
-      dyn.ranResults,
+      attempts.length,
       satisfies((n) => (n as number) >= 1, "agent 真的把 eval 跑起来过（内层有 attempt 落盘）").atLeast(1),
     );
     t.check(
-      dyn.adjudicated,
+      adjudicated,
       satisfies(
         (n) => (n as number) >= 1,
         `adapter 真的联上过 ${systemName}：至少一个 attempt 完成判定` +
-          `（完成 ${dyn.adjudicated}，errored ${dyn.errored}）`,
+          `（完成 ${adjudicated}，errored ${errorCodes.length}）`,
       ).atLeast(1),
     );
     t.check(showSawContent, isTrue("niceeval show 能显示出跑过的结果内容").atLeast(1));
   });
 
   // 一个完成判定的 attempt 都没有时留一条永久记录，供按结构化错误码倒查。
-  if (dyn.adjudicated < 1) {
+  if (adjudicated < 1) {
     t.diagnostic({
       code: "adapter-no-live-response",
       level: "warning",
       message:
-        `内层 run 没有一个完成判定的 attempt（共 ${dyn.ranResults} 份落盘，` +
-        `errored：${errors.join(", ") || "无"}）。错误码是连接类多半是没起服务；` +
+        `内层 run 没有一个完成判定的 attempt（共 ${attempts.length} 份落盘，` +
+        `errored：${errorCodes.join(", ") || "无"}）。错误码是连接类多半是没起服务；` +
         `一份落盘都没有则是压根没跑。`,
-      data: { ...dyn, errors },
+      data: { attempts: attempts.length, errorCodes },
     });
   }
 }
