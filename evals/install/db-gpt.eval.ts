@@ -67,7 +67,7 @@ export default defineEval({
 
     // ── 通用检查·能动性层（软分，不 gate）。adapter 真能把一条 DB-GPT 回应拉回来吗。 ──
     // 读 agent 内层真跑落盘的 events，独立判有没有实质回应；实现见 lib/produce-quality.ts。
-    await assertAdapterRanLive(t, "DB-GPT");
+    await assertAdapterRanLive(t);
 
     // ── 宿主专属·产出质量层（judge 软分）。按维度分别判 agent 写出的三件套质量。 ──
     // 判据材料（三件套源码、必须含 adapter）由 runQualityDimensions 内部经 openProject

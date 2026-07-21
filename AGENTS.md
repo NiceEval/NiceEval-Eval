@@ -36,37 +36,35 @@ pnpm exec niceeval exp install/v0.9.1 install/db-gpt --keep-sandbox
 ### install eval 的检查结构：通用四块 + 宿主两层
 
 每条 `evals/install/*.eval.ts` 先跑通用检查（与宿主无关、共用），再跑宿主专属层。只有
-安装链 gate（其余软分、只计量、不拖垮 verdict）：
+安装链 gate（其余软分、只计量、不拖垮 verdict）。写法约定：判定一律用官方断言词汇
+（calledTool / matchers / judge），不发明领域 API；取证一律「一条命令或一个文件」——
+探针只取证，判定是紧跟着的一条 `t.check` 配 matcher，没有解析层、没有扫落盘的循环：
 
 1. **通用·安装链**（gate）— `lib/mechanism.ts` 的 `runGenericChecks` 第一个 group，全部客观事实：
-   config 在不在、依赖是否解析到钉住的候选版本、托管区块、`list` / `exp --dry` 退出码与规划数。
-   ⚠️ 其 typecheck gate 不可靠：agent 把 niceeval 装进宿主 TS 工程（如 DB-GPT 的 `web/`）时会误编
-   宿主前端、或没 tsconfig 时被整段跳过——别拿它当 "agent 代码干净" 的证据；要判 agent 代码，
-   把它单独抽出来 typecheck。
+   config 在不在、依赖是否解析到钉住的候选版本、托管区块、自装 CLI 的 `list` / `exp --dry` 通不通
+   （一行 plan-row = 一格能加载成功的配置，配置加载报错时 dry-run 非零退出，数 .ts 文件骗不了它）。
+   ⚠️ typecheck 检查只数 agent 自己代码的错误行（滤 node_modules）、无 tsconfig 时跳过——别拿它当
+   "agent 代码干净" 的强证据；老坑：agent 装进宿主 TS 工程（如 DB-GPT 的 `web/`）时会把宿主前端
+   一起编进来。
 2. **通用·品味**（软分）— 同函数第二个 group：至少两格实验（baseline + 至少一个对比）、按
    compare-models 组织、每格 runs=1（接入期多 runs 只是烧时间）、没抽 `experiments/shared.ts`
-   共享抽象（一两个实验不配抽象层）。判定全部来自 `exp --dry --output ci` 的 plan-row
-   （`experiment=` / `runs=` 字段）加一次 find，不 parse agent 写的 TS。
+   共享抽象（一两个实验不配抽象层）。判定全部是对 `exp --dry --output ci` 输出的一行 matcher
+   （plan-row 行数 / `experiment=` / `runs=` 字段）加一次 find，没有解析层。
 3. **通用·执行正确性**（软分）— 同函数第三个 group，过程侧：回看 agent 自己的事件流，该敲的命令
    敲没敲——执行过命令、跑过 `niceeval init`（托管区块由 CLI 写入而非手抄）、真跑过 `niceeval exp`
    （不只 `--dry`）、`niceeval show` 看过结果。全部用官方 `t.calledTool("shell", { input: { command: /…/ } })`
    断言："shell" 是 canonical 工具名（codex/claude-code 归一），正则只对上 shell 命令串——往文件里写一句
    含 `niceeval exp` 的文字不算跑过，命中调用作为证据进报告。与能动性互补——命令敲了但能动性红 =
    跑了没成；命令没敲 = 压根没试。
-4. **通用·能动性层**（软分）— `assertAdapterRanLive`：读 agent 内层真跑（niceeval exp）的 attempt
-   判定状态——能完成判定（passed / failed 都算）= 真联上了：连不上 runner 会把 attempt 记成 errored、
-   `result.error` 带结构化错误码，不用自己扫 events 数回应。回应内容好不好归产出质量层，不在这层
-   重复判。外加 `niceeval show` 能读出结果。send 文案里已要求 agent 真跑一次。
-   内层落盘与判据材料经幻想 API `niceeval/project` 的 `openProject(sandbox)` 读取——该模块**尚不存在**，
-   `lib/produce-quality.ts` / `lib/mechanism.ts` 按「niceeval 应有的 API」写成，typecheck 的红是有意的：
-   红点清单 = niceeval 的待办（安装发现、`project.sources.asJudgeMaterial()`、`project.results()` 即
-   openResults 沙箱版；完整规格在 produce-quality.ts 头注）。落地前 install eval 跑不了；不要在
-   eval 侧写回 find/readFile 补丁来「修红」。
+4. **通用·能动性层**（软分）— `assertAdapterRanLive`：读**一份**内层 attempt 的 result.json——
+   `verdict` 是 passed / failed（完成判定）＝真联上了：连不上 runner 会记 errored，不用自己扫 events
+   数回应；回应内容好不好归产出质量层，不在这层重复判。外加自装 CLI 的 `niceeval show` 能读出
+   结果。send 文案里已要求 agent 真跑一次。
 5. **宿主·产出质量层**（judge 软分）— 可证伪的分维度 closedQA（传输保真 / 用例贴合 / 断言具体 /
    负例覆盖 / 实验-eval 耦合，db-gpt 另有能力对准），每维套命名 group，report 里显示为
    「产出质量层 · 传输保真 · …」。共用件在 `lib/produce-quality.ts`。两条铁律：**判据必须喂 adapter 源码**
-   （材料来自 `openProject().sources.asJudgeMaterial()`，契约＝含 adapter、按 niceeval 自己的项目发现
-   分类而非 ignoreDirs 剪宿主目录，否则 agent 装进 `web/` 的产出会被一起剪没）；**传输维度按机制判、不钉死具体路径或协议**
+   （材料＝官方 `readSourceFiles` 后按路径正向挑三件套 `experiments/` / `*.eval.ts` / `agents|adapters/`，
+   不靠 ignoreDirs 剪宿主目录，否则 agent 装进 `web/` 的产出会被一起剪没）；**传输维度按机制判、不钉死具体路径或协议**
    （同一被测系统的多个真实端点都算合格，只判掉进程内直调 / spawn 被测进程 / 无网络）。
    v0.9.1 实测补过的判据盲点（改判据时别退回去）：**重言式断言**（断言的词在 t.send 输入里本来就有，
    复读即可通过）判 N；**元问题输入**（问被测系统「你是什么/你能做什么」）判 N；**能力对准**
