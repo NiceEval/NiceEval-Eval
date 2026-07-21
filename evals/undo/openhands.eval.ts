@@ -1,7 +1,7 @@
 import { defineEval } from "niceeval";
 import { isFalse, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { assertNiceevalInstalled } from "../../lib/mechanism.ts";
+import { runGenericChecks } from "../../lib/mechanism.ts";
 import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../../lib/fixture.ts";
 import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "../../lib/routing.ts";
 
@@ -57,8 +57,8 @@ export default defineEval({
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 第一层：检查 niceeval 是否安装好（gate）。四条接入路径共用同一套判定。 ──
-    await assertNiceevalInstalled(t, { version });
+    // ── 通用检查：安装链（gate）+ 通用品味（软分）。四条接入路径共用同一套判定。 ──
+    await runGenericChecks(t, { version });
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
     // 读全量 agent 源码喂给 judge（含 adapter）——「传输方式对不对」只在 adapter 里看得见。

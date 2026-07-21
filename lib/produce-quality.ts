@@ -1,9 +1,10 @@
 /**
- * install eval 第二/三层的共用件：产出质量层（分维度 judge）与动态验证层（真跑一次）。
+ * install eval 的共用件：能动性层（真跑过一次吗）与产出质量层（分维度 judge）。
  *
  * 抽出来是因为 db-gpt / gpt-researcher 两条接入路径判的「怎么算写得好」结构一致，只有
  * 各维度的判据文案（贴着各自被测系统写）不同。共用件保证两边不漂移；各 eval 只需给出
- * 自己的 DIMENSIONS 数组与被测系统名。
+ * 自己的 DIMENSIONS 数组与被测系统名。能动性层概念上属于通用检查（见 lib/mechanism.ts
+ * 头注），因为要读内层真跑的落盘产物、文案需要被测系统名，所以住在这个文件里。
  */
 
 import type { TestContext } from "niceeval";
@@ -69,7 +70,8 @@ export async function runQualityDimensions(
 }
 
 /**
- * 动态验证层（软分，不 gate）：adapter 到底能不能真把一条被测系统的回应拉回来。
+ * 能动性层（软分，不 gate）：agent 有没有真把自己写的东西跑起来——内层有 result 落盘、
+ * adapter 真收到过一条被测系统的回应、niceeval show 能读出结果。
  *
  * 静态 judge 只读代码、会被「看着像对」骗过；agent 自己写的断言又是自评（一句
  * t.succeeded() 就能糊弄）。这里改读 agent 内层那次真跑（niceeval exp）落盘的产物——
@@ -119,7 +121,7 @@ export async function assertAdapterRanLive(t: TestContext, systemName: string): 
   const showSawContent =
     show.exitCode === 0 && /\b(passed|failed|errored)\b|@[a-z0-9]{6,}/i.test(show.stdout);
 
-  await t.group("动态验证层", async () => {
+  await t.group("能动性层", async () => {
     t.check(
       dyn.ranResults,
       satisfies((n) => (n as number) >= 1, "agent 真的把 eval 跑起来过（内层有 result 落盘）").atLeast(1),

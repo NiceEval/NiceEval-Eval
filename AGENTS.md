@@ -33,14 +33,29 @@ pnpm exec niceeval exp install/v0.9.1 install/db-gpt --keep-sandbox
 - **pnpm 坑**：`package.json` 的 `devEngines.packageManager.version` 必须是精确 semver（不能带 `^`），
   否则 PATH 上 corepack 的 pnpm shim 每条命令都报 "Invalid package manager specification"。
 
-### install eval 的四层结构
+### install eval 的检查结构：通用四块 + 宿主两层
 
-每条 `evals/install/*.eval.ts` 分四层，只有第一层 gate（其余软分、只计量、不拖垮 verdict）：
+每条 `evals/install/*.eval.ts` 先跑通用检查（与宿主无关、共用），再跑宿主专属层。只有
+安装链 gate（其余软分、只计量、不拖垮 verdict）：
 
-1. **检查装好没**（gate）— `lib/mechanism.ts` 共用。⚠️ 其 typecheck gate 不可靠：agent 把 niceeval 装进
-   宿主 TS 工程（如 DB-GPT 的 `web/`）时会误编宿主前端、或没 tsconfig 时被整段跳过——别拿它当
-   "agent 代码干净" 的证据；要判 agent 代码，把它单独抽出来 typecheck。
-2. **产出质量层**（judge 软分）— 可证伪的分维度 closedQA（传输保真 / 用例贴合 / 断言具体 /
+1. **通用·安装链**（gate）— `lib/mechanism.ts` 的 `runGenericChecks` 第一个 group，全部客观事实：
+   config 在不在、依赖是否解析到钉住的候选版本、托管区块、`list` / `exp --dry` 退出码与规划数。
+   ⚠️ 其 typecheck gate 不可靠：agent 把 niceeval 装进宿主 TS 工程（如 DB-GPT 的 `web/`）时会误编
+   宿主前端、或没 tsconfig 时被整段跳过——别拿它当 "agent 代码干净" 的证据；要判 agent 代码，
+   把它单独抽出来 typecheck。
+2. **通用·品味**（软分）— 同函数第二个 group：至少两格实验（baseline + 至少一个对比）、按
+   compare-models 组织、每格 runs=1（接入期多 runs 只是烧时间）、没抽 `experiments/shared.ts`
+   共享抽象（一两个实验不配抽象层）。判定全部来自 `exp --dry --output ci` 的 plan-row
+   （`experiment=` / `runs=` 字段）加一次 find，不 parse agent 写的 TS。
+3. **通用·执行正确性**（软分）— 同函数第三个 group，过程侧：回看 agent 自己的事件流，该敲的命令
+   敲没敲——执行过命令、跑过 `niceeval init`（托管区块由 CLI 写入而非手抄）、真跑过 `niceeval exp`
+   （不只 `--dry`）、`niceeval show` 看过结果。匹配材料只取命令字段（`executedCommands`，比路由层的
+   `calledInputs` 更紧）：往文件里写一句含 `niceeval exp` 的文字不算跑过。与能动性互补——命令敲了
+   但能动性红 = 跑了没成；命令没敲 = 压根没试。
+4. **通用·能动性层**（软分）— `assertAdapterRanLive`：读 agent 内层真跑（niceeval exp）落盘的 events，
+   独立数「从被测系统回来的实质 assistant 回应 vs 连接失败」，外加 `niceeval show` 能读出结果。比
+   静态 judge 和 agent 自评（`t.succeeded()`）更能证明 adapter 没写错。send 文案里已要求 agent 真跑一次。
+5. **宿主·产出质量层**（judge 软分）— 可证伪的分维度 closedQA（传输保真 / 用例贴合 / 断言具体 /
    负例覆盖 / 实验-eval 耦合，db-gpt 另有能力对准），每维套命名 group，report 里显示为
    「产出质量层 · 传输保真 · …」。共用件在 `lib/produce-quality.ts`。两条铁律：**判据必须喂 adapter 源码**
    （`readAgentSourceMaterial` 正向挑 `experiments/` / `*.eval.ts` / `agents|adapters/`，不靠 ignoreDirs
@@ -48,11 +63,8 @@ pnpm exec niceeval exp install/v0.9.1 install/db-gpt --keep-sandbox
    （同一被测系统的多个真实端点都算合格，只判掉进程内直调 / spawn 被测进程 / 无网络）。
    v0.9.1 实测补过的判据盲点（改判据时别退回去）：**重言式断言**（断言的词在 t.send 输入里本来就有，
    复读即可通过）判 N；**元问题输入**（问被测系统「你是什么/你能做什么」）判 N；**能力对准**
-   （db-gpt 用 chat_normal 纯聊天绕开连库能力，传输/动态层全拦不住）单独立维。
-3. **动态验证层**（软分）— `assertAdapterRanLive`：读 agent 内层真跑（niceeval exp）落盘的 events，
-   独立数「从被测系统回来的实质 assistant 回应 vs 连接失败」。比静态 judge 和 agent 自评
-   （`t.succeeded()`）更能证明 adapter 没写错。send 文案里已要求 agent 真跑一次。
-4. **路由层**（软分）— 文档到底读没读对页。计量只看工具调用的**输入**侧（`lib/routing.ts` 的
+   （db-gpt 用 chat_normal 纯聊天绕开连库能力，传输/能动性层全拦不住）单独立维。
+6. **宿主·路由层**（软分）— 文档到底读没读对页。计量只看工具调用的**输入**侧（`lib/routing.ts` 的
    `calledInputs`）：对整段事件流跑正则会把 `ls`/`find` 输出里的路径记成 touched、把包内 README
    被 cat 出来的 niceeval.com 链接记成「退回线上」。v0.9.1 实测：输入侧过滤后 db-gpt touched 从
    47 页降到 11 页；两次 fellBack 仍为真——agent 是真去 curl 了 niceeval.com 的**英文**页

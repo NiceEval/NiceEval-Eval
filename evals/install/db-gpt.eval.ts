@@ -1,7 +1,7 @@
 import { defineEval } from "niceeval";
 import { isFalse, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { assertNiceevalInstalled } from "../../lib/mechanism.ts";
+import { runGenericChecks } from "../../lib/mechanism.ts";
 import { saveAgentOutput } from "../../lib/agent-archive.ts";
 import { cloneFixture } from "../../lib/fixture.ts";
 import {
@@ -63,10 +63,14 @@ export default defineEval({
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 第一层：检查 niceeval 是否安装好（gate）。四条接入路径共用同一套判定。 ──
-    await assertNiceevalInstalled(t, { version });
+    // ── 通用检查：安装链（gate）+ 通用品味（软分）。四条接入路径共用同一套判定。 ──
+    await runGenericChecks(t, { version });
 
-    // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
+    // ── 通用检查·能动性层（软分，不 gate）。adapter 真能把一条 DB-GPT 回应拉回来吗。 ──
+    // 读 agent 内层真跑落盘的 events，独立判有没有实质回应；实现见 lib/produce-quality.ts。
+    await assertAdapterRanLive(t, "DB-GPT");
+
+    // ── 宿主专属·产出质量层（judge 软分）。按维度分别判 agent 写出的三件套质量。 ──
     // 材料构造（含 adapter、正向挑、不剪宿主前端目录）见 lib/produce-quality.ts。
     const material = await readAgentSourceMaterial(t);
 
@@ -130,11 +134,7 @@ export default defineEval({
 
     await runQualityDimensions(t, material, DIMENSIONS);
 
-    // ── 第三层：动态验证层（软分，不 gate）。adapter 真能把一条 DB-GPT 回应拉回来吗。 ──
-    // 读 agent 内层真跑落盘的 events，独立判有没有实质回应；实现见 lib/produce-quality.ts。
-    await assertAdapterRanLive(t, "DB-GPT");
-
-    // ── 第四层：路由层（计量，不 gate）。文档到底起没起作用。 ──────────
+    // ── 宿主专属·路由层（计量，不 gate）。文档到底起没起作用。 ──────────
     const touched = bundledPagesTouched(t.events);
 
     await t.group("路由层", async () => {
