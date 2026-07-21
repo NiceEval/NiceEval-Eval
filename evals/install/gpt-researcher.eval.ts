@@ -3,7 +3,13 @@ import { isFalse, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { assertNiceevalInstalled } from "../../lib/mechanism.ts";
 import { saveAgentOutput } from "../../lib/agent-archive.ts";
-import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../../lib/fixture.ts";
+import { cloneFixture } from "../../lib/fixture.ts";
+import {
+  assertAdapterRanLive,
+  type QualityDimension,
+  readAgentSourceMaterial,
+  runQualityDimensions,
+} from "../../lib/produce-quality.ts";
 import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "../../lib/routing.ts";
 
 /**
@@ -45,48 +51,67 @@ export default defineEval({
     const turn = await t.send(
       `READ ${candidateInitDocUrl(version)} and install niceeval for this repo, then finish the ` +
         `integration yourself — adapter, eval, and experiment. Nobody is available to confirm decisions with.\n\n` +
+        `Then actually run your eval once, end to end — bring up whatever the integration needs so a real ` +
+        `request reaches the system under test and a real response comes back — and confirm the result is ` +
+        `viewable with \`niceeval show\`. A wired-up adapter that has never actually run once is not done.\n\n` +
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
     // ── 第一层：检查 niceeval 是否安装好（gate）。四条接入路径共用同一套判定。 ──
     await assertNiceevalInstalled(t, { version });
 
-    // ── 第二层：产出质量层（judge）。experiment 与 eval 是否真的关联到这个被测系统。 ──
-    const src = await t.sandbox.readSourceFiles({
-      extensions: ["ts"],
-      // GPT Researcher 自带一个 frontend 目录；排除掉避免和 agent 写的 adapter 混在一起
-      ignoreDirs: [...DEFAULT_SOURCE_IGNORE_DIRS, "frontend"],
-    });
-    const experimentSource = src
-      .filter((f) => /^experiments\//.test(f.path))
-      .map((f) => f.content)
-      .join("\n\n");
-    const evalSource = src
-      .filter((f) => /\.eval\.ts$/.test(f.path))
-      .map((f) => f.content)
-      .join("\n\n");
+    // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
+    // 材料构造（含 adapter、正向挑、不剪宿主 frontend/ 目录）见 lib/produce-quality.ts。
+    const material = await readAgentSourceMaterial(t);
 
-    await t.group("产出质量层", async () => {
-      // GPT Researcher 走的是自研 WebSocket 帧协议，不是普通 HTTP 请求/响应——
-      // 判有没有把私有事件帧（logs/report）映射成标准事件流，比单纯判「有没有
-      // fetch」更贴合这条路径实际要考的东西，所以交给 judge 读代码语义。
-      t.judge.autoevals
-        .closedQA(
-          `experiment 与 eval 是否真的关联到下面这个被测系统，而不是各写各的、互不搭界？
-被测系统：${CORE_USE_CASE}
-传输方式：${TRANSPORT}
-合格标准：experiment 里配的 agent 确实用 WebSocket 连接 /ws、发送启动研究任务的帧，并把
-服务端陆续推来的私有事件帧（如 logs / report）映射成 niceeval 的标准事件流（不是进程内直调
-被测系统的函数，不是在 adapter 里启动被测进程，也不是用轮询 HTTP 假装处理了这条 WebSocket
-协议）；eval 的输入贴着被测系统的真实核心用例写，断言检查的是该请求应该得到的具体结果。
-不合格：eval 输入是 "hello" / "你好" / "test" 这类与业务无关的占位内容，或断言只有
-t.succeeded() 而没有任何内容断言；experiment 引用的 agent 看不出与这个被测系统的真实连接。`,
-          { on: `experiment 代码：\n${experimentSource}\n\neval 代码：\n${evalSource}` },
-        )
-        .atLeast(0.7);
-    });
+    // 跟 db-gpt 一样，把一条二值 closedQA 拆成多条各自可证伪的分维度 judge。GPT Researcher
+    // 这条路径特殊在传输是「自研 WebSocket 帧协议」，但 agent 也可能选等价的 REST 端点
+    // （实测见过 POST /report/）——所以传输维度按「有没有真走 GPT Researcher 服务的网络接口
+    // 并映射成事件流」判，不钉死 WebSocket 还是 HTTP。
+    const DIMENSIONS: QualityDimension[] = [
+      {
+        key: "传输保真",
+        threshold: 0.7,
+        criteria: `被测系统 GPT Researcher 是一个独立运行的服务，agent 必须通过网络与它通信。它的代表性接入方式是：${TRANSPORT}；但 agent 也可能选用等价的 HTTP 端点（如 REST POST /report/）——判据是「有没有真的走 GPT Researcher 服务的网络接口，并把响应/帧映射成 niceeval 的事件流」，不是「用 WebSocket 还是 HTTP、哪个具体路径」。
+判断：adapter（agent 手写的 send 实现）是否确实通过网络与 GPT Researcher 服务通信并产出文本/事件？
+合格（Y）：能看到向 GPT Researcher 服务建 WebSocket /ws 发帧并解析陆续推来的私有事件帧（logs/report…），或向其某个 HTTP 端点（如 /report/）发请求并解析响应；把结果映射成 niceeval 的 message/事件。
+不合格（N）：adapter 进程内直接 import 并调用被测系统的 Python/函数；或在 adapter 里 spawn/启动被测系统进程；或根本没有对 GPT Researcher 服务的网络通信。`,
+      },
+      {
+        key: "用例贴合",
+        threshold: 0.7,
+        criteria: `被测系统的真实核心用例：${CORE_USE_CASE}
+判断：eval 的 t.send() 输入是否贴着这个真实用例写（一个具体的研究主题，要求生成研究报告）？
+不合格（N）：输入是 "hello" / "你好" / "test" 这类与研究任务无关的寒暄或占位内容。`,
+      },
+      {
+        key: "断言具体",
+        threshold: 0.7,
+        criteria: `判断：eval 的断言是否检查了这份研究报告应有的具体结果，而不是只判跑通？
+合格（Y）：断言检查报告的实质内容——如带小标题/结构、至少引用一条真实来源链接、包含与主题相关的具体信息——用 matcher 或 judge 对内容做判定。
+不合格（N）：整个 eval 只有 turn.succeeded()，或只断言「回复长度>0」「有回复」这类与内容无关的判定。`,
+      },
+      {
+        key: "负例覆盖",
+        threshold: 0.5,
+        criteria: `被测系统是检索型 agent，最核心的风险是：在没有任何检索结果 / 找不到可靠来源时，它仍然编出一份看似完整、带引用的报告。
+判断：eval 是否包含一条针对这个负例的用例——在检索不到来源的情形下，断言被测方不产出编造的完整报告（或明确说明检索不到 / 无可用来源）？`,
+      },
+      {
+        key: "实验-eval 耦合",
+        threshold: 0.7,
+        criteria: `判断：experiment 引用的 agent 与 eval 断言的被测系统是否是同一个 GPT Researcher（自动化研究报告 agent），而不是各写各的、互不搭界？
+不合格（N）：experiment 用的是 echoAgent / 通用占位 agent，或引用的 agent 与 eval 的被测系统看不出关联。`,
+      },
+    ];
 
-    // ── 第三层：路由层（计量，不 gate）。文档到底起没起作用。 ──────────
+    await runQualityDimensions(t, material, DIMENSIONS);
+
+    // ── 第三层：动态验证层（软分，不 gate）。adapter 真能把一条 GPT Researcher 回应拉回来吗。 ──
+    // 读 agent 内层真跑落盘的 events，独立判有没有实质回应；实现见 lib/produce-quality.ts。
+    await assertAdapterRanLive(t, "GPT Researcher");
+
+    // ── 第四层：路由层（计量，不 gate）。文档到底起没起作用。 ──────────
     const touched = bundledPagesTouched(t.events);
 
     await t.group("路由层", async () => {
