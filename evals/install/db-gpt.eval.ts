@@ -7,7 +7,6 @@ import { cloneFixture } from "../../lib/fixture.ts";
 import {
   assertAdapterRanLive,
   type QualityDimension,
-  readAgentSourceMaterial,
   runQualityDimensions,
 } from "../../lib/produce-quality.ts";
 import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "../../lib/routing.ts";
@@ -71,9 +70,8 @@ export default defineEval({
     await assertAdapterRanLive(t, "DB-GPT");
 
     // ── 宿主专属·产出质量层（judge 软分）。按维度分别判 agent 写出的三件套质量。 ──
-    // 材料构造（含 adapter、正向挑、不剪宿主前端目录）见 lib/produce-quality.ts。
-    const material = await readAgentSourceMaterial(t);
-
+    // 判据材料（三件套源码、必须含 adapter）由 runQualityDimensions 内部经 openProject
+    // 取得，契约见 lib/produce-quality.ts 头注。
     // 老版本一条 closedQA 把「传输对不对 / 输入贴不贴业务 / 断言够不够具体」揉成一个二值
     // 判定，红了也说不清红在哪。改成按维度拆成多条各自可证伪的 judge：分数因此是分维度的
     // （更高级），且能直接倒查是哪一维塌了。每条都喂全量源码（含 adapter）。
@@ -132,7 +130,7 @@ export default defineEval({
       },
     ];
 
-    await runQualityDimensions(t, material, DIMENSIONS);
+    await runQualityDimensions(t, DIMENSIONS);
 
     // ── 宿主专属·路由层（计量，不 gate）。文档到底起没起作用。 ──────────
     const touched = bundledPagesTouched(t.events);

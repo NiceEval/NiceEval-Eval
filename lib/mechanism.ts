@@ -25,7 +25,9 @@
 import type { TestContext } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import { readCandidateManifest } from "./candidate.ts";
-import { locateNiceevalInstall } from "./niceeval-future.ts";
+// 幻想 API（尚不存在，typecheck 红是有意的）：workspace 里发现 niceeval 安装。规格见
+// lib/produce-quality.ts 头注。
+import { openProject } from "niceeval/project";
 
 /** 数 tsc 输出里属于 agent 自己代码的错误行（`path(line,col): error TSxxxx:`） */
 function countOwnTypeErrors(tscOutput: string): number {
@@ -66,8 +68,8 @@ export async function runGenericChecks(
   opts: { version: string },
 ): Promise<void> {
   const sandbox = t.sandbox;
-  const layout = await locateNiceevalInstall(sandbox);
-  const at = layout.root;
+  const project = await openProject(sandbox);
+  const at = project?.root ?? ".";
 
   const versionProbe = await sandbox.runShell(
     `node -p "require('./node_modules/niceeval/package.json').version" 2>/dev/null || true`,
@@ -115,7 +117,7 @@ export async function runGenericChecks(
     : null;
 
   await t.group("安装链", async () => {
-    t.check(layout.found, isTrue("niceeval.config.ts 存在").gate());
+    t.check(project !== null, isTrue("niceeval.config.ts 存在").gate());
     t.check(
       installedVersion === candidate.version,
       isTrue(`依赖解析到候选包（实际：${installedVersion ?? "未安装"}）`).gate(),

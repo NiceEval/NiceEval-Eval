@@ -53,18 +53,20 @@ pnpm exec niceeval exp install/v0.9.1 install/db-gpt --keep-sandbox
    断言："shell" 是 canonical 工具名（codex/claude-code 归一），正则只对上 shell 命令串——往文件里写一句
    含 `niceeval exp` 的文字不算跑过，命中调用作为证据进报告。与能动性互补——命令敲了但能动性红 =
    跑了没成；命令没敲 = 压根没试。
-4. **通用·能动性层**（软分）— `assertAdapterRanLive`：读 agent 内层真跑（niceeval exp）落盘的 events，
-   独立数「从被测系统回来的实质 assistant 回应 vs 连接失败」，外加 `niceeval show` 能读出结果。比
-   静态 judge 和 agent 自评（`t.succeeded()`）更能证明 adapter 没写错。send 文案里已要求 agent 真跑一次。
-   内层落盘经 `lib/niceeval-future.ts` 读取——那是「幻想 API」垫片（`locateNiceevalInstall` +
-   `openResultsInSandbox`，即 openResults 的沙箱版），每个 export 都是给 niceeval 的 API 提案，
-   niceeval 支持后整个文件删除、调用点只改 import。往 eval 里写落盘布局知识（find/readFile 扫
-   `.niceeval/`）之前，先看该不该进这个垫片。
+4. **通用·能动性层**（软分）— `assertAdapterRanLive`：读 agent 内层真跑（niceeval exp）的 attempt
+   判定状态——能完成判定（passed / failed 都算）= 真联上了：连不上 runner 会把 attempt 记成 errored、
+   `result.error` 带结构化错误码，不用自己扫 events 数回应。回应内容好不好归产出质量层，不在这层
+   重复判。外加 `niceeval show` 能读出结果。send 文案里已要求 agent 真跑一次。
+   内层落盘与判据材料经幻想 API `niceeval/project` 的 `openProject(sandbox)` 读取——该模块**尚不存在**，
+   `lib/produce-quality.ts` / `lib/mechanism.ts` 按「niceeval 应有的 API」写成，typecheck 的红是有意的：
+   红点清单 = niceeval 的待办（安装发现、`project.sources.asJudgeMaterial()`、`project.results()` 即
+   openResults 沙箱版；完整规格在 produce-quality.ts 头注）。落地前 install eval 跑不了；不要在
+   eval 侧写回 find/readFile 补丁来「修红」。
 5. **宿主·产出质量层**（judge 软分）— 可证伪的分维度 closedQA（传输保真 / 用例贴合 / 断言具体 /
    负例覆盖 / 实验-eval 耦合，db-gpt 另有能力对准），每维套命名 group，report 里显示为
    「产出质量层 · 传输保真 · …」。共用件在 `lib/produce-quality.ts`。两条铁律：**判据必须喂 adapter 源码**
-   （`readAgentSourceMaterial` 正向挑 `experiments/` / `*.eval.ts` / `agents|adapters/`，不靠 ignoreDirs
-   剪宿主目录，否则 agent 装进 `web/` 的产出会被一起剪没）；**传输维度按机制判、不钉死具体路径或协议**
+   （材料来自 `openProject().sources.asJudgeMaterial()`，契约＝含 adapter、按 niceeval 自己的项目发现
+   分类而非 ignoreDirs 剪宿主目录，否则 agent 装进 `web/` 的产出会被一起剪没）；**传输维度按机制判、不钉死具体路径或协议**
    （同一被测系统的多个真实端点都算合格，只判掉进程内直调 / spawn 被测进程 / 无网络）。
    v0.9.1 实测补过的判据盲点（改判据时别退回去）：**重言式断言**（断言的词在 t.send 输入里本来就有，
    复读即可通过）判 N；**元问题输入**（问被测系统「你是什么/你能做什么」）判 N；**能力对准**

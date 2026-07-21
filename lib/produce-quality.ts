@@ -1,52 +1,40 @@
 /**
  * install eval 的共用件：能动性层（真跑过一次吗）与产出质量层（分维度 judge）。
  *
- * 抽出来是因为 db-gpt / gpt-researcher 两条接入路径判的「怎么算写得好」结构一致，只有
- * 各维度的判据文案（贴着各自被测系统写）不同。共用件保证两边不漂移；各 eval 只需给出
- * 自己的 DIMENSIONS 数组与被测系统名。能动性层概念上属于通用检查（见 lib/mechanism.ts
- * 头注），因为要读内层真跑的落盘产物、文案需要被测系统名，所以住在这个文件里。
+ * ⚠️ 本文件写给「niceeval 应有的 API」，不是现有 API——`niceeval/project` 还不存在，
+ * typecheck 的红是有意留下的：每个红点都是要在 niceeval 落地的规格，落地后这里一行不改。
+ *
+ * `openProject(sandbox)` 的规格（提给 niceeval 的 API 提案）：
+ *
+ *   const project = await openProject(sandbox);
+ *   // 在 workspace 里发现 niceeval 安装（找 niceeval.config.ts，不假设在 workdir 根：
+ *   // python 宿主就地新建子目录装是正确做法）；没有安装则返回 null。
+ *
+ *   project.root
+ *   // 安装根，相对 workdir。
+ *
+ *   await project.sources.asJudgeMaterial()
+ *   // 按 experiment / eval / adapter 分节标注、可直接喂 judge 的三件套源码材料。
+ *   // 分类按 niceeval 自己的项目发现（config 引用、evals/experiments 发现机制），
+ *   // 不是按路径正则猜。契约来自真实产出栽过的两个坑：① 必须含 adapter——
+ *   // 「传输方式对不对」（进程内直调 / spawn 被测进程 / 真发请求）只在 adapter 里
+ *   // 看得见；② 不靠 ignoreDirs 剪宿主目录来挑——agent 常把 niceeval 装进宿主
+ *   // 前端工程（如 DB-GPT 的 web/），剪掉等于把 agent 自己的产出也剪没。
+ *
+ *   await project.results()
+ *   // niceeval/results 的 openResults 对沙箱安装打开：同形状的「实验 → 快照 →
+ *   // eval → attempt」类型化层次，events() 等重 artifact 懒加载、缺失返回 null。
  */
 
 import type { TestContext } from "niceeval";
 import { isTrue, satisfies } from "niceeval/expect";
-import { DEFAULT_SOURCE_IGNORE_DIRS } from "./fixture.ts";
-import { openResultsInSandbox } from "./niceeval-future.ts";
+import { openProject } from "niceeval/project";
 
 /** 一个产出质量维度：一句可证伪的判据 + 阈值 + 报告里显示的维度名。 */
 export interface QualityDimension {
   key: string;
   threshold: number;
   criteria: string;
-}
-
-// 「哪些是 agent 手写三件套」的路径判定。用「包含」而非「开头」，兼容 agent 把三件套
-// 装进子目录（如 DB-GPT 的 web/）的情况。
-const isEval = (p: string) => /\.eval\.ts$/.test(p);
-const isExperiment = (p: string) => /(^|\/)experiments\//.test(p);
-const isAdapter = (p: string) => /(^|\/)(agents?|adapters?)\//.test(p);
-
-/**
- * 读全量 agent 源码，正向挑出三件套（experiment / eval / adapter），按路径标注后拼成
- * 一段喂给 judge 的材料。
- *
- * 两个坑（都栽过）：
- * 1) 必须把 adapter 也喂进去——「传输方式对不对」（进程内直调 / 启动被测进程 / 真发请求）
- *    只在 adapter 里看得见，只喂 experiment+eval 等于让 judge 蒙着眼判传输。
- * 2) 不能靠 ignoreDirs 把宿主前端目录（DB-GPT 的 web/、GPT Researcher 的 frontend/）整个剪掉：
- *    agent 常把 niceeval 就装进那个现成的 TS 工程里，剪掉等于把 agent 自己的产出也剪没了。
- *    所以按路径「正向挑」三件套，既能捞到装进子目录的产出，又不会把宿主前端 .ts 混进来。
- */
-export async function readAgentSourceMaterial(t: TestContext): Promise<string> {
-  const src = await t.sandbox.readSourceFiles({
-    extensions: ["ts"],
-    ignoreDirs: DEFAULT_SOURCE_IGNORE_DIRS,
-  });
-  const label = (files: (typeof src)[number][]) =>
-    files.map((f) => `----- ${f.path} -----\n${f.content}`).join("\n\n") || "（无）";
-  const experimentSource = label(src.filter((f) => isExperiment(f.path)));
-  const evalSource = label(src.filter((f) => isEval(f.path)));
-  const adapterSource = label(src.filter((f) => isAdapter(f.path)));
-  return `# experiment\n${experimentSource}\n\n# eval\n${evalSource}\n\n# adapter / 其它 agent 写的源码\n${adapterSource}`;
 }
 
 /**
@@ -58,9 +46,10 @@ export async function readAgentSourceMaterial(t: TestContext): Promise<string> {
  */
 export async function runQualityDimensions(
   t: TestContext,
-  material: string,
   dimensions: readonly QualityDimension[],
 ): Promise<void> {
+  const project = await openProject(t.sandbox);
+  const material = project ? await project.sources.asJudgeMaterial() : "（未发现 niceeval 安装）";
   await t.group("产出质量层", async () => {
     for (const d of dimensions) {
       await t.group(d.key, async () => {
@@ -71,48 +60,39 @@ export async function runQualityDimensions(
 }
 
 /**
- * 能动性层（软分，不 gate）：agent 有没有真把自己写的东西跑起来——内层有 result 落盘、
- * adapter 真收到过一条被测系统的回应、niceeval show 能读出结果。
+ * 能动性层（软分，不 gate）：agent 有没有真把自己写的东西跑起来、真联上被测系统——
+ * 内层有 attempt 落盘、至少一个 attempt 完成判定、niceeval show 能读出结果。
  *
- * 静态 judge 只读代码、会被「看着像对」骗过；agent 自己写的断言又是自评（一句
- * t.succeeded() 就能糊弄）。这里改读 agent 内层那次真跑（niceeval exp）落盘的产物——
- * 独立看 events 里有没有一条带实质内容、从被测系统回来的 assistant 消息。
- * 起被测系统很重且波动大（见 lib/fixture-env.ts），所以只作软分计量、不 gate：绿了说明
- * adapter 端到端通了、真验证了没写错；红了可能是没起服务、也可能是 adapter 写错，靠
- * diagnostic 留证倒查，不拖垮 verdict。
+ * 联没联上不用自己数事件：内层 runner 早就裁过了——send 连不上会让 attempt 进 errored
+ * （result.error 带结构化错误码），能完成判定（passed / failed 都算）就说明请求真发出去、
+ * 回应真回来了。agent 自评能糊弄的是「回应好不好」（一句 t.succeeded() 的弱断言），
+ * 那归产出质量层的 judge 管，不在这层重复判。
+ * 起被测系统很重且波动大（见 lib/fixture-env.ts），所以只作软分计量、不 gate；红了靠
+ * diagnostic 里的结构化错误码倒查是「没起服务」还是「adapter 写错」。
  *
  * @param systemName 被测系统名（如 "DB-GPT" / "GPT Researcher"），只用于断言/诊断文案。
  */
 export async function assertAdapterRanLive(t: TestContext, systemName: string): Promise<void> {
-  // 内层 run 的落盘用（未来的）结果数据 API 打开：安装发现、attempt 定位、events 解析
-  // 全是 niceeval 自己的落盘布局知识，不由 eval 手写 find/readFile 复刻——垫片与 API
-  // 提案见 lib/niceeval-future.ts。这里只留判定逻辑：一条真实回应长这样
-  // {type:"message",role:"assistant",text}；连不上则是 {type:"error",message:"Unable to reach…"}。
-  const inner = await openResultsInSandbox(t.sandbox);
+  const project = await openProject(t.sandbox);
+  const results = project ? await project.results() : null;
 
-  const CONN =
-    /unable to reach|econnrefused|connection refused|start the app first|fetch failed|socket hang up|network error/i;
-  let ranResults = 0;
-  let eventFiles = 0;
-  let assistantWithText = 0;
-  let connErr = 0;
-  for (const attempt of inner?.attempts ?? []) {
-    if (attempt.hasResult) ranResults++;
-    const events = await attempt.events();
-    if (!events) continue;
-    eventFiles++;
-    for (const e of events) {
-      if (e.type === "message" && e.role === "assistant" && typeof e.text === "string" && e.text.trim().length >= 40) {
-        assistantWithText++;
-      }
-      if (e.type === "error" && CONN.test(String(e.message ?? ""))) connErr++;
-    }
+  const attempts = [];
+  for (const exp of results?.experiments ?? []) {
+    for (const snap of exp.snapshots) attempts.push(...snap.attempts);
   }
-  const dyn = { ranResults, eventFiles, assistantWithText, connErr };
+
+  let adjudicated = 0;
+  const errors: string[] = [];
+  for (const attempt of attempts) {
+    const err = attempt.result.error;
+    if (err) errors.push(String(err.code ?? err.message ?? "unknown"));
+    else adjudicated++;
+  }
+  const dyn = { ranResults: attempts.length, adjudicated, errored: errors.length };
 
   // agent 自己装的那个 CLI 能不能把跑出来的结果显示出来（niceeval show 看得到内容）。
   const show = await t.sandbox.runShell(`npx --no-install niceeval show --output ci 2>&1`, {
-    cwd: inner?.root ?? ".",
+    cwd: project?.root ?? ".",
   });
   const showSawContent =
     show.exitCode === 0 && /\b(passed|failed|errored)\b|@[a-z0-9]{6,}/i.test(show.stdout);
@@ -120,29 +100,29 @@ export async function assertAdapterRanLive(t: TestContext, systemName: string): 
   await t.group("能动性层", async () => {
     t.check(
       dyn.ranResults,
-      satisfies((n) => (n as number) >= 1, "agent 真的把 eval 跑起来过（内层有 result 落盘）").atLeast(1),
+      satisfies((n) => (n as number) >= 1, "agent 真的把 eval 跑起来过（内层有 attempt 落盘）").atLeast(1),
     );
     t.check(
-      dyn.assistantWithText,
+      dyn.adjudicated,
       satisfies(
         (n) => (n as number) >= 1,
-        `adapter 真的从 ${systemName} 收到过一条带内容的回应（实测 ${dyn.assistantWithText} 条；` +
-          `连不上错误 ${dyn.connErr} 次）`,
+        `adapter 真的联上过 ${systemName}：至少一个 attempt 完成判定` +
+          `（完成 ${dyn.adjudicated}，errored ${dyn.errored}）`,
       ).atLeast(1),
     );
     t.check(showSawContent, isTrue("niceeval show 能显示出跑过的结果内容").atLeast(1));
   });
 
-  // adapter 没能真收到回应时留一条永久记录，供倒查是「没起服务」还是「adapter 写错了」。
-  if (dyn.assistantWithText < 1) {
+  // 一个完成判定的 attempt 都没有时留一条永久记录，供按结构化错误码倒查。
+  if (dyn.adjudicated < 1) {
     t.diagnostic({
       code: "adapter-no-live-response",
       level: "warning",
       message:
-        `内层 run 没有一条来自 ${systemName} 的实质回应（assistant 消息 ${dyn.assistantWithText} 条，` +
-        `连不上错误 ${dyn.connErr} 次，result 落盘 ${dyn.ranResults} 份）。` +
-        `connErr>0 多半是没起服务；全 0 且无回应则要查 adapter 是否根本没发出请求。`,
-      data: dyn,
+        `内层 run 没有一个完成判定的 attempt（共 ${dyn.ranResults} 份落盘，` +
+        `errored：${errors.join(", ") || "无"}）。错误码是连接类多半是没起服务；` +
+        `一份落盘都没有则是压根没跑。`,
+      data: { ...dyn, errors },
     });
   }
 }
