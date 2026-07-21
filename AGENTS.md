@@ -56,6 +56,10 @@ pnpm exec niceeval exp install/v0.9.1 install/db-gpt --keep-sandbox
 4. **通用·能动性层**（软分）— `assertAdapterRanLive`：读 agent 内层真跑（niceeval exp）落盘的 events，
    独立数「从被测系统回来的实质 assistant 回应 vs 连接失败」，外加 `niceeval show` 能读出结果。比
    静态 judge 和 agent 自评（`t.succeeded()`）更能证明 adapter 没写错。send 文案里已要求 agent 真跑一次。
+   内层落盘经 `lib/niceeval-future.ts` 读取——那是「幻想 API」垫片（`locateNiceevalInstall` +
+   `openResultsInSandbox`，即 openResults 的沙箱版），每个 export 都是给 niceeval 的 API 提案，
+   niceeval 支持后整个文件删除、调用点只改 import。往 eval 里写落盘布局知识（find/readFile 扫
+   `.niceeval/`）之前，先看该不该进这个垫片。
 5. **宿主·产出质量层**（judge 软分）— 可证伪的分维度 closedQA（传输保真 / 用例贴合 / 断言具体 /
    负例覆盖 / 实验-eval 耦合，db-gpt 另有能力对准），每维套命名 group，report 里显示为
    「产出质量层 · 传输保真 · …」。共用件在 `lib/produce-quality.ts`。两条铁律：**判据必须喂 adapter 源码**

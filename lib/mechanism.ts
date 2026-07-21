@@ -25,23 +25,7 @@
 import type { TestContext } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import { readCandidateManifest } from "./candidate.ts";
-
-/**
- * 找 agent 把 niceeval 装在了哪。
- *
- * 不假设一定在 workdir 根：python-service 这类非 JS 宿主的正确做法就是
- * 就地新建一个子目录来放 package.json 与三件套，装在子目录里不算错。
- */
-async function locateInstall(sandbox: TestContext["sandbox"]): Promise<{ root: string; found: boolean }> {
-  const found = await sandbox.runShell(
-    `find . -name niceeval.config.ts -not -path '*/node_modules/*' -maxdepth 3 | head -1`,
-  );
-  const hit = found.stdout.trim();
-  if (!hit) return { root: ".", found: false };
-  // ./sub/niceeval.config.ts -> sub ; ./niceeval.config.ts -> .
-  const dir = hit.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "");
-  return { root: dir === "" ? "." : dir, found: true };
-}
+import { locateNiceevalInstall } from "./niceeval-future.ts";
 
 /** 数 tsc 输出里属于 agent 自己代码的错误行（`path(line,col): error TSxxxx:`） */
 function countOwnTypeErrors(tscOutput: string): number {
@@ -82,7 +66,7 @@ export async function runGenericChecks(
   opts: { version: string },
 ): Promise<void> {
   const sandbox = t.sandbox;
-  const layout = await locateInstall(sandbox);
+  const layout = await locateNiceevalInstall(sandbox);
   const at = layout.root;
 
   const versionProbe = await sandbox.runShell(

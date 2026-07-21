@@ -10,6 +10,7 @@
 import type { TestContext } from "niceeval";
 import { isTrue, satisfies } from "niceeval/expect";
 import { DEFAULT_SOURCE_IGNORE_DIRS } from "./fixture.ts";
+import { openResultsInSandbox } from "./niceeval-future.ts";
 
 /** 一个产出质量维度：一句可证伪的判据 + 阈值 + 报告里显示的维度名。 */
 export interface QualityDimension {
@@ -83,56 +84,36 @@ export async function runQualityDimensions(
  * @param systemName 被测系统名（如 "DB-GPT" / "GPT Researcher"），只用于断言/诊断文案。
  */
 export async function assertAdapterRanLive(t: TestContext, systemName: string): Promise<void> {
-  const cfgHit = (
-    await t.sandbox.runShell(`find . -name niceeval.config.ts -not -path '*/node_modules/*' -maxdepth 3 | head -1`)
-  ).stdout.trim();
-  const at = cfgHit ? cfgHit.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || "." : ".";
-
-  // 扫 agent 内层 run 的落盘产物：shell 只负责 find 列清单，文件内容走 sandbox.readFile
-  // 拉回宿主侧，计数判定全在这里的 TS 里做——判定逻辑要能被 typecheck 与阅读，
-  // 不塞进沙箱里跑的字符串程序。events.json 是扁平 StreamEvent[]（见 niceeval
-  // o11y/types.ts）：一条真实回应长这样 {type:"message",role:"assistant",text}；
-  // 连不上则是 {type:"error",message:"Unable to reach…"}。
-  const findArtifacts = async (name: string): Promise<string[]> => {
-    const out = await t.sandbox.runShell(
-      `find . -path '*/.niceeval/*' -name '${name}' -not -path '*/node_modules/*' 2>/dev/null`,
-      { cwd: at },
-    );
-    return out.stdout
-      .split("\n")
-      .map((s) => s.trim().replace(/^\.\//, ""))
-      .filter(Boolean)
-      .map((p) => (at === "." ? p : `${at}/${p}`));
-  };
-
-  const resultFiles = await findArtifacts("result.json");
-  const eventFiles = await findArtifacts("events.json");
+  // 内层 run 的落盘用（未来的）结果数据 API 打开：安装发现、attempt 定位、events 解析
+  // 全是 niceeval 自己的落盘布局知识，不由 eval 手写 find/readFile 复刻——垫片与 API
+  // 提案见 lib/niceeval-future.ts。这里只留判定逻辑：一条真实回应长这样
+  // {type:"message",role:"assistant",text}；连不上则是 {type:"error",message:"Unable to reach…"}。
+  const inner = await openResultsInSandbox(t.sandbox);
 
   const CONN =
     /unable to reach|econnrefused|connection refused|start the app first|fetch failed|socket hang up|network error/i;
+  let ranResults = 0;
+  let eventFiles = 0;
   let assistantWithText = 0;
   let connErr = 0;
-  for (const file of eventFiles) {
-    let parsed: unknown;
-    try {
-      parsed = JSON.parse(await t.sandbox.readFile(file));
-    } catch {
-      continue; // 这份读不到 / parse 不了就跳过——软分层，宁可漏报也不误崩整条 eval
-    }
-    if (!Array.isArray(parsed)) continue;
-    for (const raw of parsed) {
-      if (typeof raw !== "object" || raw === null) continue;
-      const e = raw as { type?: unknown; role?: unknown; text?: unknown; message?: unknown };
+  for (const attempt of inner?.attempts ?? []) {
+    if (attempt.hasResult) ranResults++;
+    const events = await attempt.events();
+    if (!events) continue;
+    eventFiles++;
+    for (const e of events) {
       if (e.type === "message" && e.role === "assistant" && typeof e.text === "string" && e.text.trim().length >= 40) {
         assistantWithText++;
       }
       if (e.type === "error" && CONN.test(String(e.message ?? ""))) connErr++;
     }
   }
-  const dyn = { ranResults: resultFiles.length, eventFiles: eventFiles.length, assistantWithText, connErr };
+  const dyn = { ranResults, eventFiles, assistantWithText, connErr };
 
   // agent 自己装的那个 CLI 能不能把跑出来的结果显示出来（niceeval show 看得到内容）。
-  const show = await t.sandbox.runShell(`npx --no-install niceeval show --output ci 2>&1`, { cwd: at });
+  const show = await t.sandbox.runShell(`npx --no-install niceeval show --output ci 2>&1`, {
+    cwd: inner?.root ?? ".",
+  });
   const showSawContent =
     show.exitCode === 0 && /\b(passed|failed|errored)\b|@[a-z0-9]{6,}/i.test(show.stdout);
 
