@@ -27,6 +27,22 @@ export function candidateInitDocUrl(version: string): string {
   return `https://raw.githubusercontent.com/${NICEEVAL_REPO}/v${version}/INIT.md`;
 }
 
+/**
+ * 从 npm registry 把一个 dist-tag 解析成具体版本号，取「线上最新的那版」。
+ *
+ * canary 通道用它拿「线上最佳的 canary」：既不把版本号写死在实验里、也不在本地落地任何指针
+ * 文件——实验每次加载直接问 registry「现在 canary 指向哪版」。解析出的版本仍要先 pin
+ * （`scripts/pin-candidate.ts canary`）才有本地 manifest，否则 readCandidateManifest 会如实报错。
+ */
+export async function resolveDistTag(tag: string): Promise<string> {
+  const res = await fetch("https://registry.npmjs.org/niceeval");
+  if (!res.ok) throw new Error(`解析 dist-tag「${tag}」失败：拉取 niceeval 包元数据 HTTP ${res.status}`);
+  const packument = (await res.json()) as { "dist-tags"?: Record<string, string> };
+  const version = packument["dist-tags"]?.[tag];
+  if (!version) throw new Error(`npm 上 niceeval 没有 dist-tag「${tag}」`);
+  return version;
+}
+
 export interface CandidateManifest {
   /** 被评的 niceeval 版本 */
   version: string;
