@@ -1,7 +1,8 @@
 /**
- * 生命周期收尾：把这次 attempt 里 agent 写出的项目从沙箱整体 copy 到仓库根 `.agent-output/`
- * （已 gitignore）下，保留原相对路径，方便事后人工 review「AI 到底写得怎么样、adapter 写得
- * 对不对」。沙箱销毁后这些产物就没了，所以趁 test() 收尾时抓一份落到本地。
+ * 生命周期收尾：把这次 attempt 里 agent 写出的三件套（evals / experiments / adapter /
+ * niceeval.config.ts）从沙箱 copy 到仓库根 `.agent-output/`（已 gitignore）下，保留原相对
+ * 路径，方便事后人工 review「AI 到底写得怎么样、adapter 写得对不对」。沙箱销毁后这些产物就
+ * 没了，所以趁 test() 收尾时抓一份落到本地。
  *
  * 为什么做成「eval 收尾时调一次的 helper」而不是 sandbox `.teardown()` 钩子：teardown 的
  * SandboxHookContext 只给得到 experimentId，给不到「这次跑的是哪个被测目标（db-gpt /
@@ -18,7 +19,6 @@ import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { TestContext } from "niceeval";
 import { locateInstallRoot } from "./eval-install.ts";
-import { DEFAULT_SOURCE_IGNORE_DIRS } from "./fixture.ts";
 
 /** 归档根目录：仓库根下的 .agent-output（.gitignore 已忽略）。 */
 export const AGENT_OUTPUT_DIR = resolve(import.meta.dirname, "../../../.agent-output");
@@ -29,7 +29,7 @@ function slug(s: string): string {
 }
 
 /**
- * 把 agent 在沙箱里写出的项目整体归档到本地，返回落盘目录（下载失败则返回 undefined）。
+ * 把 agent 在沙箱里写出的三件套归档到本地，返回落盘目录（没装成 / 一件都没抓到则返回 undefined）。
  *
  * 命名：`.agent-output/<candidateVersion>/<target>/<ISO时间>__<model>/<原相对路径>`
  * —— 按候选版本 + 被测目标 + 时间戳分区，同一目标多次跑不互相覆盖，便于横向对比。
@@ -38,6 +38,12 @@ function slug(s: string): string {
  */
 export async function saveAgentOutput(t: TestContext, target: string): Promise<string | undefined> {
   try {
+    // 只下 install root 下的三件套，不下整个 root：DB-GPT 这类装在仓库根（at="."）的宿主，
+    // 整下会把整个被测仓库拖进归档。缺哪件下哪件报错就跳过（不是每个 agent 都写全）。
+    const at = await locateInstallRoot(t.sandbox);
+    if (at === null) return undefined; // 没装成，无三件套可归
+    const prefix = at === "." ? "" : `${at}/`;
+
     const version = slug(String(t.flags.candidateVersion ?? "unknown"));
     const model = slug(t.model ?? "model");
     // Date 在普通 eval 进程里可用（受限的是 Workflow 脚本，不是这里）。冒号/点换成连字符，
@@ -46,11 +52,22 @@ export async function saveAgentOutput(t: TestContext, target: string): Promise<s
     const root = resolve(AGENT_OUTPUT_DIR, version, slug(target), `${stamp}__${model}`);
     mkdirSync(root, { recursive: true });
 
-    // downloadDirectory 是 uploadDirectory 的镜像：原样搬运、按远端相对路径逐个落盘，`ignore`
-    // 挡住 node_modules / dist 这类不必归档的目录。直接下到最终归档目录，不再走临时目录中转、
-    // 也不在框架外筛「哪些算产出」——下成宿主机普通目录后要挑文件是普通 fs 代码的事。
-    const at = (await locateInstallRoot(t.sandbox)) ?? ".";
-    await t.sandbox.downloadDirectory(root, at, { ignore: DEFAULT_SOURCE_IGNORE_DIRS });
+    let got = false;
+    // eval / experiment / adapter 三类各是 install root 下的一个目录：downloadDirectory 逐个原样
+    // 搬运。adapter 目录既可能叫 agents 也可能叫 adapters，都试。
+    for (const dir of ["evals", "experiments", "agents", "adapters"]) {
+      await t.sandbox
+        .downloadDirectory(resolve(root, dir), `${prefix}${dir}`)
+        .then(() => (got = true))
+        .catch(() => {}); // 该目录不存在就跳过
+    }
+    // niceeval.config.ts 是 install root 上的单文件，downloadDirectory 下不了，单取。
+    const cfg = await t.sandbox.downloadFile(`${prefix}niceeval.config.ts`).catch(() => null);
+    if (cfg) {
+      writeFileSync(resolve(root, "niceeval.config.ts"), cfg);
+      got = true;
+    }
+    if (!got) return undefined;
 
     writeFileSync(
       resolve(root, "_meta.txt"),
