@@ -7,7 +7,7 @@
  * BASE_TEMPLATE 必须跟 experiments/shared.ts 里默认 `template` 字段填的那个 ref 一致——
  * 重新烘焙 node24 template 换了新 tag 后，这里也要跟着换，两处手动同步。
  *
- * 装的东西对齐 `lib/fixture-env.ts` 里 `provisionTargetAppEnv()` 原本在运行时装的那一套：
+ * 装的东西对齐 `lib/target-app-env.ts` 里 `provisionTargetAppEnv()` 原本在运行时装的那一套：
  * DB-GPT / GPT Researcher / Vanna 三条接入路径都是真实 Python 项目要用到的最小工具链。
  * 模板烘焙好之后，那个钩子里对应的 apt-get/uv 安装段就该整段删掉——变成运行时只做一次
  * `command -v` 探测的保险丝，真正的安装成本从「每个 attempt」降到「模板更新时才付一次」。

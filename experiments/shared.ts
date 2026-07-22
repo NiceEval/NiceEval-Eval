@@ -9,7 +9,7 @@
 import { codexAgent } from "niceeval/adapter";
 import { e2bSandbox } from "niceeval/sandbox";
 import type { SandboxHook } from "niceeval/sandbox";
-import { provisionTargetAppEnv } from "../lib/fixture-env.ts";
+import { provisionTargetAppEnv } from "../lib/target-app-env.ts";
 
 /**
  * 默认 template：niceeval 官方发布的 codex template（correctroads-default-team/niceeval-codex）
