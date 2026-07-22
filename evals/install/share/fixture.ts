@@ -9,6 +9,12 @@
  * 目前 install 与 undo 两组接入路径 eval 共用它(undo 未来会并入 install)。
  */
 
+import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { TestContext } from "niceeval";
+import { locateInstallRoot } from "./checks-generic.ts";
+
 export interface FixtureRepo {
   /** fixture 宿主项目的 git 仓库地址（公开只读 clone） */
   repoUrl: string;
@@ -64,26 +70,36 @@ export async function cloneFixture(sandbox: SandboxRunShell, repo: FixtureRepo):
   }
 }
 
+// downloadDirectory 的 opts.ignore 按 basename 排除（同 uploadDirectory）——这几个是宿主项目里
+// 常见的噪声目录，跟「装 niceeval」无关，不该经网络原样搬一遍。
 export const DEFAULT_SOURCE_IGNORE_DIRS = [".git", ".next", "node_modules", "dist", "build", "coverage"];
 
-/** 排除宿主噪声目录的 find 谓词；哪些目录算噪声明明白白写在命令里，不藏进 API 约定。 */
-export function findAgentTs(extraIgnoreDirs: string[] = []): string {
-  const prune = [...DEFAULT_SOURCE_IGNORE_DIRS, ...extraIgnoreDirs]
-    .map((d) => `-not -path '*/${d}/*'`)
-    .join(" ");
-  return `find . -name '*.ts' ${prune}`;
-}
-
 /**
- * 把 agent 手写的 .ts 源码带路径头串成一份 judge 材料。一条 find+cat 命令取证——
- * 没有解析层、没有扫落盘的循环，判定仍由紧跟着的 judge 完成（写法约定同 checks-generic.ts）。
+ * 把 agent 手写的 .ts 源码带路径头串成一份 judge 材料。
+ *
+ * niceeval 的 sandbox 不设「按扩展名过滤的批量读取器」——批量取回只有 downloadDirectory
+ * 一个原样搬运的 API（字节精确、不做过滤/拼接），筛选是普通代码的事（见
+ * docs/feature/sandbox/library/operations.md）。这里现下载进一个临时目录，本地用
+ * node:fs 筛 .ts 文件、拼成文本，用完即删——写法约定同 checks-generic.ts：判定/整理
+ * 交给紧跟着的 judge，这一层只负责取证。
  */
 export async function agentSourceMaterial(
-  sandbox: SandboxRunShell,
+  sandbox: TestContext["sandbox"],
   extraIgnoreDirs: string[] = [],
 ): Promise<string> {
-  const out = await sandbox.runShell(
-    `${findAgentTs(extraIgnoreDirs)} -exec sh -c 'for f; do printf "\\n----- %s -----\\n" "$f"; cat "$f"; done' _ {} + 2>/dev/null`,
-  );
-  return out.stdout.trim() || "（无）";
+  const at = (await locateInstallRoot(sandbox)) ?? ".";
+  const staging = await mkdtemp(join(tmpdir(), "niceeval-agent-source-"));
+  try {
+    await sandbox.downloadDirectory(staging, at, {
+      ignore: [...DEFAULT_SOURCE_IGNORE_DIRS, ...extraIgnoreDirs],
+    });
+    const paths = (await readdir(staging, { recursive: true })).filter((p) => p.endsWith(".ts"));
+    if (paths.length === 0) return "（无）";
+    const parts = await Promise.all(
+      paths.map(async (p) => `\n// ${p}\n${await readFile(join(staging, p), "utf-8")}`),
+    );
+    return parts.join("\n");
+  } finally {
+    await rm(staging, { recursive: true, force: true });
+  }
 }

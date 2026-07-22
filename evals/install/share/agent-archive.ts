@@ -16,9 +16,12 @@
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
-import { dirname, resolve } from "node:path";
+import { copyFile, mkdtemp, readdir, rm } from "node:fs/promises";
+import { tmpdir } from "node:os";
+import { dirname, join, resolve } from "node:path";
 import type { TestContext } from "niceeval";
-import { findAgentTs } from "./fixture.ts";
+import { locateInstallRoot } from "./checks-generic.ts";
+import { DEFAULT_SOURCE_IGNORE_DIRS } from "./fixture.ts";
 
 /** 归档根目录：仓库根下的 .agent-output（.gitignore 已忽略）。 */
 export const AGENT_OUTPUT_DIR = resolve(import.meta.dirname, "../../../.agent-output");
@@ -43,13 +46,16 @@ function slug(s: string): string {
  * @param target 被测目标名（如 "db-gpt"），由调用它的 eval 传入。
  */
 export async function saveAgentOutput(t: TestContext, target: string): Promise<string | undefined> {
+  let staging: string | undefined;
   try {
-    // find 只列路径,三件套的归属判定留在本地谓词里;内容逐个 readFile(通常不到十个文件)。
-    const list = await t.sandbox.runShell(`${findAgentTs()} 2>/dev/null`);
-    const picked = list.stdout
-      .split("\n")
-      .map((p) => p.trim().replace(/^\.\//, ""))
-      .filter((p) => p && (isEval(p) || isExperiment(p) || isAdapter(p) || isConfig(p)));
+    // niceeval 的 sandbox 不设按扩展名过滤的批量读取器——downloadDirectory 是唯一的批量
+    // 取回 API，原样搬运、不过滤，先落进一个临时目录，三件套的归属判定在本地做。
+    staging = await mkdtemp(join(tmpdir(), "niceeval-agent-output-"));
+    const at = (await locateInstallRoot(t.sandbox)) ?? ".";
+    await t.sandbox.downloadDirectory(staging, at, { ignore: DEFAULT_SOURCE_IGNORE_DIRS });
+
+    const tsPaths = (await readdir(staging, { recursive: true })).filter((p) => p.endsWith(".ts"));
+    const picked = tsPaths.filter((p) => isEval(p) || isExperiment(p) || isAdapter(p) || isConfig(p));
     if (picked.length === 0) return undefined;
 
     const version = slug(String(t.flags.candidateVersion ?? "unknown"));
@@ -62,7 +68,7 @@ export async function saveAgentOutput(t: TestContext, target: string): Promise<s
     for (const p of picked) {
       const dst = resolve(root, p);
       mkdirSync(dirname(dst), { recursive: true });
-      writeFileSync(dst, await t.sandbox.readFile(p));
+      await copyFile(join(staging, p), dst);
     }
     writeFileSync(
       resolve(root, "_meta.txt"),
@@ -82,5 +88,7 @@ export async function saveAgentOutput(t: TestContext, target: string): Promise<s
   } catch (e) {
     t.log(`归档 agent 产出失败（已忽略）：${e instanceof Error ? e.message : String(e)}`);
     return undefined;
+  } finally {
+    if (staging) await rm(staging, { recursive: true, force: true }).catch(() => {});
   }
 }

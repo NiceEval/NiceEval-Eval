@@ -9,11 +9,12 @@
  *   实验（baseline + 对比）、按 compare-models 组织、每格 runs=1、不为一两个实验先抽
  *   shared.ts。品味红了东西还是能用的，不 gate。
  * - checkAdapter →「评估adapter」（软分，不 gate）——agent 写的 adapter 有没有真联上被测
- *   系统、真跑出过一次结果。联没联上不用自己取证：内层 runner 早就裁过了——读一份 attempt
- *   的 result.json，verdict 是 passed / failed（完成判定）就说明请求真发出去、回应真回来；
- *   连不上会是 errored。起被测系统很重且波动大（见 lib/target-app-env.ts），所以只作软分
- *   计量、不 gate。只被 db-gpt / gpt-researcher 两条 install eval 调用——undo 组三条 eval
- *   的任务描述没有要求 agent「真跑一次」，调这个函数会断言一件任务里没提过的事。
+ *   系统。不自己找/读 result.json 取证、也不判跑了几次——适配 live 系统的成本、稳不稳定
+ *   各不相同，agent 跑几次都合理，不该被断言锁死。只信 agent 自装的 CLI：`niceeval show`
+ *   显示的 verdict 是 passed / failed 就说明请求真发出去、回应真回来，连不上会是 errored。
+ *   起被测系统很重且波动大（见 lib/target-app-env.ts），所以只作软分计量、不 gate。只被
+ *   db-gpt / gpt-researcher 两条 install eval 调用——undo 组三条 eval 的任务描述没有要求
+ *   agent「真跑一次」，调这个函数会断言一件任务里没提过的事。
  *
  * 写法约定：判定一律用官方断言词汇（calledTool / matchers / judge），不发明领域 API；
  * 取证一律「一条命令或一个文件」——探针只取证不判定，判定是紧跟着的一条 t.check 配
@@ -165,40 +166,26 @@ export async function checkExperimentQuality(t: TestContext): Promise<void> {
 }
 
 /**
- * 评估adapter（软分，不 gate）：agent 有没有真把自己写的东西跑起来、真联上被测系统。
+ * 评估adapter（软分，不 gate）：agent 写的 adapter 有没有真联上被测系统。
  *
- * 只被 db-gpt / gpt-researcher 两条 install eval 调用，见文件头注。
+ * 只信 agent 自装的 CLI，不自己找/读 result.json——跑了几次不是这层关心的事（适配live 系统
+ * 的成本、稳不稳定各不相同，agent 跑几次都合理，不该被断言锁死），这里只看跑没跑通。只被
+ * db-gpt / gpt-researcher 两条 install eval 调用，见文件头注。
  */
 export async function checkAdapter(t: TestContext): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
 
-  // 定位一份 attempt 落盘（品味层要求 runs=1，内层通常恰好一个 attempt）
-  const resultHit = (
-    await sandbox.runShell(
-      `find . -path '*/.niceeval/*' -name result.json -not -path '*/node_modules/*' | head -1`,
-    )
-  ).stdout.trim();
-  // 本层唯一读的文件：那份 result.json
-  const result = resultHit ? await sandbox.readFile(resultHit.replace(/^\.\//, "")).catch(() => "") : "";
   // 自装 CLI 能不能把跑出来的结果显示出来
   const show = await sandbox.runShell(`npx --no-install niceeval show --output ci 2>&1`, { cwd: at });
 
   await t.group("评估adapter", async () => {
-    t.check(resultHit.length > 0, isTrue("agent 真的把 eval 跑起来过（内层有 attempt 落盘）").atLeast(1));
-    t.check(
-      result,
-      satisfies(
-        (s) => /"verdict"\s*:\s*"(passed|failed)"/.test(s as string),
-        "attempt 完成判定＝真联上了被测系统（连不上会是 errored）",
-      ).atLeast(1),
-    );
     t.check(show, commandSucceeded().atLeast(1));
     t.check(
       show.stdout,
       satisfies(
-        (s) => /\b(passed|failed|errored)\b|@[a-z0-9]{6,}/i.test(s as string),
-        "niceeval show 能显示出跑过的结果内容",
+        (s) => /\b(passed|failed)\b/i.test(s as string) && !/\berrored\b/i.test(s as string),
+        "niceeval show 显示的 verdict 是 passed/failed（真联上了被测系统；连不上会是 errored）",
       ).atLeast(1),
     );
   });
