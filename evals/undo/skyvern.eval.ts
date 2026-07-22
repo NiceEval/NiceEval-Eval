@@ -57,7 +57,7 @@ export default defineEval({
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。四条接入路径共用同一套判定。 ──
-    await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA });
+    await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA, turn });
     await evalExperiment(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
