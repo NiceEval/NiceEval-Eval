@@ -22,6 +22,11 @@ import { cloneFixture } from "./share/fixture.ts";
 const EXPECTED_PAGES =
   /docs-site\/zh\/(how-to|tutorials)\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/;
 
+// TODO 未来再写：本项目的专属澄清判据（照 db-gpt.eval.ts 的写法）。已知事实待填入——
+// 接口：自研 WebSocket /ws 文本命令 + JSON 帧（FastAPI，默认 :8000）；
+// otel：无 OpenTelemetry，可观测性只有 LangChain 的 LangSmith（环境变量开关，默认关）。
+const CLARIFY_CRITERIA = "TODO：本项目尚未编写专属澄清判据。";
+
 export default defineScoreEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
   environment: "python",
@@ -47,7 +52,7 @@ export default defineScoreEval({
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）。 ──
     // ── 四条接入路径共用同一套判定。 ──
-    await evalInstall(t, { version });
+    await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA });
     await evalExperiment(t);
     await evalAdapter(t);
 

@@ -31,6 +31,9 @@ const TRANSPORT =
   "（Bearer LETTA_SERVER_PASSWORD 鉴权；响应是 reasoning / tool_call / assistant 等分型消息的 JSON 列表，" +
   "非 OpenAI 形状）；多轮必须复用同一个 agent_id 以维持记忆";
 
+// TODO 未来再写：本项目的专属澄清判据（照 db-gpt.eval.ts 的写法，按本项目接口形状 + otel 机制）。
+const CLARIFY_CRITERIA = "TODO：本项目尚未编写专属澄清判据。";
+
 export default defineEval({
   description: "把 niceeval 接入 Letta（有状态记忆对话 agent / MemGPT）",
   environment: "python",
@@ -52,7 +55,7 @@ export default defineEval({
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。四条接入路径共用同一套判定。 ──
-    await evalInstall(t, { version });
+    await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA });
     await evalExperiment(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──

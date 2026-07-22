@@ -32,6 +32,9 @@ const TRANSPORT =
   "HTTP POST /api/v1/run/tasks 提交任务（body 含 prompt 与起始 url，x-api-key 鉴权）拿 run_id，" +
   "再轮询 HTTP GET /api/v1/runs/{run_id} 直到 status 到 completed/failed 终态，从结果里取抽取产物（异步非流式轮询）";
 
+// TODO 未来再写：本项目的专属澄清判据（照 db-gpt.eval.ts 的写法，按本项目接口形状 + otel 机制）。
+const CLARIFY_CRITERIA = "TODO：本项目尚未编写专属澄清判据。";
+
 export default defineEval({
   description: "把 niceeval 接入 Skyvern（浏览器操作自动化 agent）",
   environment: "python",
@@ -54,7 +57,7 @@ export default defineEval({
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。四条接入路径共用同一套判定。 ──
-    await evalInstall(t, { version });
+    await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA });
     await evalExperiment(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──

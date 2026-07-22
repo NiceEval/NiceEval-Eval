@@ -22,6 +22,22 @@ import { cloneFixture } from "./share/fixture.ts";
 const EXPECTED_PAGES =
   /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/;
 
+// closeQA 判据（DB-GPT 专属）：agent 动手前停下来问对没问对。接口形状与 otel 机制是逐项目
+// 的事实，不能写成通用假设——下列 (1)(2) 按 DB-GPT v0.8.1 实测填：
+//   接口：纯 HTTP+JSON、SSE 流式、无 WebSocket，默认 :5670；OpenAI 兼容入口是
+//         `POST /api/v2/chat/completions`（Bearer 鉴权，标准 messages 形状），
+//         前端主聊天另走私有形状的 `/api/v1/chat/completions`。
+//   otel：DB-GPT 自带一套 tracer（默认只写本地 jsonl），并内置可选的标准 OTel/OTLP 导出，
+//         默认关（需装 observability extra + TRACER_TO_OPEN_TELEMETRY=true）——所以「有没有
+//         otel」对它不是有无题，而是「要不要复用它现成的 tracing / 打开 OTLP 导出」。
+const CLARIFY_CRITERIA = `agent 在动手改代码前，先停下来回了用户一条消息做澄清，而不是直接开做。判断这条回复是否同时覆盖以下三个问题：
+(1) 确认它要对接的接口 / 传输形状对不对——即它理解的 DB-GPT 入口（应是 OpenAI Chat Completions 兼容的 HTTP 端点，如 /api/v2/chat/completions，SSE 流式、非 WebSocket）是否正确，请用户核对；
+(2) 问要不要接 / 复用 DB-GPT 的可观测性——DB-GPT 自带 tracer 且内置可选的 OpenTelemetry（OTLP）导出，问用户要不要把 niceeval 接到它现有的 tracing / otel 上；
+(3) 问有没有 flag / 多 prompt 机制（同一被测系统要不要跑多组 prompt 对比）。
+并且给出三个可选的接入档位让用户挑：① 简单接入（只写两个实验、不接 otel）② 复用 DB-GPT 的 tracing / 接 OTel ③ 支持 flag。
+合格（Y）：三个问题都问到，且明确列出这三个可选档位。
+不合格（N）：没停下来直接动手，或回复里没问这些、没给这三个选择。`;
+
 export default defineScoreEval({
   description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
   environment: "python",
@@ -38,17 +54,13 @@ export default defineScoreEval({
     });
 
     const turn = await t.send(
-      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo, then finish the ` +
-        `integration yourself — adapter, eval, and experiment. Nobody is available to confirm decisions with.\n\n` +
-        `Then actually run your eval once, end to end — bring up whatever the integration needs so a real ` +
-        `request reaches the system under test and a real response comes back — and confirm the result is ` +
-        `viewable with \`niceeval show\`. A wired-up adapter that has never actually run once is not done.\n\n` +
-        `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
+      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
+      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）。 ──
     // ── 四条接入路径共用同一套判定。 ──
-    await evalInstall(t, { version });
+    await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA });
     await evalExperiment(t);
     await evalAdapter(t);
 

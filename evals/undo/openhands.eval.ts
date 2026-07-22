@@ -35,6 +35,9 @@ const TRANSPORT =
   "（收 oh_event 事件、发 oh_user_action 动作），把服务端陆续推来的 action / observation 事件" +
   "映射成 niceeval 的标准事件流，直到 agent 结束（Socket.IO 事件协议，非普通 HTTP 请求/响应）";
 
+// TODO 未来再写：本项目的专属澄清判据（照 db-gpt.eval.ts 的写法，按本项目接口形状 + otel 机制）。
+const CLARIFY_CRITERIA = "TODO：本项目尚未编写专属澄清判据。";
+
 export default defineEval({
   description: "把 niceeval 接入 OpenHands（自主编码 agent）",
   environment: "python",
@@ -57,7 +60,7 @@ export default defineEval({
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。四条接入路径共用同一套判定。 ──
-    await evalInstall(t, { version });
+    await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA });
     await evalExperiment(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──

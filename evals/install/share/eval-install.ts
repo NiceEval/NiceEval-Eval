@@ -44,23 +44,20 @@ export async function locateInstallRoot(sandbox: TestContext["sandbox"]): Promis
 }
 
 /**
- * closeQA 判据：agent 动手前停下来回的那条消息，是否把「仓库里看不出、必须问人」的三件事
- * 问清楚，并给出三档接入方案让用户挑。judge 按连续分比例挣分（`.points(n)` × score）。
- */
-const CLARIFY_CRITERIA = `agent 在动手改代码前，先停下来回了用户一条消息做澄清，而不是直接开做。判断这条回复是否同时覆盖以下三个问题：
-(1) 确认它要对接的接口 / 传输形状对不对——即它理解的被测系统入口（HTTP 端点、消息形状等）是否正确，请用户核对；
-(2) 问这个项目有没有接 OpenTelemetry（otel）；
-(3) 问有没有 flag / 多 prompt 机制（同一被测系统要不要跑多组 prompt 对比）。
-并且给出三个可选的接入档位让用户挑：① 简单接入（只写两个实验、不接 otel）② 接 otel ③ 支持 flag。
-合格（Y）：三个问题都问到，且明确列出这三个可选档位。
-不合格（N）：没停下来直接动手，或回复里没问这些、没给这三个选择。`;
-
-/**
  * 评估安装（计分制）：交互层（加分）+ 装成没装成（gate）+ 过程侧（加分）。见文件头注。
  *
  * 前置：装机任务已由 eval 发出（`t.send(...)`），此刻 agent 应已 park 在澄清请求上。
+ *
+ * `clarifyCriteria` 必须由调用方按项目传入：closeQA 判「agent 动手前停下来问对没问对」，
+ * 而「问什么才算对」是逐项目的——被测系统的接口形状（DB-GPT 是 OpenAI 兼容 HTTP，
+ * gpt-researcher 是自研 WebSocket 帧）和它自带的 otel 机制各不一样，一份通用判据会把
+ * 项目专属事实写死成假设。判据本体因此下沉到各 eval 文件，这里只保留「停下来问 + 按连续
+ * 分挣分」这套机制。
  */
-export async function evalInstall(t: TestContext, opts: { version: string }): Promise<void> {
+export async function evalInstall(
+  t: TestContext,
+  opts: { version: string; clarifyCriteria: string },
+): Promise<void> {
   const sandbox = t.sandbox;
   const candidate = readCandidateManifest(opts.version);
 
@@ -69,12 +66,13 @@ export async function evalInstall(t: TestContext, opts: { version: string }): Pr
     // 真的停下来问了（park 在待输入请求上），而不是直接开做。
     t.parked().points(1);
     // 问的内容与给的选择是否对：接口对不对 / 有没有 otel / 有没有 flag（多 prompt），外加三档接入方案。
-    t.judge.autoevals.closedQA(CLARIFY_CRITERIA, { on: t.reply }).points(3);
+    // 判据按项目传入（见函数头注），因为「问对」的内容随宿主接口与 otel 机制而变。
+    t.judge.autoevals.closedQA(opts.clarifyCriteria, { on: t.reply }).points(3);
   });
 
   // 替用户回答：挑第一档「简单接入」。respond 就是同一 session 的下一轮——agent 拿到方案后把
   // 活干完，后面的事后取证才有东西可验。三档里第一档最省，也不引入 otel / flag 的额外判定面。
-  await t.respond("就按第一个方案：简单接入——写两个实验、先不接 otel，也先不做 flag。");
+  await t.respond("简单接入——写两个实验、先不接 otel，也先不做 flag。");
 
   // ── 事后取证：agent 干完后再回看装成没装成 + 过程侧 ──────────────────────────────
   const root = await locateInstallRoot(sandbox);
@@ -142,7 +140,6 @@ export async function evalInstall(t: TestContext, opts: { version: string }): Pr
     // "shell" 是 canonical 工具名（codex 的 command_execution、claude-code 的 Bash 都归一到它），
     // input.command 挂正则只对上 shell 调用的命令串——写进文件的文字不会被 Write 类调用误计；
     // 命中的调用会作为证据带进报告。
-    t.calledTool("shell").points(1); // 真的执行过命令，而不是只写文件
     t.calledTool("shell", { input: { command: /\bniceeval\s+init\b/ } }).points(1); // 托管指引该由 CLI 写入，不是手抄
     // (?![\s\S]*--dry)：同一条命令里带 --dry 的不算真跑。不强制 --output agent——
     // 非 TTY 下 auto profile 本来就落到 agent，逼显式 flag 会误伤
