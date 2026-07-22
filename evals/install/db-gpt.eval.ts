@@ -2,8 +2,7 @@ import { defineEval } from "niceeval";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
-import { runGenericChecks } from "./share/checks-generic.ts";
-import { assertAdapterRanLive } from "./share/checks-quality.ts";
+import { checkAdapter, checkExperimentQuality, checkInstall } from "./share/checks-generic.ts";
 import { cloneFixture } from "./share/fixture.ts";
 
 /**
@@ -27,7 +26,7 @@ export default defineEval({
   async test(t) {
     const version = t.flags.candidateVersion as string;
 
-    // 合格落点必须在这个候选里真实存在，否则路由层只会静默读零
+    // 合格落点必须在这个候选里真实存在，否则「评估是否正确加载文档」只会静默读零
     assertPagesInCandidate(EXPECTED_PAGES, version);
 
     await cloneFixture(t.sandbox, {
@@ -45,17 +44,16 @@ export default defineEval({
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 通用检查：安装链（gate）+ 通用品味（软分）。四条接入路径共用同一套判定。 ──
-    await runGenericChecks(t, { version });
+    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）。 ──
+    // ── 四条接入路径共用同一套判定。 ──
+    await checkInstall(t, { version });
+    await checkExperimentQuality(t);
+    await checkAdapter(t);
 
-    // ── 通用检查·能动性层（软分，不 gate）。adapter 真能把一条 DB-GPT 回应拉回来吗。 ──
-    // 读 agent 内层真跑落盘的 events，独立判有没有实质回应；实现见 share/checks-quality.ts。
-    await assertAdapterRanLive(t);
-
-    // ── 宿主专属·路由层（计量，不 gate）。文档到底起没起作用。 ──────────
+    // ── 宿主专属·评估是否正确加载文档（计量，不 gate）。文档到底起没起作用。 ──────
     // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在
     // input.command 里；miss 时断言的 received 会带同名 shell 调用的出入参,归因不用手搓。
-    await t.group("路由层", async () => {
+    await t.group("评估是否正确加载文档", async () => {
       t.calledTool("shell", { input: { command: INDEX_RE } }).atLeast(1); // 以随包 INDEX.md 为路由入口
       t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).atLeast(1); // 读到与宿主形态匹配的页面
       t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).atLeast(1); // 没退回官网 / GitHub main
