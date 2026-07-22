@@ -15,8 +15,8 @@
  * API；取证一律「一条命令或一个文件」——探针只取证不判定，判定是紧跟着的一条 t.check 配
  * matcher，没有解析层、没有扫落盘的循环。
  *
- * evalInstall 与 evalExperiment（见 ./eval-experiment.ts）被 install 与 undo 两组
- * 接入路径 eval 共用（undo 未来会并入 install，届时就是纯 install 内部件）；不放顶层 lib/
+ * evalInstall 与 evalExperiment（见 ./eval-experiment.ts）被 install 下五条接入路径 eval
+ * 共用；不放顶层 lib/
  * 是因为它不服务 debug 这类非接入路径评估。locateInstallRoot 也住在这里——「装在了哪」
  * 天然是安装检查的一部分，evalExperiment / evalAdapter / fixture / agent-archive
  * 都从这里取用。

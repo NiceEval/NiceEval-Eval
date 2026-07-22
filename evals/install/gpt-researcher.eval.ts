@@ -10,9 +10,9 @@ import { cloneFixture } from "./share/fixture.ts";
 /**
  * 接入路径：真实开源项目 GPT Researcher（自动化研究报告 agent）。
  *
- * 协议是自研的 WebSocket JSON 帧（/ws）：发一帧起一次研究任务，服务端陆续推
- * logs / report 等私有事件帧，直到任务完成。没有任何内置件能直接对上，agent
- * 必须手写 send 并把这些私有帧映射成标准事件流——这是四个 fixture 里唯一
+ * 协议是自研的 WebSocket 帧（/ws）：发一条 "start " 文本命令 + JSON 起一次研究任务，
+ * 服务端陆续推 logs / report 等私有事件帧，最后一帧 {"type":"path"} 收尾。没有任何内置件
+ * 能直接对上，agent 必须手写 send 并把这些私有帧映射成标准事件流——这是接入路径里
  * 保留「手写流式协议映射」这条最长路径的一个。
  */
 
@@ -22,10 +22,27 @@ import { cloneFixture } from "./share/fixture.ts";
 const EXPECTED_PAGES =
   /docs-site\/zh\/(how-to|tutorials)\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/;
 
-// TODO 未来再写：本项目的专属澄清判据（照 db-gpt.eval.ts 的写法）。已知事实待填入——
-// 接口：自研 WebSocket /ws 文本命令 + JSON 帧（FastAPI，默认 :8000）；
-// otel：无 OpenTelemetry，可观测性只有 LangChain 的 LangSmith（环境变量开关，默认关）。
-const CLARIFY_CRITERIA = "TODO：本项目尚未编写专属澄清判据。";
+// closeQA 判据（GPT Researcher 专属）：agent 动手前停下来问对没问对。接口形状与 otel 机制是逐项目
+// 的事实，不能写成通用假设——下列按 GPT Researcher v3.6.0 实测源码填：
+//   接口：自研 WebSocket /ws（FastAPI，默认 0.0.0.0:8000，端点在 backend/server/app.py，非 server.py）。
+//         连上后发文本命令 "start " 后跟一段 JSON（json.loads(data[6:])，字段含 task/report_type/
+//         tone/report_source 等）起一次研究；服务端陆续 send_json 推 type=logs（过程，多条）/ images
+//         （可选）/ report（正文分段，多条，仅 {type,output}）帧，最后一帧 {"type":"path"} 表示完成
+//         （v3.6.0 服务端不发 report_complete，那个 type 只在前端）。虽也有 REST（/api/chat 要 report
+//         字段、/report/ 收 task/report_type…）但都非 OpenAI Chat Completions 形状。
+//   otel：无 OpenTelemetry（全仓 0 命中）。可观测性只有 LangChain LangSmith（LANGCHAIN_TRACING_V2 /
+//         LANGCHAIN_API_KEY 等）；服务端 get_config_dict 把 TRACING_V2 兜底成 "true"，但缺省无 API key
+//         故不实际上报——所以「有没有 otel」对它是「要不要补一层 tracing / 提供 key 打开 LangSmith」。
+const CLARIFY_CRITERIA = `agent 在动手改代码前，先停下来回了用户一条消息做澄清，而不是直接开做。判断这条回复是否同时覆盖以下三个问题：
+(1) 确认它要对接的接口 / 传输形状对不对——即它理解的 GPT Researcher 入口（应是自研 WebSocket /ws：连上后发文本命令 "start " 跟一段 JSON 起一次研究，服务端陆续推 type 为 logs / images / report 的 JSON 帧，最后一帧 {"type":"path"} 表示完成；非 OpenAI Chat Completions 形状，也不是普通 REST 请求-响应）是否正确，请用户核对；
+(2) 问要不要接 / 复用它的可观测性——GPT Researcher 没有 OpenTelemetry，只有 LangChain 的 LangSmith 追踪（靠 LANGCHAIN_TRACING_V2 / LANGCHAIN_API_KEY 等环境变量；服务端把 TRACING_V2 兜底成 true，但缺省无 API key 故不实际上报），问用户要不要把 niceeval 接到它的 tracing 上、或提供 key 打开 LangSmith；
+(3) 问有没有 flag / 多 prompt 机制——GPT Researcher 的 start 帧支持 report_type（research_report / detailed_report / deep 等）、tone、report_source 等参数作为研究变体，问用户要不要把这些暴露成 experiment flags 跑多组对比。
+并且按 niceeval 的接入等级（Tier）摆出三档让用户挑（档位讲的是「adapter 接到多深」，与写几个实验无关）：
+① Tier 1（只接 send）——不改 GPT Researcher，只写 adapter 手写这套 WebSocket /ws 帧映射（发 start、把 logs / report / path 帧映射成 niceeval 事件流、以 path 帧作结束），先跑通基线；
+② Tier 2（send + OTel）——GPT Researcher 无原生 OTel，这一档要给它补一层 tracing（或复用现成的 LangSmith）并把 span 也发给 niceeval 看调用瀑布图；
+③ Tier 3（侵入 + flags）——把 report_type / tone 等变体暴露成 experiment flags，做研究类型 / 语气的 A/B 对比。
+合格（Y）：三个问题都问到，且明确摆出这三档接入等级让用户选。
+不合格（N）：没停下来直接动手，或回复里没问这些、没给这三档选择。`;
 
 export default defineScoreEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
@@ -51,7 +68,7 @@ export default defineScoreEval({
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）。 ──
-    // ── 四条接入路径共用同一套判定。 ──
+    // ── 五条接入路径共用同一套判定。 ──
     await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA, turn });
     await evalExperiment(t);
     await evalAdapter(t);
@@ -62,7 +79,7 @@ export default defineScoreEval({
     await t.group("评估是否正确加载文档", async () => {
       // .soft()：本段是「计量，不 gate」（见文件头），而 calledTool/notCalledTool 默认
       // severity 是 gate、.points() 与 severity 正交不降级——漏了 .soft() 会让「文档没
-      // 起作用」直接判负，与本层只计量的设计相悖。四条接入路径这段写法一致：计分 + soft。
+      // 起作用」直接判负，与本层只计量的设计相悖。五条接入路径这段写法一致：计分 + soft。
       t.calledTool("shell", { input: { command: INDEX_RE } }).points(1).soft(); // 以随包 INDEX.md 为路由入口
       t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).points(1).soft(); // 读到与宿主形态匹配的页面
       t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).points(1).soft(); // 没退回官网 / GitHub main

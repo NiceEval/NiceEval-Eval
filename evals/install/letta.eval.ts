@@ -1,11 +1,11 @@
-import { defineEval } from "niceeval";
+import { defineScoreEval } from "niceeval";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
-// undo 未来会并入 install,这两个判据本就是 install 那组的共用件——先借用,合并时这两行自然消失
-// 不调用 evalAdapter：任务描述里没有要求 agent 真跑一次，evalAdapter 断的是那件事
-import { evalExperiment } from "../install/share/eval-experiment.ts";
-import { evalInstall } from "../install/share/eval-install.ts";
-import { agentSourceMaterial, cloneFixture } from "../install/share/fixture.ts";
+import { saveAgentOutput } from "./share/agent-archive.ts";
+// 不调用 evalAdapter：任务描述没要求 agent 真跑一次（起 Letta 服务重且不稳），evalAdapter 断的正是那件事
+import { evalExperiment } from "./share/eval-experiment.ts";
+import { evalInstall } from "./share/eval-install.ts";
+import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
 
 /**
  * 接入路径：真实开源项目 Letta（前身 MemGPT，有状态记忆对话 agent）。
@@ -17,8 +17,11 @@ import { agentSourceMaterial, cloneFixture } from "../install/share/fixture.ts";
  * 消息组成的 JSON 列表，考的是「读懂被测系统自己的消息模型 + 维持会话状态」。
  */
 
+// 等价落点组，命中其一即算路由正确。`(how-to|tutorials)` 把同一批页面在新旧版本里的两代路径
+// 都编进这条正则（0.10.x 起 how-to/ 并入 tutorials/），同一份题库才能横跨新旧候选对比；候选里
+// 不存在的那代由 assertPagesInCandidate 兜底。
 const EXPECTED_PAGES =
-  /docs-site\/zh\/how-to\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/;
+  /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/;
 
 const CORE_USE_CASE =
   "一个有状态记忆的对话 agent（Letta / MemGPT）：第一轮告诉它「我叫韩梅梅、正在做一个叫 Orbit 的项目」，" +
@@ -28,13 +31,33 @@ const CORE_USE_CASE =
 
 const TRANSPORT =
   "先 HTTP POST /v1/agents 建一个 agent 拿 agent_id，再 HTTP POST /v1/agents/{agent_id}/messages 发消息" +
-  "（Bearer LETTA_SERVER_PASSWORD 鉴权；响应是 reasoning / tool_call / assistant 等分型消息的 JSON 列表，" +
-  "非 OpenAI 形状）；多轮必须复用同一个 agent_id 以维持记忆";
+  "（默认端口 8283；鉴权默认不开，仅 LETTA_SERVER_SECURE=true / --secure 时才校验 Authorization: Bearer " +
+  "LETTA_SERVER_PASSWORD；响应是 LettaResponse——reasoning / tool_call / assistant 等分型消息的 JSON 列表，" +
+  "非 OpenAI 形状）；多轮必须复用同一个 agent_id 以维持记忆（同一 agent 禁并发、须串行）";
 
-// TODO 未来再写：本项目的专属澄清判据（照 db-gpt.eval.ts 的写法，按本项目接口形状 + otel 机制）。
-const CLARIFY_CRITERIA = "TODO：本项目尚未编写专属澄清判据。";
+// closeQA 判据（Letta 专属）：agent 动手前停下来问对没问对。接口形状与 otel 机制是逐项目
+// 的事实，不能写成通用假设——下列按 Letta 0.16.8 实测源码填：
+//   接口：两跳 HTTP（FastAPI，默认端口 8283）。先 POST /v1/agents 建 agent 拿 agent_id，再
+//         POST /v1/agents/{agent_id}/messages 发消息（非流式，另有 /messages/stream 才流式）；响应是
+//         LettaResponse——reasoning / tool_call / assistant 等分型消息的 JSON 列表，非 OpenAI 形状；
+//         多轮复用同一 agent_id 维持记忆（同一 agent 禁并发、须串行）。鉴权默认不开——只有
+//         LETTA_SERVER_SECURE=true / --secure 时才校验 Authorization: Bearer LETTA_SERVER_PASSWORD。
+//   otel：有原生 OpenTelemetry（letta/otel/，OTLP gRPC），默认关，且环境变量是非标准名
+//         LETTA_OTEL_EXPORTER_OTLP_ENDPOINT + LETTA_DISABLE_TRACING（不是业界标准 OTEL_ 前缀）；另有
+//         Datadog / Sentry 均默认关。开箱即用的追踪只有「provider traces 写库（默认 True）」，经
+//         GET /v1/telemetry/{step_id} 读。所以「有没有 otel」对它是「设 OTLP 端点 / 读 provider traces / 补一层」。
+const CLARIFY_CRITERIA = `agent 在动手改代码前，先停下来回了用户一条消息做澄清，而不是直接开做。判断这条回复是否同时覆盖以下三个问题：
+(1) 确认它要对接的接口 / 传输形状对不对——即它理解的 Letta 入口（应是两跳 HTTP：先 POST /v1/agents 建 agent 拿 agent_id，再 POST /v1/agents/{agent_id}/messages 发消息，非流式、非 OpenAI 形状、响应是分型消息 JSON 列表；多轮复用同一 agent_id 维持记忆；鉴权默认关、secure 模式才用 Bearer）是否正确，请用户核对；
+(2) 问要不要接 / 复用它的可观测性——Letta 有原生 OpenTelemetry（OTLP，默认关，环境变量是非标准的 LETTA_OTEL_EXPORTER_OTLP_ENDPOINT），另有 Datadog / Sentry 默认关，开箱即用的只有写库的 provider traces（经 GET /v1/telemetry/{step_id} 读），问用户要不要把 niceeval 接到它的 OTLP / provider traces 上；
+(3) 问有没有 flag / 多 prompt 机制——Letta 建 agent 时支持 model、embedding、agent_type（letta_v1_agent / memgpt_agent / memgpt_v2_agent 等）作为变体，问用户要不要把这些暴露成 experiment flags 跑对比。
+并且按 niceeval 的接入等级（Tier）摆出三档让用户挑（档位讲的是「adapter 接到多深」，与写几个实验无关）：
+① Tier 1（只接 send）——不改 Letta，只写 adapter 走这两跳 HTTP 建 agent + 发消息、把分型消息映射成 niceeval 事件流，先跑通基线；
+② Tier 2（send + OTel）——设 LETTA_OTEL_EXPORTER_OTLP_ENDPOINT 复用它的 OTLP、或读 provider traces，把 span 也发给 niceeval 看调用瀑布图；
+③ Tier 3（侵入 + flags）——把 model / agent_type 等变体暴露成 experiment flags，做模型 / agent 类型的 A/B 对比。
+合格（Y）：三个问题都问到，且明确摆出这三档接入等级让用户选。
+不合格（N）：没停下来直接动手，或回复里没问这些、没给这三档选择。`;
 
-export default defineEval({
+export default defineScoreEval({
   description: "把 niceeval 接入 Letta（有状态记忆对话 agent / MemGPT）",
   environment: "python",
   async test(t) {
@@ -54,7 +77,7 @@ export default defineEval({
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。四条接入路径共用同一套判定。 ──
+    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。五条接入路径共用同一套判定。 ──
     await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA, turn });
     await evalExperiment(t);
 
@@ -114,10 +137,16 @@ export default defineEval({
     // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在
     // input.command 里；miss 时断言的 received 会带同名 shell 调用的出入参,归因不用手搓。
     await t.group("评估是否正确加载文档", async () => {
-      t.calledTool("shell", { input: { command: INDEX_RE } }).atLeast(1); // 以随包 INDEX.md 为路由入口
-      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).atLeast(1); // 读到与宿主形态匹配的页面
-      t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).atLeast(1); // 没退回官网 / GitHub main
+      // .soft()：本段是「计量，不 gate」（见文件头），而 calledTool/notCalledTool 默认
+      // severity 是 gate、.points() 与 severity 正交不降级——漏了 .soft() 会让「文档没
+      // 起作用」直接判负，与本层只计量的设计相悖。五条接入路径这段写法一致：计分 + soft。
+      t.calledTool("shell", { input: { command: INDEX_RE } }).points(1).soft(); // 以随包 INDEX.md 为路由入口
+      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).points(1).soft(); // 读到与宿主形态匹配的页面
+      t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).points(1).soft(); // 没退回官网 / GitHub main
     });
+
+    // 生命周期收尾：把 agent 写出的三件套 copy 到本地 .agent-output/（gitignore）供人工 review。
+    await saveAgentOutput(t, "letta");
 
     turn.succeeded();
   },

@@ -62,7 +62,7 @@ export default defineScoreEval({
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）。 ──
-    // ── 四条接入路径共用同一套判定。 ──
+    // ── 五条接入路径共用同一套判定。 ──
     await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA, turn });
     await evalExperiment(t);
     await evalAdapter(t);
@@ -73,7 +73,7 @@ export default defineScoreEval({
     await t.group("评估是否正确加载文档", async () => {
       // .soft()：本段是「计量，不 gate」（见文件头），而 calledTool/notCalledTool 默认
       // severity 是 gate、.points() 与 severity 正交不降级——漏了 .soft() 会让「文档没
-      // 起作用」直接判负，与本层只计量的设计相悖。四条接入路径这段写法一致：计分 + soft。
+      // 起作用」直接判负，与本层只计量的设计相悖。五条接入路径这段写法一致：计分 + soft。
       t.calledTool("shell", { input: { command: INDEX_RE } }).points(1).soft(); // 以随包 INDEX.md 为路由入口
       t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).points(1).soft(); // 读到与宿主形态匹配的页面
       t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).points(1).soft(); // 没退回官网 / GitHub main

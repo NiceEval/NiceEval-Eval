@@ -6,8 +6,8 @@
  * `niceeval show` 显示的 verdict 是 passed / failed 就说明请求真发出去、回应真回来，连不上会
  * 是 errored。起被测系统很重且波动大（见 lib/target-app-env.ts），所以只作软分计量、不 gate。
  *
- * 只被 db-gpt / gpt-researcher 两条 install eval 调用——undo 组三条 eval 的任务描述没有要求
- * agent「真跑一次」，调这个函数会断言一件任务里没提过的事。
+ * 只被 db-gpt / gpt-researcher 两条 eval 调用——letta / skyvern / openhands 三条的任务描述没有
+ * 要求 agent「真跑一次」，调这个函数会断言一件任务里没提过的事。
  *
  * 写法约定：判定一律用官方断言词汇，不发明领域 API；取证一律「一条命令或一个文件」。
  */

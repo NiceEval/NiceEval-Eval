@@ -3,7 +3,7 @@
  * 按 compare-models 组织、每格 runs=1、不为一两个实验先抽 shared.ts。品味红了东西还是能用
  * 的，不 gate。
  *
- * 与 evalInstall（见 ./eval-install.ts）一样被 install 与 undo 两组接入路径 eval 共用。
+ * 与 evalInstall（见 ./eval-install.ts）一样被 install 下五条接入路径 eval 共用。
  *
  * 写法约定：判定一律用官方断言词汇，不发明领域 API；取证一律「一条命令或一个文件」——
  * 探针只取证不判定，判定是紧跟着的一条 t.check 配 matcher。

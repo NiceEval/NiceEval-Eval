@@ -12,7 +12,7 @@
  * 纯落盘、不断言、不影响 verdict；任何失败都吞掉（review 辅助设施不该拖垮一条 eval）。
  *
  * 放在 evals/install/share/ 而不是顶层 lib/：只有 install 这组接入路径 eval 需要按产出归档复盘，
- * undo / debug 两组都用不上。
+ * debug 组用不上。
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
