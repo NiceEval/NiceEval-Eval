@@ -1,15 +1,14 @@
 import { defineEval } from "niceeval";
-import { isFalse, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { runGenericChecks } from "../../lib/mechanism.ts";
-import { saveAgentOutput } from "../../lib/agent-archive.ts";
+import { runGenericChecks } from "../../lib/checks-generic.ts";
 import { cloneFixture } from "../../lib/fixture.ts";
+import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+import { saveAgentOutput } from "./share/agent-archive.ts";
 import {
   assertAdapterRanLive,
   type QualityDimension,
   runQualityDimensions,
-} from "../../lib/produce-quality.ts";
-import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "../../lib/routing.ts";
+} from "./share/checks-quality.ts";
 
 /**
  * 接入路径：真实开源项目 DB-GPT（数据库对话式分析 + AWEL 工作流平台）。
@@ -20,16 +19,11 @@ import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } fro
  * 兼容标准形状不等于零映射，仍然要手写 send。
  */
 
-// 等价落点组，任意一页命中即算路由正确。how-to/ 与 tutorials/ 是同一批页面在
-// 新旧版本里的两代路径（0.10.x 起 how-to/ 并入 tutorials/），同时列上，
-// 同一份题库才能横跨新旧候选对比；候选里不存在的那代由 assertPagesInCandidate 兜底。
-const EXPECTED_PAGES = [
-  "docs-site/zh/how-to/connect-your-agent.mdx",
-  "docs-site/zh/how-to/write-send.mdx",
-  "docs-site/zh/tutorials/connect-your-agent.mdx",
-  "docs-site/zh/tutorials/write-send.mdx",
-  "docs-site/zh/tutorials/quickstart.mdx",
-];
+// 等价落点组，命中其一即算路由正确。`(how-to|tutorials)` 把同一批页面在新旧版本里的
+// 两代路径都编进这条正则（0.10.x 起 how-to/ 并入 tutorials/），同一份题库才能横跨新旧
+// 候选对比；候选里不存在的那代由 assertPagesInCandidate 兜底。
+const EXPECTED_PAGES =
+  /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/;
 
 const CORE_USE_CASE =
   "一个连着业务数据库的对话式数据分析 agent（DB-GPT）：问「这张表里销量最高的商品是什么」" +
@@ -66,12 +60,12 @@ export default defineEval({
     await runGenericChecks(t, { version });
 
     // ── 通用检查·能动性层（软分，不 gate）。adapter 真能把一条 DB-GPT 回应拉回来吗。 ──
-    // 读 agent 内层真跑落盘的 events，独立判有没有实质回应；实现见 lib/produce-quality.ts。
+    // 读 agent 内层真跑落盘的 events，独立判有没有实质回应；实现见 lib/checks-quality.ts。
     await assertAdapterRanLive(t);
 
     // ── 宿主专属·产出质量层（judge 软分）。按维度分别判 agent 写出的三件套质量。 ──
     // 判据材料（三件套源码、必须含 adapter）由 runQualityDimensions 内部经 openProject
-    // 取得，契约见 lib/produce-quality.ts 头注。
+    // 取得，契约见 lib/checks-quality.ts 头注。
     // 老版本一条 closedQA 把「传输对不对 / 输入贴不贴业务 / 断言够不够具体」揉成一个二值
     // 判定，红了也说不清红在哪。改成按维度拆成多条各自可证伪的 judge：分数因此是分维度的
     // （更高级），且能直接倒查是哪一维塌了。每条都喂全量源码（含 adapter）。
@@ -133,33 +127,14 @@ export default defineEval({
     await runQualityDimensions(t, DIMENSIONS);
 
     // ── 宿主专属·路由层（计量，不 gate）。文档到底起没起作用。 ──────────
-    const touched = bundledPagesTouched(t.events);
-
+    // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在
+    // input.command 里；calledTool 的 RegExp 只测 input 侧，各种读法都接得住。miss 时想看
+    // 「实际读了哪几页」拿不到——那是 calledTool 的 arg 缺口，已记去反馈 niceeval，不再手搓解析。
     await t.group("路由层", async () => {
-      t.check(
-        touchedIndex(t.events),
-        isTrue(`以随包 INDEX.md 为路由入口（实际读到：${touched.join(", ") || "无"}）`).atLeast(1),
-      );
-      t.check(
-        routedTo(t.events, EXPECTED_PAGES),
-        isTrue(`读到与宿主形态匹配的页面（期望其一：${EXPECTED_PAGES.join(" | ")}）`).atLeast(1),
-      );
-      t.check(
-        fellBackToOnlineDocs(t.events),
-        isFalse("没有退回官网 / GitHub main 分支").atLeast(1),
-      );
+      t.calledTool("shell", { input: { command: INDEX_RE } }).atLeast(1); // 以随包 INDEX.md 为路由入口
+      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).atLeast(1); // 读到与宿主形态匹配的页面
+      t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).atLeast(1); // 没退回官网 / GitHub main
     });
-
-    // 路由不理想时留一条永久记录，供事后按「哪一页没被读到」倒查文档。
-    // 路由正常就不写——diagnostic 是用来记问题的，每次都写会把它变成噪声日志。
-    if (!touchedIndex(t.events) || !routedTo(t.events, EXPECTED_PAGES)) {
-      t.diagnostic({
-        code: "routing-miss",
-        level: "warning",
-        message: `路由未命中期望页面。实际读到：${touched.join(", ") || "无"}`,
-        data: { touched, expected: EXPECTED_PAGES },
-      });
-    }
 
     // 生命周期收尾：把 agent 写出的三件套 copy 到本地 .agent-output/（gitignore）供人工 review。
     // 沙箱马上就销毁，产物随之消失——趁现在抓一份。纯落盘，不影响 verdict。

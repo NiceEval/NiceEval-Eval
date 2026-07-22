@@ -1,12 +1,13 @@
 import { defineEval } from "niceeval";
 import { includes, isFalse, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate } from "../../lib/candidate.ts";
-import { prepareDebugSandbox, readRawJson } from "../../lib/debug-fixture.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+import { prepareDebugSandbox, readRawJson, USE_CACHE_FAILURE } from "./share/fixture.ts";
 
 /**
  * 深挖题:定位到失败的 attempt 之后,能不能靠 `niceeval show @<locator> --execution`
- * 读出 transcript 里的实际执行细节,而不是靠猜。
+ * 读出 transcript 里的实际执行细节,而不是靠猜。evalId/expId/locator 定义在
+ * share/fixture.ts,failed-assertion 那条 eval 也在用同一份(同一次失败,不重复抄一遍)。
  *
  * transcript 里 agent 选了 unstable_cache 包一层 + revalidateTag('products','max'),
  * 而 gate 断言要的是 'use cache' 指令。中途唯一一次重试是 patch 上下文对不上导致的
@@ -16,9 +17,9 @@ import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
 const EXPECTED_PAGES =
   /docs-site\/zh\/how-to\/viewing-results\.mdx|docs-site\/zh\/troubleshooting\/debugging\.mdx/;
 
-const LOCATOR = "@1csayr61";
+const { evalId, expId, locator } = USE_CACHE_FAILURE;
 // 定位到这次 attempt 只是前提,本题真正考的是有没有展开执行事件流看 transcript
-const EXECUTION_RE = /niceeval\s+show\s+@1csayr61\b[^\n]*--execution/;
+const EXECUTION_RE = new RegExp(`niceeval\\s+show\\s+${locator}\\b[^\\n]*--execution`);
 
 export default defineEval({
   description: "[dig] 从失败 attempt 的执行事件流里,读出 agent 实际用的方案",
@@ -33,8 +34,8 @@ export default defineEval({
     const turn = await t.send(
       `这个项目已经用 niceeval 跑过评估,结果数据都在 .niceeval 里。
 
-memory/agent-029-use-cache-directive 这条 eval 在 compare/codex-gpt-5.6-luna--agents-md 下
-失败了,那次 attempt 的 locator 是 ${LOCATOR}。
+${evalId} 这条 eval 在 ${expId} 下
+失败了,那次 attempt 的 locator 是 ${locator}。
 
 请回答:那次 attempt 里,agent 实际用什么 API 实现缓存?它中途换过几次方案?
 

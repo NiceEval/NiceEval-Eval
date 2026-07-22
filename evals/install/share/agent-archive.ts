@@ -10,15 +10,18 @@
  * eval id，所以由各 eval 把自己的目标名显式传进来，命名才准。
  *
  * 纯落盘、不断言、不影响 verdict；任何失败都吞掉（review 辅助设施不该拖垮一条 eval）。
+ *
+ * 放在 evals/install/share/ 而不是顶层 lib/:只有 install 这组接入路径 eval 需要按「三件套」
+ * 归档产出复盘，undo / debug 两组都用不上。
  */
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { TestContext } from "niceeval";
-import { DEFAULT_SOURCE_IGNORE_DIRS } from "./fixture.ts";
+import { DEFAULT_SOURCE_IGNORE_DIRS } from "../../../lib/fixture.ts";
 
 /** 归档根目录：仓库根下的 .agent-output（.gitignore 已忽略）。 */
-export const AGENT_OUTPUT_DIR = resolve(import.meta.dirname, "../.agent-output");
+export const AGENT_OUTPUT_DIR = resolve(import.meta.dirname, "../../../.agent-output");
 
 // 与 db-gpt.eval.ts 产出质量层同一套「哪些是 agent 手写三件套」的路径判定。
 const isEval = (p: string) => /\.eval\.ts$/.test(p);

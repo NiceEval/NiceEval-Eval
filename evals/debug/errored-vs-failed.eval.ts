@@ -1,8 +1,8 @@
 import { defineEval } from "niceeval";
 import { includes, isFalse, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate } from "../../lib/candidate.ts";
-import { prepareDebugSandbox, readRawJson } from "../../lib/debug-fixture.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+import { prepareDebugSandbox, readRawJson } from "./share/fixture.ts";
 
 /**
  * 定位题:区分「断言失败」与「基础设施出错」这两类不同的问题。

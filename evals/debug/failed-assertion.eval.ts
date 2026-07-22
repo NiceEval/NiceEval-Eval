@@ -1,24 +1,26 @@
 import { defineEval } from "niceeval";
 import { includes, isFalse, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate } from "../../lib/candidate.ts";
-import { prepareDebugSandbox, readRawJson } from "../../lib/debug-fixture.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+import { prepareDebugSandbox, readRawJson, USE_CACHE_FAILURE } from "./share/fixture.ts";
 
 /**
  * 定位题:能不能靠 `niceeval show` 一路钻到一次失败的 attempt,而不是绕开它自己翻
  * .niceeval 原始 JSON。题面只给「哪条 eval 在哪个 experiment 下失败」,不提断言内容——
- * 标准答案(locator @1csayr61、断言关键词 "use cache")由人工从签入的 .niceeval 数据核对。
+ * 标准答案(locator、断言关键词 "use cache")由人工从签入的 .niceeval 数据核对,
+ * evalId/expId/locator 定义在 share/fixture.ts,agent-approach 这条 eval 也在用同一份。
  */
 
 const EXPECTED_PAGES =
   /docs-site\/zh\/troubleshooting\/debugging\.mdx|docs-site\/zh\/how-to\/viewing-results\.mdx/;
 
+const { evalId, expId, locator } = USE_CACHE_FAILURE;
+
 // 先钻到出问题的那一格:show 收窄到这条 eval 或这个 experiment
-const DISCOVERY_RE =
-  /niceeval\s+show\b[^\n]*(memory\/agent-029-use-cache-directive|compare\/codex-gpt-5\.6-luna--agents-md)/;
+const DISCOVERY_RE = new RegExp(`niceeval\\s+show\\b[^\\n]*(${evalId}|${expId})`);
 
 // 再钻到具体 attempt 看断言详情
-const LOCATOR_RE = /niceeval\s+show\s+@1csayr61/;
+const LOCATOR_RE = new RegExp(`niceeval\\s+show\\s+${locator}`);
 
 export default defineEval({
   description: "[locate] 定位一次失败的断言与它的 attempt locator",
@@ -34,13 +36,13 @@ export default defineEval({
     const turn = await t.send(
       `这个项目已经用 niceeval 跑过评估,结果数据都在 .niceeval 里。
 
-请回答:memory/agent-029-use-cache-directive 这条 eval 在 compare/codex-gpt-5.6-luna--agents-md 下失败了。它失败在哪条断言上?给出那次 attempt 的 locator。
+请回答:${evalId} 这条 eval 在 ${expId} 下失败了。它失败在哪条断言上?给出那次 attempt 的 locator。
 
 只查信息,不要修改任何文件,也不要重新运行任何实验。`,
     );
 
     await t.group("答案层", async () => {
-      t.check(t.reply, includes("@1csayr61").gate());
+      t.check(t.reply, includes(locator).gate());
       t.check(t.reply, includes("use cache").gate());
     });
 

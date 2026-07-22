@@ -3,12 +3,28 @@
  *
  * 每条题各自一个独立的 eval 文件(见 evals/debug/*.eval.ts),问题、标准答案、判据都各写各的
  * ——这里只留三条题都要做的同一段准备步骤,不再用一个通用 factory 把它们揉进一份配置里。
+ *
+ * 这个文件放在 evals/debug/share/ 而不是顶层 lib/:它只服务 debug 这一组 eval,不是跨组
+ * 通用件——lib/ 留给 routing.ts / candidate.ts 这类装/查/接入路径都要用的东西。
  */
 
 import type { StreamEvent, TestContext } from "niceeval";
 
 /** fixture 目录(相对各 eval 文件),含最小宿主配置 + 整目录签入的 .niceeval,数据永不重跑 */
-export const DEBUG_FIXTURE_DIR = "../../fixtures/results/coding-agent-memory";
+export const DEBUG_FIXTURE_DIR = "../../../fixtures/results/coding-agent-memory";
+
+/**
+ * 一次具体的失败 attempt:memory/agent-029-use-cache-directive 这条 eval 在
+ * compare/codex-gpt-5.6-luna--agents-md 下失败了,那次 attempt 的 locator 是 @1csayr61。
+ *
+ * failed-assertion(定位它)与 agent-approach(深挖它)两条 eval 都围着这同一次失败出题,
+ * 三个字段只在这一处写——fixture 重新导出、locator 变了,只用改这一处,不用两个文件各改一次。
+ */
+export const USE_CACHE_FAILURE = {
+  evalId: "memory/agent-029-use-cache-directive",
+  expId: "compare/codex-gpt-5.6-luna--agents-md",
+  locator: "@1csayr61",
+};
 
 /**
  * 上传只读 fixture 并装好候选版本。
