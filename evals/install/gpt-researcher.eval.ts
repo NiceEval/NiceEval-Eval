@@ -53,8 +53,7 @@ export default defineEval({
 
     // ── 宿主专属·路由层（计量，不 gate）。文档到底起没起作用。 ──────────
     // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在
-    // input.command 里；calledTool 的 RegExp 只测 input 侧，各种读法都接得住。miss 时想看
-    // 「实际读了哪几页」拿不到——那是 calledTool 的 arg 缺口，已记去反馈 niceeval，不再手搓解析。
+    // input.command 里；miss 时断言的 received 会带同名 shell 调用的出入参,归因不用手搓。
     await t.group("路由层", async () => {
       t.calledTool("shell", { input: { command: INDEX_RE } }).atLeast(1); // 以随包 INDEX.md 为路由入口
       t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).atLeast(1); // 读到与宿主形态匹配的页面

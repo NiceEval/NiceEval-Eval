@@ -3,7 +3,7 @@ import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
 // undo 未来会并入 install,这两个判据本就是 install 那组的共用件——先借用,合并时这两行自然消失
 import { runGenericChecks } from "../install/share/checks-generic.ts";
-import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../install/share/fixture.ts";
+import { agentSourceMaterial, cloneFixture } from "../install/share/fixture.ts";
 
 /**
  * 接入路径：真实开源项目 Letta（前身 MemGPT，有状态记忆对话 agent）。
@@ -53,25 +53,10 @@ export default defineEval({
     await runGenericChecks(t, { version });
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
-    // 读全量 agent 源码喂给 judge（含 adapter）——「传输方式对不对」只在 adapter 里看得见。
-    // Letta 是 Python 宿主，.ts 基本只有 agent 自己写的，全量喂进去不会混入宿主代码。
-    const src = await t.sandbox.readSourceFiles({
-      extensions: ["ts"],
-      ignoreDirs: [...DEFAULT_SOURCE_IGNORE_DIRS],
-    });
-    const isEval = (p: string) => /\.eval\.ts$/.test(p);
-    const isExperiment = (p: string) => /(^|\/)experiments\//.test(p);
-    const isConfig = (p: string) => /(^|\/)niceeval\.config\.ts$/.test(p);
-    const label = (files: (typeof src)[number][]) =>
-      files.map((f) => `----- ${f.path} -----\n${f.content}`).join("\n\n") || "（无）";
-
-    const experimentSource = label(src.filter((f) => isExperiment(f.path)));
-    const evalSource = label(src.filter((f) => isEval(f.path)));
-    const adapterSource = label(
-      src.filter((f) => !isExperiment(f.path) && !isEval(f.path) && !isConfig(f.path)),
-    );
-    const material =
-      `# experiment\n${experimentSource}\n\n# eval\n${evalSource}\n\n# adapter / 其它 agent 写的源码\n${adapterSource}`;
+    // 一条 find+cat 命令把 agent 手写的 .ts 带路径头串成材料（含 adapter）——「传输方式
+    // 对不对」只在 adapter 里看得见；judge 按路径头自行区分 experiment / eval / adapter。
+    // Letta 是 Python 宿主，.ts 基本只有 agent 自己写的，不会混入宿主代码。
+    const material = await agentSourceMaterial(t.sandbox);
 
     const DIMENSIONS: { key: string; threshold: number; criteria: string }[] = [
       {
@@ -121,8 +106,7 @@ export default defineEval({
 
     // ── 第三层：路由层（计量，不 gate）。文档到底起没起作用。 ──────────
     // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在
-    // input.command 里；calledTool 的 RegExp 只测 input 侧，各种读法都接得住。miss 时想看
-    // 「实际读了哪几页」拿不到——那是 calledTool 的 arg 缺口，已记去反馈 niceeval，不再手搓解析。
+    // input.command 里；miss 时断言的 received 会带同名 shell 调用的出入参,归因不用手搓。
     await t.group("路由层", async () => {
       t.calledTool("shell", { input: { command: INDEX_RE } }).atLeast(1); // 以随包 INDEX.md 为路由入口
       t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).atLeast(1); // 读到与宿主形态匹配的页面

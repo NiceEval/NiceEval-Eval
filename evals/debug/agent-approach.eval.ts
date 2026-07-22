@@ -1,8 +1,8 @@
 import { defineEval } from "niceeval";
-import { includes, isFalse, isTrue } from "niceeval/expect";
+import { includes, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate } from "../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
-import { prepareDebugSandbox, readRawJson, USE_CACHE_FAILURE } from "./share/fixture.ts";
+import { prepareDebugSandbox, RAW_JSON_RE, USE_CACHE_FAILURE } from "./share/fixture.ts";
 
 /**
  * 深挖题:定位到失败的 attempt 之后,能不能靠 `niceeval show @<locator> --execution`
@@ -43,15 +43,18 @@ ${evalId} 这条 eval 在 ${expId} 下
     );
 
     await t.group("答案层", async () => {
-      t.check(t.reply, includes("unstable_cache").gate());
-      t.check(t.reply, includes("revalidateTag").gate());
+      t.check(t.reply, includes("unstable_cache"));
+      t.check(t.reply, includes("revalidateTag"));
     });
 
     // ── 命令调用链(gate)。本题给定了 locator,考的不是「能不能找到」,而是「能不能靠
     // --execution 展开执行事件流看 transcript」,而不是绕开它自己翻 .niceeval 原始 JSON。 ──
     await t.group("命令调用链", async () => {
-      t.calledTool("shell", { input: { command: EXECUTION_RE } }).atLeast(1).gate();
-      t.check(readRawJson(t.events), isFalse("没有徒手翻 .niceeval 原始 JSON").gate());
+      t.calledTool("shell", { input: { command: EXECUTION_RE } });
+      // 答案的出处:unstable_cache 真出现在 --execution 那次调用的输出里,不是从别处拼凑。
+      // output 断的是工具返回给 agent 的内容;展示层可能截断关键词,所以软分不 gate。
+      t.calledTool("shell", { input: { command: EXECUTION_RE }, output: /unstable_cache/ }).atLeast(1);
+      t.notCalledTool("shell", { input: { command: RAW_JSON_RE } }); // 没有徒手翻 .niceeval 原始 JSON
     });
 
     await t.group("路由层", async () => {

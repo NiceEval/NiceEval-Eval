@@ -18,7 +18,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { TestContext } from "niceeval";
-import { DEFAULT_SOURCE_IGNORE_DIRS } from "./fixture.ts";
+import { findAgentTs } from "./fixture.ts";
 
 /** 归档根目录：仓库根下的 .agent-output（.gitignore 已忽略）。 */
 export const AGENT_OUTPUT_DIR = resolve(import.meta.dirname, "../../../.agent-output");
@@ -44,13 +44,12 @@ function slug(s: string): string {
  */
 export async function saveAgentOutput(t: TestContext, target: string): Promise<string | undefined> {
   try {
-    const src = await t.sandbox.readSourceFiles({
-      extensions: ["ts"],
-      ignoreDirs: DEFAULT_SOURCE_IGNORE_DIRS,
-    });
-    const picked = src.filter(
-      (f) => isEval(f.path) || isExperiment(f.path) || isAdapter(f.path) || isConfig(f.path),
-    );
+    // find 只列路径,三件套的归属判定留在本地谓词里;内容逐个 readFile(通常不到十个文件)。
+    const list = await t.sandbox.runShell(`${findAgentTs()} 2>/dev/null`);
+    const picked = list.stdout
+      .split("\n")
+      .map((p) => p.trim().replace(/^\.\//, ""))
+      .filter((p) => p && (isEval(p) || isExperiment(p) || isAdapter(p) || isConfig(p)));
     if (picked.length === 0) return undefined;
 
     const version = slug(String(t.flags.candidateVersion ?? "unknown"));
@@ -60,10 +59,10 @@ export async function saveAgentOutput(t: TestContext, target: string): Promise<s
     const stamp = new Date().toISOString().replace(/[:.]/g, "-");
     const root = resolve(AGENT_OUTPUT_DIR, version, slug(target), `${stamp}__${model}`);
 
-    for (const f of picked) {
-      const dst = resolve(root, f.path);
+    for (const p of picked) {
+      const dst = resolve(root, p);
       mkdirSync(dirname(dst), { recursive: true });
-      writeFileSync(dst, f.content);
+      writeFileSync(dst, await t.sandbox.readFile(p));
     }
     writeFileSync(
       resolve(root, "_meta.txt"),
@@ -73,7 +72,7 @@ export async function saveAgentOutput(t: TestContext, target: string): Promise<s
         `model=${model}`,
         `sandboxId=${t.sandbox.sandboxId}`,
         `files:`,
-        ...picked.map((f) => `  ${f.path}`),
+        ...picked.map((p) => `  ${p}`),
         "",
       ].join("\n"),
     );

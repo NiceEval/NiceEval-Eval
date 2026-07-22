@@ -79,15 +79,15 @@ export async function runGenericChecks(
     : null;
 
   await t.group("安装链", async () => {
-    t.check(root !== null, isTrue("niceeval.config.ts 存在").gate());
+    t.check(root !== null, isTrue("niceeval.config.ts 存在"));
     t.check(
       version,
       satisfies(
         (v) => v === candidate.version,
         `依赖解析到候选包 niceeval@${candidate.version}（实际：${version || "未安装"}）`,
-      ).gate(),
+      ),
     );
-    t.check(managed.length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块").gate());
+    t.check(managed.length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块"));
     t.check(list, commandSucceeded());
     t.check(
       list.stdout,
@@ -95,11 +95,11 @@ export async function runGenericChecks(
         (s) =>
           (s as string).split("\n").some((l) => /\S/.test(l) && !/^(NAME|ID|—|-{3,})/.test(l.trim())),
         "niceeval 能发现 agent 写出的 eval",
-      ).gate(),
+      ),
     );
     t.check(
       dry.stdout,
-      satisfies((s) => /^niceeval: plan-row /m.test(s as string), "exp --dry 能规划出至少一个 experiment").gate(),
+      satisfies((s) => /^niceeval: plan-row /m.test(s as string), "exp --dry 能规划出至少一个 experiment"),
     );
     // 非 TS 宿主可以没有 tsconfig，这时不判——有 tsconfig 才要求 agent 自己的代码干净
     if (tsc) {
@@ -108,7 +108,7 @@ export async function runGenericChecks(
         satisfies(
           (s) => !/^(?!.*node_modules).*\(\d+,\d+\): error TS\d+:/m.test(s as string),
           "agent 写的代码 typecheck 干净",
-        ).gate(),
+        ),
       );
     }
   });

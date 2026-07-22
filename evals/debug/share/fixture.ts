@@ -8,7 +8,7 @@
  * 通用件——lib/ 留给 routing.ts / candidate.ts 这类装/查/接入路径都要用的东西。
  */
 
-import type { StreamEvent, TestContext } from "niceeval";
+import type { TestContext } from "niceeval";
 
 /** fixture 目录(相对各 eval 文件),含最小宿主配置 + 整目录签入的 .niceeval,数据永不重跑 */
 export const DEBUG_FIXTURE_DIR = "../../../fixtures/results/coding-agent-memory";
@@ -58,8 +58,9 @@ export async function prepareDebugSandbox(t: TestContext): Promise<void> {
   }
 }
 
-/** 反模式判据:agent 有没有绕开 niceeval show,徒手翻 .niceeval 下的原始 JSON */
-export function readRawJson(events: readonly StreamEvent[]): boolean {
-  const haystack = events.map((e) => JSON.stringify(e)).join("\n");
-  return /\.niceeval\/[\w./-]*\.json/.test(haystack);
-}
+/**
+ * 反模式判据:agent 绕开 niceeval show、徒手翻 .niceeval 下的原始 JSON。
+ * 配 `t.notCalledTool("shell", { input: { command: RAW_JSON_RE } })` 只测调用入参——
+ * 回复里提到路径、工具输出里出现路径都不算翻(旧版扫全事件流会把这两种都误记)。
+ */
+export const RAW_JSON_RE = /\.niceeval\/[\w./-]*\.json/;

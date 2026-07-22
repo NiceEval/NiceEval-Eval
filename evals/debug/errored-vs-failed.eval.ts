@@ -1,8 +1,8 @@
 import { defineEval } from "niceeval";
-import { includes, isFalse, isTrue } from "niceeval/expect";
+import { includes, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate } from "../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
-import { prepareDebugSandbox, readRawJson } from "./share/fixture.ts";
+import { prepareDebugSandbox, RAW_JSON_RE } from "./share/fixture.ts";
 
 /**
  * 定位题:区分「断言失败」与「基础设施出错」这两类不同的问题。
@@ -39,18 +39,18 @@ export default defineEval({
     );
 
     await t.group("答案层", async () => {
-      t.check(t.reply, includes("turn-failed").gate());
-      t.check(t.reply, includes("503").gate());
-      t.check(t.reply, includes("compare/codex-gpt-5.6-luna--mempal").gate());
-      t.check(t.reply, includes("compare/codex-gpt-5.6-luna--nowledge").gate());
+      t.check(t.reply, includes("turn-failed"));
+      t.check(t.reply, includes("503"));
+      t.check(t.reply, includes("compare/codex-gpt-5.6-luna--mempal"));
+      t.check(t.reply, includes("compare/codex-gpt-5.6-luna--nowledge"));
     });
 
     // ── 命令调用链(gate)。errored 的原因不会出现在汇总视图的通过率数字里——必须
     // 钻到具体某次 attempt 才能看到 error.code / 网关状态码,而不是靠猜或翻原始 JSON。 ──
     await t.group("命令调用链", async () => {
-      t.calledTool("shell", { input: { command: DISCOVERY_RE } }).atLeast(1).gate();
-      t.calledTool("shell", { input: { command: LOCATOR_RE } }).atLeast(1).gate();
-      t.check(readRawJson(t.events), isFalse("没有徒手翻 .niceeval 原始 JSON").gate());
+      t.calledTool("shell", { input: { command: DISCOVERY_RE } });
+      t.calledTool("shell", { input: { command: LOCATOR_RE } });
+      t.notCalledTool("shell", { input: { command: RAW_JSON_RE } }); // 没有徒手翻 .niceeval 原始 JSON
     });
 
     await t.group("路由层", async () => {

@@ -1,8 +1,8 @@
 import { defineEval } from "niceeval";
-import { includes, isFalse, isTrue } from "niceeval/expect";
+import { includes, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate } from "../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
-import { prepareDebugSandbox, readRawJson, USE_CACHE_FAILURE } from "./share/fixture.ts";
+import { prepareDebugSandbox, RAW_JSON_RE, USE_CACHE_FAILURE } from "./share/fixture.ts";
 
 /**
  * 定位题:能不能靠 `niceeval show` 一路钻到一次失败的 attempt,而不是绕开它自己翻
@@ -42,16 +42,16 @@ export default defineEval({
     );
 
     await t.group("答案层", async () => {
-      t.check(t.reply, includes(locator).gate());
-      t.check(t.reply, includes("use cache").gate());
+      t.check(t.reply, includes(locator));
+      t.check(t.reply, includes("use cache"));
     });
 
     // ── 命令调用链(gate)。这条 eval 评的核心就是这个:能不能正确调用 niceeval show
     // 定位到失败的那次 attempt,而不是翻 .niceeval 原始 JSON 硬凑答案。 ──
     await t.group("命令调用链", async () => {
-      t.calledTool("shell", { input: { command: DISCOVERY_RE } }).atLeast(1).gate();
-      t.calledTool("shell", { input: { command: LOCATOR_RE } }).atLeast(1).gate();
-      t.check(readRawJson(t.events), isFalse("没有徒手翻 .niceeval 原始 JSON").gate());
+      t.calledTool("shell", { input: { command: DISCOVERY_RE } });
+      t.calledTool("shell", { input: { command: LOCATOR_RE } });
+      t.notCalledTool("shell", { input: { command: RAW_JSON_RE } }); // 没有徒手翻 .niceeval 原始 JSON
     });
 
     // ── 路由层(计量,不 gate)。判据是碰过哪个路径、不是用了哪个工具。 ──

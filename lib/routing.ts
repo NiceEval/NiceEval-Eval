@@ -13,9 +13,8 @@
  * 新旧两代路径编进去，命中其一即算路由对），既喂给 calledTool 也喂给 assertPagesInCandidate
  * ——全程是数据，没有把数组转正则的中间函数。
  *
- * 缺一块能力：miss 时想知道「那 agent 实际读了哪几页」做归因——calledTool 的
- * AssertionHandle 只有 atLeast/gate/optional，拿不到命中列表。那是要反馈给 niceeval 的
- * arg 缺口，不为它保留手搓的解析层。
+ * miss 时的归因不用手搓解析：calledTool 失败时会把同名 shell 调用的出入参作为近失
+ * 证据带进断言的 received，「agent 实际读了哪几页」直接在报告里看。
  */
 
 /** 随包索引入口，读到它算走对了路由起点 */

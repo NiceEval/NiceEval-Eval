@@ -65,3 +65,25 @@ export async function cloneFixture(sandbox: SandboxRunShell, repo: FixtureRepo):
 }
 
 export const DEFAULT_SOURCE_IGNORE_DIRS = [".git", ".next", "node_modules", "dist", "build", "coverage"];
+
+/** 排除宿主噪声目录的 find 谓词；哪些目录算噪声明明白白写在命令里，不藏进 API 约定。 */
+export function findAgentTs(extraIgnoreDirs: string[] = []): string {
+  const prune = [...DEFAULT_SOURCE_IGNORE_DIRS, ...extraIgnoreDirs]
+    .map((d) => `-not -path '*/${d}/*'`)
+    .join(" ");
+  return `find . -name '*.ts' ${prune}`;
+}
+
+/**
+ * 把 agent 手写的 .ts 源码带路径头串成一份 judge 材料。一条 find+cat 命令取证——
+ * 没有解析层、没有扫落盘的循环，判定仍由紧跟着的 judge 完成（写法约定同 checks-generic.ts）。
+ */
+export async function agentSourceMaterial(
+  sandbox: SandboxRunShell,
+  extraIgnoreDirs: string[] = [],
+): Promise<string> {
+  const out = await sandbox.runShell(
+    `${findAgentTs(extraIgnoreDirs)} -exec sh -c 'for f; do printf "\\n----- %s -----\\n" "$f"; cat "$f"; done' _ {} + 2>/dev/null`,
+  );
+  return out.stdout.trim() || "（无）";
+}
