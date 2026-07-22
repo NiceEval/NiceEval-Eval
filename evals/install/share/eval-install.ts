@@ -1,12 +1,18 @@
 /**
- * 评估安装：niceeval 装没装成（gate）+ agent 有没有真的敲命令把它跑起来（软分）。
+ * 评估安装（计分制 / 加分式）：一条题内叠加挣分，分从 0 往上累加、不声明满分。三段挣分：
  *
- * gate 的那部分红了，说明 agent 没把 niceeval 装成一个能用的东西，后面「写得好不好」
- * 「读没读对文档」都失去讨论前提。gate 部分是唯一影响 verdict 硬失败的判定——这组红了，
- * 后面所有判定都失去前提。
+ * 1. 交互层（加分）——装机任务发出后，好的 agent 不闷头做，而是先停下来（park 在一个待
+ *    输入请求上）把仓库里看不出的三件事问清楚，拿到方案再动手。`t.parked()` 判「停没停下来
+ *    问」，closeQA 判「问得对不对、给的选择对不对」。随后替用户挑第一档「简单接入」，用
+ *    `t.respond` 驱动下一轮把活干完——后面的取证才有东西可验。
+ * 2. 装成没装成（gate）——niceeval 装没装成、装的东西能不能跑。这几条是 gate：红了 verdict
+ *    直接 failed，后面「写得好不好」「读没读对文档」都失去讨论前提。gate 不给分，但挂了就把
+ *    整题按判定面判负（`.points` 与 severity 正交）。
+ * 3. 过程侧（加分）——agent 自己有没有真的敲命令把它跑起来（而不是手抄托管指引、只写文件
+ *    不执行）。每条检查点值 1 分。
  *
- * 写法约定：判定一律用官方断言词汇（calledTool / matchers / judge），不发明领域 API；
- * 取证一律「一条命令或一个文件」——探针只取证不判定，判定是紧跟着的一条 t.check 配
+ * 写法约定：判定一律用官方断言词汇（parked / calledTool / matchers / judge），不发明领域
+ * API；取证一律「一条命令或一个文件」——探针只取证不判定，判定是紧跟着的一条 t.check 配
  * matcher，没有解析层、没有扫落盘的循环。
  *
  * evalInstall 与 evalExperiment（见 ./eval-experiment.ts）被 install 与 undo 两组
@@ -38,12 +44,39 @@ export async function locateInstallRoot(sandbox: TestContext["sandbox"]): Promis
 }
 
 /**
- * 评估安装：niceeval 装没装成（gate）+ agent 有没有真的敲命令把它跑起来（软分）。
- * gate 部分是唯一影响 verdict 硬失败的判定——这组红了，后面所有判定都失去前提。
+ * closeQA 判据：agent 动手前停下来回的那条消息，是否把「仓库里看不出、必须问人」的三件事
+ * 问清楚，并给出三档接入方案让用户挑。judge 按连续分比例挣分（`.points(n)` × score）。
+ */
+const CLARIFY_CRITERIA = `agent 在动手改代码前，先停下来回了用户一条消息做澄清，而不是直接开做。判断这条回复是否同时覆盖以下三个问题：
+(1) 确认它要对接的接口 / 传输形状对不对——即它理解的被测系统入口（HTTP 端点、消息形状等）是否正确，请用户核对；
+(2) 问这个项目有没有接 OpenTelemetry（otel）；
+(3) 问有没有 flag / 多 prompt 机制（同一被测系统要不要跑多组 prompt 对比）。
+并且给出三个可选的接入档位让用户挑：① 简单接入（只写两个实验、不接 otel）② 接 otel ③ 支持 flag。
+合格（Y）：三个问题都问到，且明确列出这三个可选档位。
+不合格（N）：没停下来直接动手，或回复里没问这些、没给这三个选择。`;
+
+/**
+ * 评估安装（计分制）：交互层（加分）+ 装成没装成（gate）+ 过程侧（加分）。见文件头注。
+ *
+ * 前置：装机任务已由 eval 发出（`t.send(...)`），此刻 agent 应已 park 在澄清请求上。
  */
 export async function evalInstall(t: TestContext, opts: { version: string }): Promise<void> {
   const sandbox = t.sandbox;
   const candidate = readCandidateManifest(opts.version);
+
+  // ── 交互层（加分，不 gate）：动手前先停下来把仓库里看不出的三件事问清楚 ──────────
+  await t.group("评估交互", async () => {
+    // 真的停下来问了（park 在待输入请求上），而不是直接开做。
+    t.parked().points(1);
+    // 问的内容与给的选择是否对：接口对不对 / 有没有 otel / 有没有 flag（多 prompt），外加三档接入方案。
+    t.judge.autoevals.closedQA(CLARIFY_CRITERIA, { on: t.reply }).points(3);
+  });
+
+  // 替用户回答：挑第一档「简单接入」。respond 就是同一 session 的下一轮——agent 拿到方案后把
+  // 活干完，后面的事后取证才有东西可验。三档里第一档最省，也不引入 otel / flag 的额外判定面。
+  await t.respond("就按第一个方案：简单接入——写两个实验、先不接 otel，也先不做 flag。");
+
+  // ── 事后取证：agent 干完后再回看装成没装成 + 过程侧 ──────────────────────────────
   const root = await locateInstallRoot(sandbox);
   const at = root ?? ".";
 
@@ -69,6 +102,7 @@ export async function evalInstall(t: TestContext, opts: { version: string }): Pr
     : null;
 
   await t.group("评估安装", async () => {
+    // 装成没装成是后面一切的前提：这几条是 gate（不给分），红了 verdict 直接 failed。
     t.check(root !== null, isTrue("niceeval.config.ts 存在"));
     t.check(
       version,
@@ -102,16 +136,17 @@ export async function evalInstall(t: TestContext, opts: { version: string }): Pr
       );
     }
 
-    // 过程侧：agent 该敲的命令敲没敲。跟上面几条的区别：上面是事后取证验产物，这里回看
-    // agent 自己的事件流——两者都绿才说明「东西是对的」且「是 agent 自己走完流程做对的」。
+    // 过程侧（加分，每条 1 分）：agent 该敲的命令敲没敲。跟上面几条的区别：上面是事后取证验
+    // 产物、是 gate；这里回看 agent 自己的事件流、是加分——挣到才说明「是 agent 自己走完流程
+    // 做对的」，没挣到也不连坐 gate。
     // "shell" 是 canonical 工具名（codex 的 command_execution、claude-code 的 Bash 都归一到它），
     // input.command 挂正则只对上 shell 调用的命令串——写进文件的文字不会被 Write 类调用误计；
     // 命中的调用会作为证据带进报告。
-    t.calledTool("shell").atLeast(1); // 真的执行过命令，而不是只写文件
-    t.calledTool("shell", { input: { command: /\bniceeval\s+init\b/ } }).atLeast(1); // 托管指引该由 CLI 写入，不是手抄
+    t.calledTool("shell").points(1); // 真的执行过命令，而不是只写文件
+    t.calledTool("shell", { input: { command: /\bniceeval\s+init\b/ } }).points(1); // 托管指引该由 CLI 写入，不是手抄
     // (?![\s\S]*--dry)：同一条命令里带 --dry 的不算真跑。不强制 --output agent——
     // 非 TTY 下 auto profile 本来就落到 agent，逼显式 flag 会误伤
-    t.calledTool("shell", { input: { command: /\bniceeval\s+exp\b(?![\s\S]*--dry)/ } }).atLeast(1);
-    t.calledTool("shell", { input: { command: /\bniceeval\s+show\b/ } }).atLeast(1);
+    t.calledTool("shell", { input: { command: /\bniceeval\s+exp\b(?![\s\S]*--dry)/ } }).points(1);
+    t.calledTool("shell", { input: { command: /\bniceeval\s+show\b/ } }).points(1);
   });
 }
