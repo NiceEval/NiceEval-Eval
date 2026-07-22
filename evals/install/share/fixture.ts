@@ -5,6 +5,8 @@
  * 该发什么指令、该断言什么」无关，所以留在这里当工具函数。发给 agent 的任务文案
  * 与三层断言（检查 niceeval 是否安装好/产出质量层/路由层）不在这里：每条接入路径的
  * 核心用例、宿主协议、合格文档落点都不一样，各 eval 文件自己写。
+ *
+ * 目前 install 与 undo 两组接入路径 eval 共用它(undo 未来会并入 install)。
  */
 
 export interface FixtureRepo {

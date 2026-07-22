@@ -2,7 +2,7 @@
  * install eval 的共用件：能动性层（真跑过一次吗）与产出质量层（分维度 judge）。
  *
  * 抽出来是因为 db-gpt / gpt-researcher 两条接入路径判的「怎么算写得好」结构一致，只有
- * 各维度的判据文案（贴着各自被测系统写）不同。写法约定同 lib/checks-generic.ts 头注：
+ * 各维度的判据文案（贴着各自被测系统写）不同。写法约定同 ./checks-generic.ts 头注：
  * 官方断言词汇 + 「一条命令或一个文件」的探针，没有解析层、没有扫落盘的循环。
  *
  * 放在 evals/install/share/ 而不是顶层 lib/:「产出质量层」判的是接入路径写出的三件套
@@ -11,8 +11,8 @@
 
 import type { TestContext } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
-import { locateInstallRoot } from "../../../lib/checks-generic.ts";
-import { DEFAULT_SOURCE_IGNORE_DIRS } from "../../../lib/fixture.ts";
+import { locateInstallRoot } from "./checks-generic.ts";
+import { DEFAULT_SOURCE_IGNORE_DIRS } from "./fixture.ts";
 
 /** 一个产出质量维度：一句可证伪的判据 + 阈值 + 报告里显示的维度名。 */
 export interface QualityDimension {

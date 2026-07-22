@@ -1,9 +1,9 @@
 import { defineEval } from "niceeval";
-import { isFalse, isTrue } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { runGenericChecks } from "../../lib/mechanism.ts";
-import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../../lib/fixture.ts";
-import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } from "../../lib/routing.ts";
+import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+// undo 未来会并入 install,这两个判据本就是 install 那组的共用件——先借用,合并时这两行自然消失
+import { runGenericChecks } from "../install/share/checks-generic.ts";
+import { cloneFixture, DEFAULT_SOURCE_IGNORE_DIRS } from "../install/share/fixture.ts";
 
 /**
  * 接入路径：真实开源项目 OpenHands（前身 OpenDevin，自主编码 agent）。
@@ -20,11 +20,8 @@ import { bundledPagesTouched, fellBackToOnlineDocs, routedTo, touchedIndex } fro
  * 既省体积，也避免 readSourceFiles 把宿主的前端 .ts 混进 agent 写的 adapter 里。
  */
 
-const EXPECTED_PAGES = [
-  "docs-site/zh/how-to/write-send.mdx",
-  "docs-site/zh/how-to/connect-your-agent.mdx",
-  "docs-site/zh/reference/events.mdx",
-];
+const EXPECTED_PAGES =
+  /docs-site\/zh\/how-to\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/;
 
 const CORE_USE_CASE =
   "一个能读写代码、跑命令的自主编码 agent（OpenHands）：给它一个明确的小任务，如「写一个函数计算斐波那契" +
@@ -128,31 +125,14 @@ export default defineEval({
     });
 
     // ── 第三层：路由层（计量，不 gate）。文档到底起没起作用。 ──────────
-    const touched = bundledPagesTouched(t.events);
-
+    // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在
+    // input.command 里；calledTool 的 RegExp 只测 input 侧，各种读法都接得住。miss 时想看
+    // 「实际读了哪几页」拿不到——那是 calledTool 的 arg 缺口，已记去反馈 niceeval，不再手搓解析。
     await t.group("路由层", async () => {
-      t.check(
-        touchedIndex(t.events),
-        isTrue(`以随包 INDEX.md 为路由入口（实际读到：${touched.join(", ") || "无"}）`).atLeast(1),
-      );
-      t.check(
-        routedTo(t.events, EXPECTED_PAGES),
-        isTrue(`读到与宿主形态匹配的页面（期望其一：${EXPECTED_PAGES.join(" | ")}）`).atLeast(1),
-      );
-      t.check(
-        fellBackToOnlineDocs(t.events),
-        isFalse("没有退回官网 / GitHub main 分支").atLeast(1),
-      );
+      t.calledTool("shell", { input: { command: INDEX_RE } }).atLeast(1); // 以随包 INDEX.md 为路由入口
+      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).atLeast(1); // 读到与宿主形态匹配的页面
+      t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).atLeast(1); // 没退回官网 / GitHub main
     });
-
-    if (!touchedIndex(t.events) || !routedTo(t.events, EXPECTED_PAGES)) {
-      t.diagnostic({
-        code: "routing-miss",
-        level: "warning",
-        message: `路由未命中期望页面。实际读到：${touched.join(", ") || "无"}`,
-        data: { touched, expected: EXPECTED_PAGES },
-      });
-    }
 
     turn.succeeded();
   },

@@ -18,7 +18,7 @@
 import { mkdirSync, writeFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import type { TestContext } from "niceeval";
-import { DEFAULT_SOURCE_IGNORE_DIRS } from "../../../lib/fixture.ts";
+import { DEFAULT_SOURCE_IGNORE_DIRS } from "./fixture.ts";
 
 /** 归档根目录：仓库根下的 .agent-output（.gitignore 已忽略）。 */
 export const AGENT_OUTPUT_DIR = resolve(import.meta.dirname, "../../../.agent-output");

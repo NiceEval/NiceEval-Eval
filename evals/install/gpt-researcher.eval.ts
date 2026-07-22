@@ -1,14 +1,14 @@
 import { defineEval } from "niceeval";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { runGenericChecks } from "../../lib/checks-generic.ts";
-import { cloneFixture } from "../../lib/fixture.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
+import { runGenericChecks } from "./share/checks-generic.ts";
 import {
   assertAdapterRanLive,
   type QualityDimension,
   runQualityDimensions,
 } from "./share/checks-quality.ts";
+import { cloneFixture } from "./share/fixture.ts";
 
 /**
  * 接入路径：真实开源项目 GPT Researcher（自动化研究报告 agent）。
