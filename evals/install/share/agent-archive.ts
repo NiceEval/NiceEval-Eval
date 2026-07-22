@@ -20,7 +20,7 @@ import { copyFile, mkdtemp, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { dirname, join, resolve } from "node:path";
 import type { TestContext } from "niceeval";
-import { locateInstallRoot } from "./checks-generic.ts";
+import { locateInstallRoot } from "./eval-install.ts";
 import { DEFAULT_SOURCE_IGNORE_DIRS } from "./fixture.ts";
 
 /** 归档根目录：仓库根下的 .agent-output（.gitignore 已忽略）。 */

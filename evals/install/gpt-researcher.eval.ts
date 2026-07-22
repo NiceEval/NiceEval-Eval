@@ -1,8 +1,10 @@
-import { defineEval } from "niceeval";
+import { defineScoreEval } from "niceeval";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
-import { checkAdapter, checkExperimentQuality, checkInstall } from "./share/checks-generic.ts";
+import { evalAdapter } from "./share/eval-adapter.ts";
+import { evalExperiment } from "./share/eval-experiment.ts";
+import { evalInstall } from "./share/eval-install.ts";
 import { cloneFixture } from "./share/fixture.ts";
 
 /**
@@ -20,7 +22,7 @@ import { cloneFixture } from "./share/fixture.ts";
 const EXPECTED_PAGES =
   /docs-site\/zh\/(how-to|tutorials)\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/;
 
-export default defineEval({
+export default defineScoreEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
   environment: "python",
   async test(t) {
@@ -45,9 +47,9 @@ export default defineEval({
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）。 ──
     // ── 四条接入路径共用同一套判定。 ──
-    await checkInstall(t, { version });
-    await checkExperimentQuality(t);
-    await checkAdapter(t);
+    await evalInstall(t, { version });
+    await evalExperiment(t);
+    await evalAdapter(t);
 
     // ── 宿主专属·评估是否正确加载文档（计量，不 gate）。文档到底起没起作用。 ──────
     // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在

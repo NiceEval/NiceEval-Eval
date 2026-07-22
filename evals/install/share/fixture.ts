@@ -13,7 +13,7 @@ import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import type { TestContext } from "niceeval";
-import { locateInstallRoot } from "./checks-generic.ts";
+import { locateInstallRoot } from "./eval-install.ts";
 
 export interface FixtureRepo {
   /** fixture 宿主项目的 git 仓库地址（公开只读 clone） */
@@ -80,7 +80,7 @@ export const DEFAULT_SOURCE_IGNORE_DIRS = [".git", ".next", "node_modules", "dis
  * niceeval 的 sandbox 不设「按扩展名过滤的批量读取器」——批量取回只有 downloadDirectory
  * 一个原样搬运的 API（字节精确、不做过滤/拼接），筛选是普通代码的事（见
  * docs/feature/sandbox/library/operations.md）。这里现下载进一个临时目录，本地用
- * node:fs 筛 .ts 文件、拼成文本，用完即删——写法约定同 checks-generic.ts：判定/整理
+ * node:fs 筛 .ts 文件、拼成文本，用完即删——写法约定同各 eval-*.ts 头注：判定/整理
  * 交给紧跟着的 judge，这一层只负责取证。
  */
 export async function agentSourceMaterial(

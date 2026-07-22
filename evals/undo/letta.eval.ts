@@ -2,8 +2,9 @@ import { defineEval } from "niceeval";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
 // undo 未来会并入 install,这两个判据本就是 install 那组的共用件——先借用,合并时这两行自然消失
-// 不调用 checkAdapter：任务描述里没有要求 agent 真跑一次，checkAdapter 断的是那件事
-import { checkExperimentQuality, checkInstall } from "../install/share/checks-generic.ts";
+// 不调用 evalAdapter：任务描述里没有要求 agent 真跑一次，evalAdapter 断的是那件事
+import { evalExperiment } from "../install/share/eval-experiment.ts";
+import { evalInstall } from "../install/share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "../install/share/fixture.ts";
 
 /**
@@ -51,8 +52,8 @@ export default defineEval({
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。四条接入路径共用同一套判定。 ──
-    await checkInstall(t, { version });
-    await checkExperimentQuality(t);
+    await evalInstall(t, { version });
+    await evalExperiment(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
     // 一条 find+cat 命令把 agent 手写的 .ts 带路径头串成材料（含 adapter）——「传输方式

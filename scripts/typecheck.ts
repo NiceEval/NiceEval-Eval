@@ -5,7 +5,7 @@
  * 依赖——本仓库只用 e2b，不装 dockerode 与 @vercel/sandbox。tsc 会顺着 niceeval 的源码
  * 去解析这些用不到的分支并报错。这些错误与本仓库的代码质量无关，滤掉。
  *
- * 用的是与 lib/checks-generic.ts 里同一条规则：只认 node_modules 之外的错误行。
+ * 用的是与 evals/install/share/eval-install.ts 里同一条规则：只认 node_modules 之外的错误行。
  * 沙箱里评 agent 写的代码时也这么判——一套标准，不搞双重口径。
  */
 

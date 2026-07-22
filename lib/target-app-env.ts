@@ -7,7 +7,7 @@
  * `environment: "python"` 换到那个 template。这个钩子不再装系统依赖，只做每次 attempt
  * 都要重新写的动态内容——目标应用自己要连的 LLM 凭证。装 niceeval 三件套这件事跟
  * 「目标应用能不能被 agent 实际启动起来」是两层问题：前者由 assertNiceevalInstalled gate，
- * 后者只在「跑出过一次结果」那条软断言里体现（详见 lib/checks-generic.ts 的注释）。这个钩子补的
+ * 后者只在「跑出过一次结果」那条软断言里体现（详见 evals/install/share/eval-adapter.ts 的注释）。这个钩子补的
  * 是后者的地基——把「能连一个真 LLM」这个前提准备好，但不替 agent 决定要不要启动目标进程，
  * 也不做任何 gate。
  *

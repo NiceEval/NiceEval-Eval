@@ -1,28 +1,19 @@
 /**
- * 通用检查：与宿主无关、四条接入路径共用的判定，拆成三个独立函数，各自成一个 t.group。
+ * 评估安装：niceeval 装没装成（gate）+ agent 有没有真的敲命令把它跑起来（软分）。
  *
- * - checkInstall →「评估安装」（gate + 软分混合）——niceeval 装没装成，以及 agent 有没有
- *   真的敲命令把它跑起来（而不是手抄托管指引、只写文件不执行）。gate 的那部分红了，说明
- *   agent 没把 niceeval 装成一个能用的东西，后面「写得好不好」「读没读对文档」都失去讨论
- *   前提。
- * - checkExperimentQuality →「评估exp质量」（软分）——装对了之后写得讲不讲究：至少两格
- *   实验（baseline + 对比）、按 compare-models 组织、每格 runs=1、不为一两个实验先抽
- *   shared.ts。品味红了东西还是能用的，不 gate。
- * - checkAdapter →「评估adapter」（软分，不 gate）——agent 写的 adapter 有没有真联上被测
- *   系统。不自己找/读 result.json 取证、也不判跑了几次——适配 live 系统的成本、稳不稳定
- *   各不相同，agent 跑几次都合理，不该被断言锁死。只信 agent 自装的 CLI：`niceeval show`
- *   显示的 verdict 是 passed / failed 就说明请求真发出去、回应真回来，连不上会是 errored。
- *   起被测系统很重且波动大（见 lib/target-app-env.ts），所以只作软分计量、不 gate。只被
- *   db-gpt / gpt-researcher 两条 install eval 调用——undo 组三条 eval 的任务描述没有要求
- *   agent「真跑一次」，调这个函数会断言一件任务里没提过的事。
+ * gate 的那部分红了，说明 agent 没把 niceeval 装成一个能用的东西，后面「写得好不好」
+ * 「读没读对文档」都失去讨论前提。gate 部分是唯一影响 verdict 硬失败的判定——这组红了，
+ * 后面所有判定都失去前提。
  *
  * 写法约定：判定一律用官方断言词汇（calledTool / matchers / judge），不发明领域 API；
  * 取证一律「一条命令或一个文件」——探针只取证不判定，判定是紧跟着的一条 t.check 配
  * matcher，没有解析层、没有扫落盘的循环。
  *
- * 目前 install 与 undo 两组接入路径 eval 共用 checkInstall / checkExperimentQuality
- * （undo 未来会并入 install，届时就是纯 install 内部件，不用再挪）；不放顶层 lib/ 是因为
- * 它不服务 debug 这类非接入路径评估。
+ * evalInstall 与 evalExperiment（见 ./eval-experiment.ts）被 install 与 undo 两组
+ * 接入路径 eval 共用（undo 未来会并入 install，届时就是纯 install 内部件）；不放顶层 lib/
+ * 是因为它不服务 debug 这类非接入路径评估。locateInstallRoot 也住在这里——「装在了哪」
+ * 天然是安装检查的一部分，evalExperiment / evalAdapter / fixture / agent-archive
+ * 都从这里取用。
  */
 
 import type { TestContext } from "niceeval";
@@ -50,7 +41,7 @@ export async function locateInstallRoot(sandbox: TestContext["sandbox"]): Promis
  * 评估安装：niceeval 装没装成（gate）+ agent 有没有真的敲命令把它跑起来（软分）。
  * gate 部分是唯一影响 verdict 硬失败的判定——这组红了，后面所有判定都失去前提。
  */
-export async function checkInstall(t: TestContext, opts: { version: string }): Promise<void> {
+export async function evalInstall(t: TestContext, opts: { version: string }): Promise<void> {
   const sandbox = t.sandbox;
   const candidate = readCandidateManifest(opts.version);
   const root = await locateInstallRoot(sandbox);
@@ -122,71 +113,5 @@ export async function checkInstall(t: TestContext, opts: { version: string }): P
     // 非 TTY 下 auto profile 本来就落到 agent，逼显式 flag 会误伤
     t.calledTool("shell", { input: { command: /\bniceeval\s+exp\b(?![\s\S]*--dry)/ } }).atLeast(1);
     t.calledTool("shell", { input: { command: /\bniceeval\s+show\b/ } }).atLeast(1);
-  });
-}
-
-/** 评估exp质量（软分，不 gate）：装对了之后写得讲不讲究。 */
-export async function checkExperimentQuality(t: TestContext): Promise<void> {
-  const sandbox = t.sandbox;
-  const at = (await locateInstallRoot(sandbox)) ?? ".";
-
-  const dry = await sandbox.runShell(`npx --no-install niceeval exp --dry --output ci 2>&1`, { cwd: at });
-  const shared = (
-    await sandbox.runShell(`find experiments agents adapters -maxdepth 2 -iname 'shared*.ts' 2>/dev/null`, {
-      cwd: at,
-    })
-  ).stdout.trim();
-
-  await t.group("评估exp质量", async () => {
-    // 一格实验什么也比不了：baseline 之外至少还要有一个对比格。宿主接口完全不支持
-    // 任何变体时允许退化，所以是软分不 gate。
-    t.check(
-      dry.stdout,
-      satisfies(
-        (s) => ((s as string).match(/^niceeval: plan-row /gm)?.length ?? 0) >= 2,
-        "至少两格实验配置——baseline 加至少一个对比",
-      ).atLeast(1),
-    );
-    // compare-models 是 INIT.md 明确要求的默认组织方式
-    t.check(
-      dry.stdout,
-      satisfies(
-        (s) => /experiment="?[^"\s]*\bcompare-models\//.test(s as string),
-        "按 compare-models 实验组组织",
-      ).atLeast(1),
-    );
-    // 接入期每格 runs=1：先跑通一次再谈统计，多 runs 只是烧时间和预算
-    t.check(
-      dry.stdout,
-      satisfies((s) => !/\bruns=(?!1\b)\d+/.test(s as string), "每格实验 runs=1").atLeast(1),
-    );
-    // 一两个实验不配抽象层：shared.ts 是文档里给「实验多了以后」的写法，起手就抽是过度设计
-    t.check(shared.length === 0, isTrue(`没有先抽 shared.ts 共享抽象（实际：${shared || "无"}）`).atLeast(1));
-  });
-}
-
-/**
- * 评估adapter（软分，不 gate）：agent 写的 adapter 有没有真联上被测系统。
- *
- * 只信 agent 自装的 CLI，不自己找/读 result.json——跑了几次不是这层关心的事（适配live 系统
- * 的成本、稳不稳定各不相同，agent 跑几次都合理，不该被断言锁死），这里只看跑没跑通。只被
- * db-gpt / gpt-researcher 两条 install eval 调用，见文件头注。
- */
-export async function checkAdapter(t: TestContext): Promise<void> {
-  const sandbox = t.sandbox;
-  const at = (await locateInstallRoot(sandbox)) ?? ".";
-
-  // 自装 CLI 能不能把跑出来的结果显示出来
-  const show = await sandbox.runShell(`npx --no-install niceeval show --output ci 2>&1`, { cwd: at });
-
-  await t.group("评估adapter", async () => {
-    t.check(show, commandSucceeded().atLeast(1));
-    t.check(
-      show.stdout,
-      satisfies(
-        (s) => /\b(passed|failed)\b/i.test(s as string) && !/\berrored\b/i.test(s as string),
-        "niceeval show 显示的 verdict 是 passed/failed（真联上了被测系统；连不上会是 errored）",
-      ).atLeast(1),
-    );
   });
 }
