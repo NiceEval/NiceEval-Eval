@@ -2,9 +2,10 @@
  * 评估安装（计分制 / 加分式）：一条题内叠加挣分，分从 0 往上累加、不声明满分。三段挣分：
  *
  * 1. 交互层（加分）——装机任务发出后，好的 agent 不闷头做，而是先停下来（park 在一个待
- *    输入请求上）把仓库里看不出的三件事问清楚，拿到方案再动手。`t.parked()` 判「停没停下来
- *    问」，closeQA 判「问得对不对、给的选择对不对」。随后替用户挑第一档「简单接入」，用
- *    `t.respond` 驱动下一轮把活干完——后面的取证才有东西可验。
+ *    输入请求上）把仓库里看不出的四件事问清楚，拿到方案再动手。`t.parked()` 判「停没停下来
+ *    问」，四条 closeQA 各判一件「问得对不对、给的选择对不对」（判据构造见
+ *    ./clarify-criteria.ts）。随后替用户挑第一档「简单接入」，用 `t.respond` 驱动下一轮把活
+ *    干完——后面的取证才有东西可验。
  * 2. 装成没装成（gate）——niceeval 装没装成、装的东西能不能跑。这几条是 gate：红了 verdict
  *    直接 failed，后面「写得好不好」「读没读对文档」都失去讨论前提。gate 不给分，但挂了就把
  *    整题按判定面判负（`.points` 与 severity 正交）。
@@ -25,6 +26,7 @@
 import type { ScoreAssertionHandle, ScoreTestContext, TurnHandle } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import { readCandidateManifest } from "../../../lib/candidate.ts";
+import { buildClarifyRubrics, type ClarifyFacts } from "./clarify-criteria.ts";
 
 /**
  * 找 agent 把 niceeval 装在了哪；没装返回 null。
@@ -48,39 +50,43 @@ export async function locateInstallRoot(sandbox: ScoreTestContext["sandbox"]): P
  *
  * 前置：装机任务已由 eval 发出（`t.send(...)`），此刻 agent 应已 park 在澄清请求上。
  *
- * `clarifyCriteria` 必须由调用方按项目传入：closeQA 判「agent 动手前停下来问对没问对」，
- * 而「问什么才算对」是逐项目的——被测系统的接口形状（DB-GPT 是 OpenAI 兼容 HTTP，
- * gpt-researcher 是自研 WebSocket 帧）和它自带的 otel 机制各不一样，一份通用判据会把
- * 项目专属事实写死成假设。判据本体因此下沉到各 eval 文件，这里只保留「停下来问 + 按连续
- * 分挣分」这套机制。
+ * `clarify` 必须由调用方按项目传入项目专属事实（接口形状 / otel 机制 / 可做变体的参数）：
+ * 判据的**机制**五条路径通用，住在 ./clarify-criteria.ts；判据里的**事实**逐项目不同，
+ * 一份通用判据会把项目专属事实写死成假设。这里只负责把两者拼起来并按点计分。
  */
 export async function evalInstall(
   t: ScoreTestContext,
-  opts: { version: string; clarifyCriteria: string; turn: TurnHandle<ScoreAssertionHandle> },
+  opts: { version: string; clarify: ClarifyFacts; turn: TurnHandle<ScoreAssertionHandle> },
 ): Promise<void> {
   const sandbox = t.sandbox;
   const candidate = readCandidateManifest(opts.version);
 
-  // ── 交互层（加分，不 gate）：动手前先停下来把仓库里看不出的三件事问清楚 ──────────
+  // ── 交互层（加分，不 gate）：动手前先停下来把仓库里看不出的四件事问清楚 ──────────
+  // 判的是第一轮回复，所以要在 respond 续轮之前取——`t.reply` 是「最近一轮的助手回复」，
+  // respond 之后它就变成下一轮的了。四条判据共用这一份快照。
+  const clarifyReply = t.reply;
   await t.group("评估交互", async () => {
     // 真的停下来问了（park 在待输入请求上），而不是直接开做。
-    // 交互层按文件头是「加分、不 gate」：得分点不参与判定，所以「agent 没停下来问、
-    // 直接一轮做完」（对「没人可确认」的任务是合理路径）只是少挣这 1 分，不判负。
+    // 交互层按文件头是「加分、不 gate」：得分点不参与判定，没停下来问只是少挣这些分，不判负。
     t.parked().points(1);
-    // 问的内容与给的选择是否对：接口对不对 / 有没有 otel / 有没有 flag（多 prompt），外加三档接入方案。
-    // 判据按项目传入（见函数头注），因为「问对」的内容随宿主接口与 otel 机制而变。
-    t.judge.autoevals.closedQA(opts.clarifyCriteria, { on: t.reply }).points(3);
+    // 问的内容与给的选择是否对：接口 / otel / flag（多 prompt）/ 三档接入等级，一条判据只判
+    // 一个点、各挣 1 分。不合成一条 points(4)——closedQA 是二值打分器，四要件 AND 进一条会让
+    // 「问了接口漏了 otel」和「什么都没问」拿一样的 0 分。事实由调用方按项目传入（见函数头注）。
+    for (const r of buildClarifyRubrics(opts.clarify)) {
+      t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: clarifyReply }).points(1);
+    }
   });
 
   // 替用户回答：挑第一档「简单接入」。respond 就是同一 session 的下一轮——agent 拿到方案后把
   // 活干完，后面的事后取证才有东西可验。三档里第一档最省，也不引入 otel / flag 的额外判定面。
   //
-  // 但「停下来问」本身是被测行为、不是前提：任务里明说「Nobody is available to confirm
-  // decisions with」，agent 完全可能（合理地）不问、一轮把活做完。这时 turn 是 completed/
-  // failed 而非 waiting，没有待处理的 input.requested——若仍无条件 respond，会抛
-  // 「There is no pending input.requested」把整题打成 errored，连后面的 gate / 路由 /
-  // adapter 都白评。所以只在真 park 了才续轮；没 park 就直接进入事后取证，agent 一轮里
-  // 已经产出的三件套照样按 gate / 加分评（park 那 1 分它没挣到，t.parked() 已如实记）。
+  // 但「停下来问」本身就是被测行为、不是前提：五条路径的任务描述都不再声明「没人可确认」
+  // （INIT.md 只在任务明确说没人可确认时才允许 agent 自行决定，那句话在场会把这一整层变成
+  // 「守文档就扣分」的死分），所以该问就该问——但 agent 仍可能不问、一轮把活做完。这时
+  // turn 是 completed/failed 而非 waiting，没有待处理的 input.requested——若仍无条件
+  // respond，会抛「There is no pending input.requested」把整题打成 errored，连后面的
+  // gate / 路由 / adapter 都白评。所以只在真 park 了才续轮；没 park 就直接进入事后取证，
+  // agent 一轮里已经产出的三件套照样按 gate / 加分评（交互层那几分它没挣到，已如实记）。
   if (opts.turn.status === "waiting") {
     await t.respond("简单接入——写两个实验、先不接 otel，也先不做 flag。");
   }

@@ -6,8 +6,11 @@
  * `niceeval show` 显示的 verdict 是 passed / failed 就说明请求真发出去、回应真回来，连不上会
  * 是 errored。起被测系统很重且波动大（见 lib/target-app-env.ts），所以只作软分计量、不 gate。
  *
- * 只被 db-gpt / gpt-researcher 两条 eval 调用——letta / skyvern / openhands 三条的任务描述没有
- * 要求 agent「真跑一次」，调这个函数会断言一件任务里没提过的事。
+ * 只被 db-gpt / gpt-researcher 两条 eval 调用。理由是**起被测系统的代价**，不是「任务没要求」
+ * ——「真跑一次」本来就写在 INIT.md 的完成清单里（Actually run it once and get it green），
+ * 五条路径都适用。但 Letta / Skyvern / OpenHands 要起的东西太重也太飘（Letta 要起服务、
+ * Skyvern 还要拉浏览器、OpenHands 要起 app_server + sandbox 内的 agent server），断言它跑通
+ * 测到的是环境波动而不是文档效果，所以那三条改用 judge 读 agent 手写的源码来评产出质量。
  *
  * 写法约定：判定一律用官方断言词汇，不发明领域 API；取证一律「一条命令或一个文件」。
  */

@@ -1,7 +1,8 @@
 import { defineScoreEval } from "niceeval";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
+import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 // 不调用 evalAdapter：任务描述没要求 agent 真跑一次（起 Letta 服务重且不稳），evalAdapter 断的正是那件事
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
@@ -29,33 +30,30 @@ const CORE_USE_CASE =
   "（韩梅梅 / Orbit），而不是重新反问或答非所问；问一件从没告诉过它的私人信息（如「我住在哪个城市」）" +
   "应明确说不知道，而不是编一个具体城市名";
 
+// 传输事实（按 Letta 0.16.8 实测源码填）。一份事实两处用：喂澄清判据的【问接口】，也喂
+// 下面 judge 的「传输保真」维度——以前这两处各写一份全文，改一处就漂一处。
 const TRANSPORT =
-  "先 HTTP POST /v1/agents 建一个 agent 拿 agent_id，再 HTTP POST /v1/agents/{agent_id}/messages 发消息" +
-  "（默认端口 8283；鉴权默认不开，仅 LETTA_SERVER_SECURE=true / --secure 时才校验 Authorization: Bearer " +
-  "LETTA_SERVER_PASSWORD；响应是 LettaResponse——reasoning / tool_call / assistant 等分型消息的 JSON 列表，" +
-  "非 OpenAI 形状）；多轮必须复用同一个 agent_id 以维持记忆（同一 agent 禁并发、须串行）";
+  "两跳 HTTP（FastAPI，默认端口 8283）：先 POST /v1/agents 建一个 agent 拿 agent_id，再 POST " +
+  "/v1/agents/{agent_id}/messages 发消息（非流式，另有 /messages/stream 才流式）；响应是 LettaResponse" +
+  "——reasoning / tool_call / assistant 等分型消息的 JSON 列表，非 OpenAI 形状；多轮必须复用同一个 " +
+  "agent_id 以维持记忆（同一 agent 禁并发、须串行）；鉴权默认不开，仅 LETTA_SERVER_SECURE=true / " +
+  "--secure 时才校验 Authorization: Bearer LETTA_SERVER_PASSWORD";
 
-// closeQA 判据（Letta 专属）：agent 动手前停下来问对没问对。接口形状与 otel 机制是逐项目
-// 的事实，不能写成通用假设——下列按 Letta 0.16.8 实测源码填：
-//   接口：两跳 HTTP（FastAPI，默认端口 8283）。先 POST /v1/agents 建 agent 拿 agent_id，再
-//         POST /v1/agents/{agent_id}/messages 发消息（非流式，另有 /messages/stream 才流式）；响应是
-//         LettaResponse——reasoning / tool_call / assistant 等分型消息的 JSON 列表，非 OpenAI 形状；
-//         多轮复用同一 agent_id 维持记忆（同一 agent 禁并发、须串行）。鉴权默认不开——只有
-//         LETTA_SERVER_SECURE=true / --secure 时才校验 Authorization: Bearer LETTA_SERVER_PASSWORD。
-//   otel：有原生 OpenTelemetry（letta/otel/，OTLP gRPC），默认关，且环境变量是非标准名
-//         LETTA_OTEL_EXPORTER_OTLP_ENDPOINT + LETTA_DISABLE_TRACING（不是业界标准 OTEL_ 前缀）；另有
-//         Datadog / Sentry 均默认关。开箱即用的追踪只有「provider traces 写库（默认 True）」，经
-//         GET /v1/telemetry/{step_id} 读。所以「有没有 otel」对它是「设 OTLP 端点 / 读 provider traces / 补一层」。
-const CLARIFY_CRITERIA = `agent 在动手改代码前，先停下来回了用户一条消息做澄清，而不是直接开做。判断这条回复是否同时覆盖以下三个问题：
-(1) 确认它要对接的接口 / 传输形状对不对——即它理解的 Letta 入口（应是两跳 HTTP：先 POST /v1/agents 建 agent 拿 agent_id，再 POST /v1/agents/{agent_id}/messages 发消息，非流式、非 OpenAI 形状、响应是分型消息 JSON 列表；多轮复用同一 agent_id 维持记忆；鉴权默认关、secure 模式才用 Bearer）是否正确，请用户核对；
-(2) 问要不要接 / 复用它的可观测性——Letta 有原生 OpenTelemetry（OTLP，默认关，环境变量是非标准的 LETTA_OTEL_EXPORTER_OTLP_ENDPOINT），另有 Datadog / Sentry 默认关，开箱即用的只有写库的 provider traces（经 GET /v1/telemetry/{step_id} 读），问用户要不要把 niceeval 接到它的 OTLP / provider traces 上；
-(3) 问有没有 flag / 多 prompt 机制——Letta 建 agent 时支持 model、embedding、agent_type（letta_v1_agent / memgpt_agent / memgpt_v2_agent 等）作为变体，问用户要不要把这些暴露成 experiment flags 跑对比。
-并且按 niceeval 的接入等级（Tier）摆出三档让用户挑（档位讲的是「adapter 接到多深」，与写几个实验无关）：
-① Tier 1（只接 send）——不改 Letta，只写 adapter 走这两跳 HTTP 建 agent + 发消息、把分型消息映射成 niceeval 事件流，先跑通基线；
-② Tier 2（send + OTel）——设 LETTA_OTEL_EXPORTER_OTLP_ENDPOINT 复用它的 OTLP、或读 provider traces，把 span 也发给 niceeval 看调用瀑布图；
-③ Tier 3（侵入 + flags）——把 model / agent_type 等变体暴露成 experiment flags，做模型 / agent 类型的 A/B 对比。
-合格（Y）：三个问题都问到，且明确摆出这三档接入等级让用户选。
-不合格（N）：没停下来直接动手，或回复里没问这些、没给这三档选择。`;
+// 项目专属事实，喂澄清判据；判据的机制部分见 ./share/clarify-criteria.ts。这几段是「事实」
+// 不是「判据」——只描述 Letta 是什么样，不规定 agent 该说什么，judge 拿它做背景核对而非
+// 要求逐字复述（otel 那条尤其：变量名是非标准的，不该要求 agent 背出来）。
+const CLARIFY: ClarifyFacts = {
+  system: "Letta",
+  transport: TRANSPORT,
+  otel:
+    "有原生 OpenTelemetry（letta/otel/，OTLP gRPC），默认关，且环境变量是非标准名 " +
+    "LETTA_OTEL_EXPORTER_OTLP_ENDPOINT + LETTA_DISABLE_TRACING（不是业界标准的 OTEL_ 前缀）；另有 " +
+    "Datadog / Sentry 均默认关。开箱即用的追踪只有「provider traces 写库（默认 True）」，经 " +
+    "GET /v1/telemetry/{step_id} 读——对它是「设 OTLP 端点 / 读 provider traces / 自己补一层」",
+  flags:
+    "建 agent 时支持 model、embedding、agent_type（letta_v1_agent / memgpt_agent / memgpt_v2_agent 等）" +
+    "作为变体",
+};
 
 export default defineScoreEval({
   description: "把 niceeval 接入 Letta（有状态记忆对话 agent / MemGPT）",
@@ -73,12 +71,12 @@ export default defineScoreEval({
 
     const turn = await t.send(
       `READ ${candidateInitDocUrl(version)} and install niceeval for this repo, then finish the ` +
-        `integration yourself — adapter, eval, and experiment. Nobody is available to confirm decisions with.\n\n` +
+        `integration — adapter, eval, and experiment.\n\n` +
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。五条接入路径共用同一套判定。 ──
-    await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA, turn });
+    await evalInstall(t, { version, clarify: CLARIFY, turn });
     await evalExperiment(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
@@ -141,6 +139,7 @@ export default defineScoreEval({
       // 没挣到只是少挣分，不会让「文档没起作用」判负。五条接入路径这段写法一致。
       t.calledTool("shell", { input: { command: INDEX_RE } }).points(1); // 以随包 INDEX.md 为路由入口
       t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).points(1); // 读到与宿主形态匹配的页面
+      t.calledTool("shell", { input: { command: TIER_PAGE_RE } }).points(1); // 澄清里要摆的三档只有这页讲
       t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).points(1); // 没退回官网 / GitHub main
     });
 

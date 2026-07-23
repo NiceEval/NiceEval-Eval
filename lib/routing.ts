@@ -20,6 +20,14 @@
 /** 随包索引入口，读到它算走对了路由起点 */
 export const INDEX_RE = /node_modules\/niceeval\/INDEX\.md/;
 
+/**
+ * 接入等级页。单独一条、不并进各 eval 的 EXPECTED_PAGES：那条正则是「一组等价落点，命中
+ * 其一即算路由对」，把 tier 掺进去只会让它更容易蒙中，冲淡「读到与宿主形态匹配的传输页」
+ * 这个判定。而澄清判据里「摆出 Tier 三档」要的知识只有这一页讲，读没读到是可独立证伪的
+ * 一分，所以在路由层单列一个计量点。
+ */
+export const TIER_PAGE_RE = /docs-site\/zh\/explanation\/tier\.mdx/;
+
 /** 退回训练记忆 / 线上文档：装完还去抓官网或 GitHub main，说明随包文档没接住这个 agent */
 export const ONLINE_DOCS_RE =
   /niceeval\.com\/docs|github\.com\/CorrectRoadH\/niceeval\/(blob|tree|raw)\/main/;

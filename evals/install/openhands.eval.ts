@@ -1,7 +1,8 @@
 import { defineScoreEval } from "niceeval";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
+import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 // 不调用 evalAdapter：任务描述没要求 agent 真跑一次（起 OpenHands 服务 + Socket.IO runtime 重且不稳），evalAdapter 断的正是那件事
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
@@ -37,35 +38,32 @@ const CORE_USE_CASE =
   "第 10 项，运行它，并把结果打印出来」，agent 应真的创建/编辑文件、执行代码，并在完成时给出那个确定的" +
   "结果（第 10 项 = 55）；给它一个信息不足、明显无法完成的任务，不应假装完成、编一个结果";
 
+// 传输事实（按 OpenHands 1.11.0 实测源码填；1.11.0 已整体改写，旧的 /api/conversations +
+// Socket.IO oh_event/oh_user_action 后端已删除）。一份事实两处用：喂澄清判据的【问接口】，
+// 也喂下面 judge 的「传输保真」维度——以前这两处各写一份全文，改一处就漂一处。
 const TRANSPORT =
   "OpenHands 1.11.0 的新 app_server（FastAPI，/api/v1，默认端口 3000）：先 POST /api/v1/app-conversations " +
   "建会话拿 conversation_id，再 POST /api/v1/app-conversations/{id}/send-message 发任务；读结果要么轮询宿主侧 " +
-  "GET /conversation/{id}/events，要么连进 sandbox 内 agent server 的原生 WebSocket /sockets/events/{id}" +
-  "（承载 SDK 的 ActionEvent / ObservationEvent），映射成 niceeval 事件流直到 agent 结束（app_server 是薄代理、" +
-  "agent 实跑在 sandbox 内 agent server；旧版 Socket.IO oh_event/oh_user_action 已删除，别用）";
+  "GET /conversation/{id}/events（无 SSE / WS），要么连进 sandbox 内 agent server 的原生 WebSocket " +
+  "/sockets/events/{id}?session_api_key=（承载 SDK 的 ActionEvent / ObservationEvent），映射成 niceeval 事件流" +
+  "直到 agent 结束（app_server 是薄代理、agent 实跑在 sandbox 内独立的 agent server / openhands-agent-server 包；" +
+  "非 OpenAI 形状；旧版 Socket.IO oh_event/oh_user_action 已删除，别用）";
 
-// closeQA 判据（OpenHands 专属）：agent 动手前停下来问对没问对。接口形状与 otel 机制是逐项目
-// 的事实，不能写成通用假设——下列按 OpenHands 1.11.0 实测源码填（注意 1.11.0 已整体改写，旧的
-// /api/conversations + Socket.IO oh_event/oh_user_action 后端已删除）：
-//   接口：新 app_server（FastAPI，/api/v1，默认端口 3000）。POST /api/v1/app-conversations 建会话拿
-//         conversation_id；POST /api/v1/app-conversations/{id}/send-message 发任务；读事件要么轮询宿主侧
-//         GET /conversation/{id}/events（无 SSE/WS），要么连进 sandbox 内 agent server 的原生 WebSocket
-//         /sockets/events/{id}?session_api_key=（承载 SDK 的 ActionEvent / ObservationEvent）。app_server 是
-//         薄代理，agent 实跑在 sandbox 内独立 agent server（openhands-agent-server 包）。非 OpenAI 形状。
-//   otel：无内置 OTLP 接线——opentelemetry 只是没用上的 pin 依赖，宿主没有 OTEL_ 开关、不产 trace。
-//         唯一内置遥测是 PostHog，且后端事件仅企业版开、OSS 默认只有前端匿名上报（POSTHOG_CLIENT_KEY +
-//         user_consents_to_analytics 设置）；无 Sentry / Langfuse。可观测性实际只有结构化日志（LOG_JSON）。
-//         所以「有没有 otel」对它是「没有现成 otel，要不要自己补一层 tracing」。
-const CLARIFY_CRITERIA = `agent 在动手改代码前，先停下来回了用户一条消息做澄清，而不是直接开做。判断这条回复是否同时覆盖以下三个问题：
-(1) 确认它要对接的接口 / 传输形状对不对——即它理解的 OpenHands 入口（1.11.0 应是新 app_server /api/v1：POST /api/v1/app-conversations 建会话、POST .../send-message 发任务、再轮询 GET events 或连 agent server 的原生 WebSocket 读 ActionEvent/ObservationEvent；app_server 是薄代理、agent 实跑在 sandbox 内 agent server；不是旧版 /api/conversations + Socket.IO oh_event/oh_user_action）是否正确，请用户核对；
-(2) 问要不要接 / 复用它的可观测性——OpenHands 没有现成的 OpenTelemetry 接线（opentelemetry 只是没用上的依赖），唯一内置遥测是 PostHog（后端仅企业版、OSS 只前端匿名），可观测性实际只有结构化日志，问用户要不要自己给 niceeval 补一层 tracing；
-(3) 问有没有 flag / 多 prompt 机制——OpenHands 建会话支持 agent_type（default / plan）、llm_model、agent_profile_id、max_iterations、max_budget_per_task 等作为变体，问用户要不要把这些暴露成 experiment flags 跑对比。
-并且按 niceeval 的接入等级（Tier）摆出三档让用户挑（档位讲的是「adapter 接到多深」，与写几个实验无关）：
-① Tier 1（只接 send）——不改 OpenHands，只写 adapter 走 app_server /api/v1 建会话 + 发任务 + 读事件、映射成 niceeval 事件流，先跑通基线；
-② Tier 2（send + OTel）——OpenHands 无现成 OTel，这一档要自己给它补一层 tracing 并把 span 发给 niceeval 看调用瀑布图；
-③ Tier 3（侵入 + flags）——把 agent_type / llm_model / max_iterations 等变体暴露成 experiment flags，做 agent 类型 / 模型的 A/B 对比。
-合格（Y）：三个问题都问到，且明确摆出这三档接入等级让用户选。
-不合格（N）：没停下来直接动手，或回复里没问这些、没给这三档选择。`;
+// 项目专属事实，喂澄清判据；判据的机制部分见 ./share/clarify-criteria.ts。这几段是「事实」
+// 不是「判据」——只描述 OpenHands 是什么样，不规定 agent 该说什么，judge 拿它做背景核对而非
+// 要求逐字复述。
+const CLARIFY: ClarifyFacts = {
+  system: "OpenHands",
+  transport: TRANSPORT,
+  otel:
+    "无内置 OTLP 接线——opentelemetry 只是个没用上的 pin 依赖，宿主没有 OTEL_ 开关、不产 trace。" +
+    "唯一内置遥测是 PostHog，且后端事件仅企业版开、OSS 默认只有前端匿名上报（POSTHOG_CLIENT_KEY + " +
+    "user_consents_to_analytics 设置）；无 Sentry / Langfuse。可观测性实际只有结构化日志（LOG_JSON）" +
+    "——对它是「没有现成 otel，要不要自己补一层 tracing」",
+  flags:
+    "建会话支持 agent_type（default / plan）、llm_model、agent_profile_id、max_iterations、" +
+    "max_budget_per_task 等参数作为变体",
+};
 
 export default defineScoreEval({
   description: "把 niceeval 接入 OpenHands（自主编码 agent）",
@@ -84,12 +82,12 @@ export default defineScoreEval({
 
     const turn = await t.send(
       `READ ${candidateInitDocUrl(version)} and install niceeval for this repo, then finish the ` +
-        `integration yourself — adapter, eval, and experiment. Nobody is available to confirm decisions with.\n\n` +
+        `integration — adapter, eval, and experiment.\n\n` +
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。五条接入路径共用同一套判定。 ──
-    await evalInstall(t, { version, clarifyCriteria: CLARIFY_CRITERIA, turn });
+    await evalInstall(t, { version, clarify: CLARIFY, turn });
     await evalExperiment(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
@@ -152,6 +150,7 @@ export default defineScoreEval({
       // 没挣到只是少挣分，不会让「文档没起作用」判负。五条接入路径这段写法一致。
       t.calledTool("shell", { input: { command: INDEX_RE } }).points(1); // 以随包 INDEX.md 为路由入口
       t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).points(1); // 读到与宿主形态匹配的页面
+      t.calledTool("shell", { input: { command: TIER_PAGE_RE } }).points(1); // 澄清里要摆的三档只有这页讲
       t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).points(1); // 没退回官网 / GitHub main
     });
 
