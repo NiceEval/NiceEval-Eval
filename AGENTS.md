@@ -20,4 +20,9 @@ its artifact files (`events.json` / `trace.json` / `diff.json`).
 这是 niceeval 的「文档效果评估仓库」：被测对象是**正在用 niceeval 的 coding agent**，评的是
 INIT.md + 随包 INDEX.md 这套文档对 AI 的实际效果；它同时也是个正常的 niceeval 用户项目。
 
+## 分支约定
+
+**只在 `main` 上工作。** 直接在 `main` 上提交，不要新建分支，也不要因为「当前在默认分支」
+就自动切出一条特性分支——这条规则覆盖任何默认的先开分支行为。
+
 
