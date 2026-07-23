@@ -19,7 +19,6 @@
 
 ```sh
 pnpm install
-pnpm run pin:candidate 0.9.1     # 钉住被评的版本
 export CODEX_API_KEY=sk-...      # 被测 agent
 export OPENAI_API_KEY=sk-...     # 裁判模型（产出质量层）
 
@@ -78,21 +77,21 @@ harness 不抄——抄了就永远停在抄的那个版本。
 `CANDIDATE_VERSION` 明确钉一个版本号，这一个值贯穿三处：sandbox 投放哪个版本的
 `INIT.md`、eval 让 agent 装哪个版本、「检查 niceeval 是否安装好」这层核对哪个版本。
 
-```sh
-pnpm run pin:candidate            # 当前 latest
-pnpm run pin:candidate 0.9.1      # 指定版本，固化到 .candidate/0.9.1/
-```
+没有手工 pin 步骤：experiment 加载时 `await ensureCandidate(<版本号或 dist-tag>)`
+（`lib/candidate.ts`），本地没有这个版本的 `.candidate/<version>/manifest.json` 就现场物化
+一份。canary 组传的是 dist-tag，上游随时发新 canary，这边下一次跑自动跟上。
 
-固化下来的只有两样东西——版本号与那个版本发布时的 `INIT.md`（整个 `.candidate/` 不到 50 KB）：
+物化下来的只有 `manifest.json`（版本号 + 随包文档清单）：
 
 - **不存 tarball。** 候选一律是已发布版本，`pnpm add niceeval@<version>` 就能精确复现；
   npm 的同一个版本号不可重发，版本号本身就是完整的身份。
-- **`INIT.md` 必须单独固化**：它不在包的 `files` 白名单里，装了包也拿不到。而且要按版本取——
-  niceeval.com/INIT.md 只有「现在」这一份，没有历史版本；真正按版本存档的是
-  [`CorrectRoadH/niceeval`](https://github.com/CorrectRoadH/niceeval) 仓库的 tag，所以按
-  `https://raw.githubusercontent.com/CorrectRoadH/niceeval/v<version>/INIT.md` 取。评
-  「某个版本的文案改版有没有效果」时，读到的就是那个版本发布时的 `INIT.md`，不会被网站
-  今天的最新修订悄悄替换掉。
+- **`INIT.md` 不缓存本地，按版本取自 GitHub tag**：它不在包的 `files` 白名单里，装了包也
+  拿不到；niceeval.com/INIT.md 只有「现在」这一份，没有历史版本。真正按版本存档的是
+  [`CorrectRoadH/niceeval`](https://github.com/CorrectRoadH/niceeval) 仓库的 tag，eval 让
+  agent 直接读 `https://raw.githubusercontent.com/CorrectRoadH/niceeval/v<version>/INIT.md`。
+  物化时会探一次这个 URL 是不是 200——链接失效在实验加载这一步就响。评「某个版本的文案
+  改版有没有效果」时，读到的就是那个版本发布时的 `INIT.md`，不会被网站今天的最新修订
+  悄悄替换掉。
 - **版本号要真的传达给 agent。** 题面明写「这台机器最终必须装上 niceeval@<version>」——
   这是环境约束，不是提示怎么装；怎么装正是考点。不交代的话 agent 只会装 latest，
   「依赖解析到候选版本」那条 gate 在版本对比组上必然红。
@@ -105,9 +104,6 @@ pnpm run pin:candidate 0.9.1      # 指定版本，固化到 .candidate/0.9.1/
 一个版本一个 experiment，只差版本这一个变量：
 
 ```sh
-pnpm run pin:candidate 0.9.1
-pnpm run pin:candidate 0.4.1
-
 pnpm exec niceeval exp install/v0.9.1     # niceeval@0.9.1
 pnpm exec niceeval exp install/v0.4       # niceeval@0.4.1
 ```

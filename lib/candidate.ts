@@ -2,21 +2,25 @@
  * 候选版本。
  *
  * 被评的对象是「某个具体版本的 niceeval + 它随包发布的文档」，而不是 npm 上的 latest。
- * 所以每个 experiment 明确钉一个版本号，eval 让 agent 装的就是它。
+ * 所以每个 experiment 明确钉一个版本号或 dist-tag，eval 让 agent 装的就是它。
  *
- * 一个候选在宿主机上只有一个文件（`pnpm exec tsx scripts/pin-candidate.ts <version>` 写入）：
- * `manifest.json`，记版本号与随包文档清单。没有 tarball——候选一律是已发布版本，版本号
- * 本身就是完整的身份。
+ * 一个候选在宿主机上只有一个文件：`.candidate/<version>/manifest.json`，记版本号与随包
+ * 文档清单，由 ensureCandidate 在实验加载时按需物化。没有 tarball——候选一律是已发布
+ * 版本，npm 的同一个版本号不可重发，版本号本身就是完整的身份，manifest 只是可随时重新
+ * 推导的缓存，永不过期。
  *
  * 安装前引导文档 INIT.md 不缓存到本地：它按 tag 存档在 GitHub 上（见 candidateInitDocUrl），
- * eval 让 agent 直接读那个 URL，不由 harness 转发。`pin-candidate.ts` 仍会在钉版本时探一次
- * 这个 URL 有没有 200——链接失效要在钉版本这一步就响，不能等到某次评估中途才被 agent 读空。
+ * eval 让 agent 直接读那个 URL，不由 harness 转发。ensureCandidate 首次物化一个版本时
+ * 仍会探一次这个 URL 有没有 200——链接失效要在实验加载这一步就响（任何沙箱启动之前），
+ * 不能等到某次评估中途才被 agent 读空。
  */
 
-import { existsSync, readFileSync } from "node:fs";
+import { execFileSync } from "node:child_process";
+import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
-/** 候选根目录，每个版本一个子目录，由 pin-candidate.ts 写入 */
+/** 候选根目录，每个版本一个子目录，由 ensureCandidate 写入 */
 export const CANDIDATE_ROOT = resolve(import.meta.dirname, "../.candidate");
 
 /** niceeval 自己的仓库，候选版本按 tag 存档的地方 */
@@ -28,18 +32,61 @@ export function candidateInitDocUrl(version: string): string {
 }
 
 /**
- * 从 npm registry 把一个 dist-tag 解析成具体版本号，取「线上最新的那版」。
+ * 把一个版本号或 dist-tag 变成可用的候选：解析成具体版本，本地没有 manifest 就现场物化
+ * 一份，返回解析后的版本号。实验文件在加载时 await 它——上游随时发新 canary，这边下一次
+ * 跑自动跟上，没有手工 pin 步骤。已物化过的精确版本直接命中缓存，不碰网络。
  *
- * canary 通道用它拿「线上最佳的 canary」：既不把版本号写死在实验里、也不在本地落地任何指针
- * 文件——实验每次加载直接问 registry「现在 canary 指向哪版」。解析出的版本仍要先 pin
- * （`scripts/pin-candidate.ts canary`）才有本地 manifest，否则 readCandidateManifest 会如实报错。
+ * dist-tag（canary/latest）每次都要问 registry「现在指向哪版」：tag 是移动靶，不在本地
+ * 落任何指针文件；解析出的具体版本一旦物化过就复用。
  */
-export async function resolveDistTag(tag: string): Promise<string> {
+export async function ensureCandidate(target: string): Promise<string> {
+  if (existsSync(candidatePaths(target).manifest)) return target;
+
   const res = await fetch("https://registry.npmjs.org/niceeval");
-  if (!res.ok) throw new Error(`解析 dist-tag「${tag}」失败：拉取 niceeval 包元数据 HTTP ${res.status}`);
-  const packument = (await res.json()) as { "dist-tags"?: Record<string, string> };
-  const version = packument["dist-tags"]?.[tag];
-  if (!version) throw new Error(`npm 上 niceeval 没有 dist-tag「${tag}」`);
+  if (!res.ok) throw new Error(`解析候选「${target}」失败：拉取 niceeval 包元数据 HTTP ${res.status}`);
+  const packument = (await res.json()) as {
+    "dist-tags": Record<string, string>;
+    versions: Record<string, { dist: { tarball: string } }>;
+  };
+  const version = packument["dist-tags"][target] ?? target;
+  const versionMeta = packument.versions[version];
+  if (!versionMeta) throw new Error(`registry 上没有 niceeval@${target}`);
+
+  const { dir, manifest } = candidatePaths(version);
+  if (existsSync(manifest)) return version;
+
+  // 随包文档清单：下载 tarball 只为列出目录，列完就丢，不进 .candidate/
+  console.log(`物化候选 niceeval@${version}…`);
+  const tarball = await fetch(versionMeta.dist.tarball);
+  if (!tarball.ok) throw new Error(`下载 tarball 失败：HTTP ${tarball.status}`);
+  const scratch = resolve(tmpdir(), `niceeval-${version}-${process.pid}.tgz`);
+  writeFileSync(scratch, Buffer.from(await tarball.arrayBuffer()));
+  let pages: string[];
+  try {
+    pages = execFileSync("tar", ["tzf", scratch], { encoding: "utf8" })
+      .split("\n")
+      // tarball 里每条路径都带 `package/` 前缀，剥掉后与 INDEX.md 里的树行一致
+      .map((line) => line.trim().replace(/^package\//, ""))
+      .filter((p) => p === "INDEX.md" || /^docs-site\/zh\/.+\.mdx$/.test(p))
+      .sort();
+  } finally {
+    rmSync(scratch, { force: true });
+  }
+
+  // 只探活，不落盘：eval 运行时让 agent 直接读这个 URL
+  const initDocUrl = candidateInitDocUrl(version);
+  const initDoc = await fetch(initDocUrl, { method: "HEAD" });
+  if (!initDoc.ok) {
+    throw new Error(
+      `探活 ${initDocUrl} 失败：HTTP ${initDoc.status}。` +
+        `niceeval@${version} 对应的 GitHub tag 可能没有 INIT.md（早期版本、或 tag 名与版本号对不上），换一个更新的版本试试。`,
+    );
+  }
+
+  mkdirSync(dir, { recursive: true });
+  writeFileSync(manifest, JSON.stringify({ version, source: `npm:niceeval@${version}`, pages }, null, 2) + "\n");
+  const hasDocs = pages.includes("INDEX.md");
+  console.log(`候选就绪：niceeval@${version}（随包文档 ${hasDocs ? `${pages.length - 1} 页 + INDEX.md` : "无"}）`);
   return version;
 }
 
@@ -67,7 +114,7 @@ export function readCandidateManifest(version: string): CandidateManifest {
   const { manifest } = candidatePaths(version);
   if (!existsSync(manifest)) {
     throw new Error(
-      `候选还没钉好：找不到 ${manifest}。先运行 pnpm exec tsx scripts/pin-candidate.ts ${version}`,
+      `候选还没物化：找不到 ${manifest}。实验加载时应先 await ensureCandidate("${version}")`,
     );
   }
   const parsed = JSON.parse(readFileSync(manifest, "utf8")) as CandidateManifest;

@@ -1,5 +1,5 @@
 import { defineExperiment } from "niceeval";
-import { resolveDistTag } from "../../lib/candidate.ts";
+import { ensureCandidate } from "../../lib/candidate.ts";
 import { agentUnderTest, sandboxWith } from "../shared.ts";
 
 /**
@@ -11,13 +11,11 @@ import { agentUnderTest, sandboxWith } from "../shared.ts";
  * 点一下 Canary workflow（.github/workflows/canary.yml），它会从 main 自动发一个
  * `X.Y.Z-canary.<n>` 到 npm 的 canary dist-tag 并打好 tag。
  *
- * 版本不写死、也不在本地落指针：这里每次加载直接从 npm 的 canary dist-tag 解析「线上最佳
- * 的那版」（v0.9.1 / v0.4 是不可变的已发布版，才该钉死；canary 是移动靶）。发新 canary 后
- * 无需改这个文件，只要把它 pin 出本地 manifest——一条命令搞定：
- *   pnpm canary          # = pin 最新 canary + 跑金丝雀组
- * 或分开：pnpm pin:candidate canary  然后  pnpm install-eval
+ * 版本不写死、也不在本地落指针：每次加载直接问 npm「canary 现在指向哪版」，本地没有
+ * 这版的 manifest 就现场物化（见 ensureCandidate）。发新 canary 后什么都不用做，
+ * 下一次跑自动跟上。
  */
-const NICEEVAL_VERSION = await resolveDistTag("canary");
+const NICEEVAL_VERSION = await ensureCandidate("canary");
 
 export default defineExperiment({
   description: `niceeval@${NICEEVAL_VERSION}（main 快照，金丝雀对比组）`,

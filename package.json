@@ -8,11 +8,10 @@
     "export:debug-fixture": "tsx scripts/export-debug-fixture.ts",
     "typecheck": "tsx scripts/typecheck.ts",
     "install-eval": "niceeval exp install",
-    "canary": "tsx scripts/pin-candidate.ts canary && niceeval exp install/canary",
+    "canary": "niceeval exp install/canary",
     "debug-eval": "niceeval exp debug",
     "show": "niceeval show",
-    "view": "niceeval view",
-    "pin:candidate": "tsx scripts/pin-candidate.ts"
+    "view": "niceeval view"
   },
   "devEngines": {
     "packageManager": {
