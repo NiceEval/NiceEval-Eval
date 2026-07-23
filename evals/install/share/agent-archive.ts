@@ -17,7 +17,7 @@
 
 import { mkdirSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
-import type { TestContext } from "niceeval";
+import type { ScoreTestContext } from "niceeval";
 import { locateInstallRoot } from "./eval-install.ts";
 
 /** 归档根目录：仓库根下的 .agent-output（.gitignore 已忽略）。 */
@@ -36,7 +36,7 @@ function slug(s: string): string {
  *
  * @param target 被测目标名（如 "db-gpt"），由调用它的 eval 传入。
  */
-export async function saveAgentOutput(t: TestContext, target: string): Promise<string | undefined> {
+export async function saveAgentOutput(t: ScoreTestContext, target: string): Promise<string | undefined> {
   try {
     // 只下 install root 下的三件套，不下整个 root：DB-GPT 这类装在仓库根（at="."）的宿主，
     // 整下会把整个被测仓库拖进归档。缺哪件下哪件报错就跳过（不是每个 agent 都写全）。

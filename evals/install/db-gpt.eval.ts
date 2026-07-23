@@ -71,12 +71,11 @@ export default defineScoreEval({
     // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在
     // input.command 里；miss 时断言的 received 会带同名 shell 调用的出入参,归因不用手搓。
     await t.group("评估是否正确加载文档", async () => {
-      // .soft()：本段是「计量，不 gate」（见文件头），而 calledTool/notCalledTool 默认
-      // severity 是 gate、.points() 与 severity 正交不降级——漏了 .soft() 会让「文档没
-      // 起作用」直接判负，与本层只计量的设计相悖。五条接入路径这段写法一致：计分 + soft。
-      t.calledTool("shell", { input: { command: INDEX_RE } }).points(1).soft(); // 以随包 INDEX.md 为路由入口
-      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).points(1).soft(); // 读到与宿主形态匹配的页面
-      t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).points(1).soft(); // 没退回官网 / GitHub main
+      // 本段是「计量，不 gate」（见文件头）：计分制里 .points() 的得分点不参与判定，
+      // 没挣到只是少挣分，不会让「文档没起作用」判负。五条接入路径这段写法一致。
+      t.calledTool("shell", { input: { command: INDEX_RE } }).points(1); // 以随包 INDEX.md 为路由入口
+      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).points(1); // 读到与宿主形态匹配的页面
+      t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).points(1); // 没退回官网 / GitHub main
     });
 
     // 生命周期收尾：把 agent 写出的三件套 copy 到本地 .agent-output/（gitignore）供人工 review。

@@ -9,12 +9,12 @@
  * 探针只取证不判定，判定是紧跟着的一条 t.check 配 matcher。
  */
 
-import type { TestContext } from "niceeval";
+import type { ScoreTestContext } from "niceeval";
 import { isTrue, satisfies } from "niceeval/expect";
 import { locateInstallRoot } from "./eval-install.ts";
 
 /** 评估exp质量（软分，不 gate）：装对了之后写得讲不讲究。 */
-export async function evalExperiment(t: TestContext): Promise<void> {
+export async function evalExperiment(t: ScoreTestContext): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
 

@@ -12,7 +12,7 @@
  * 写法约定：判定一律用官方断言词汇，不发明领域 API；取证一律「一条命令或一个文件」。
  */
 
-import type { TestContext } from "niceeval";
+import type { ScoreTestContext } from "niceeval";
 import { commandSucceeded, satisfies } from "niceeval/expect";
 import { locateInstallRoot } from "./eval-install.ts";
 
@@ -20,7 +20,7 @@ import { locateInstallRoot } from "./eval-install.ts";
  * 评估adapter（软分，不 gate）：agent 写的 adapter 有没有真联上被测系统。
  * 见文件头注：只信 agent 自装的 CLI，不判跑了几次，只被两条 install eval 调用。
  */
-export async function evalAdapter(t: TestContext): Promise<void> {
+export async function evalAdapter(t: ScoreTestContext): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
 

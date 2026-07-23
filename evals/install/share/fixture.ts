@@ -12,7 +12,7 @@
 import { mkdtemp, readFile, readdir, rm } from "node:fs/promises";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
-import type { TestContext } from "niceeval";
+import type { ScoreTestContext } from "niceeval";
 import { locateInstallRoot } from "./eval-install.ts";
 
 export interface FixtureRepo {
@@ -84,7 +84,7 @@ export const DEFAULT_SOURCE_IGNORE_DIRS = [".git", ".next", "node_modules", "dis
  * 交给紧跟着的 judge，这一层只负责取证。
  */
 export async function agentSourceMaterial(
-  sandbox: TestContext["sandbox"],
+  sandbox: ScoreTestContext["sandbox"],
   extraIgnoreDirs: string[] = [],
 ): Promise<string> {
   const at = (await locateInstallRoot(sandbox)) ?? ".";

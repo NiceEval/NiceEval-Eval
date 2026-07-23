@@ -8,7 +8,7 @@
  * 通用件——lib/ 留给 routing.ts / candidate.ts 这类装/查/接入路径都要用的东西。
  */
 
-import type { TestContext } from "niceeval";
+import type { BaseAssertionHandle, BaseTestContext } from "niceeval";
 
 /** fixture 目录(相对各 eval 文件),含最小宿主配置 + 整目录签入的 .niceeval,数据永不重跑 */
 export const DEBUG_FIXTURE_DIR = "../../../fixtures/results/coding-agent-memory";
@@ -37,7 +37,7 @@ export const USE_CACHE_FAILURE = {
  * 是随包文档机制的入口。两组实验(experiments/debug/with-agent-rules.ts / no-agent-rules.ts)
  * 各设一次这个 flag,题面完全相同,差异只在这段指针在不在。
  */
-export async function prepareDebugSandbox(t: TestContext): Promise<void> {
+export async function prepareDebugSandbox<H extends BaseAssertionHandle>(t: BaseTestContext<H>): Promise<void> {
   const version = t.flags.candidateVersion as string;
 
   await t.sandbox.uploadDirectory(DEBUG_FIXTURE_DIR);

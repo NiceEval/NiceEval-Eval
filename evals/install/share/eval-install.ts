@@ -22,7 +22,7 @@
  * 都从这里取用。
  */
 
-import type { TestContext, TurnHandle } from "niceeval";
+import type { ScoreAssertionHandle, ScoreTestContext, TurnHandle } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import { readCandidateManifest } from "../../../lib/candidate.ts";
 
@@ -32,7 +32,7 @@ import { readCandidateManifest } from "../../../lib/candidate.ts";
  * 不假设一定在 workdir 根：python-service 这类非 JS 宿主的正确做法就是
  * 就地新建一个子目录来放 package.json 与三件套，装在子目录里不算错。
  */
-export async function locateInstallRoot(sandbox: TestContext["sandbox"]): Promise<string | null> {
+export async function locateInstallRoot(sandbox: ScoreTestContext["sandbox"]): Promise<string | null> {
   const hit = (
     await sandbox.runShell(
       `find . -name niceeval.config.ts -not -path '*/node_modules/*' -maxdepth 3 | head -1`,
@@ -55,8 +55,8 @@ export async function locateInstallRoot(sandbox: TestContext["sandbox"]): Promis
  * 分挣分」这套机制。
  */
 export async function evalInstall(
-  t: TestContext,
-  opts: { version: string; clarifyCriteria: string; turn: TurnHandle },
+  t: ScoreTestContext,
+  opts: { version: string; clarifyCriteria: string; turn: TurnHandle<ScoreAssertionHandle> },
 ): Promise<void> {
   const sandbox = t.sandbox;
   const candidate = readCandidateManifest(opts.version);
@@ -64,10 +64,9 @@ export async function evalInstall(
   // ── 交互层（加分，不 gate）：动手前先停下来把仓库里看不出的三件事问清楚 ──────────
   await t.group("评估交互", async () => {
     // 真的停下来问了（park 在待输入请求上），而不是直接开做。
-    // .soft()：交互层按文件头是「加分、不 gate」，而 parked 断言默认 severity 是 gate、
-    // .points() 与 severity 正交并不降级——漏了 .soft() 就会让「agent 没停下来问、直接
-    // 一轮做完」（对「没人可确认」的任务是合理路径）一票判负，与本层只加分的设计相悖。
-    t.parked().points(1).soft();
+    // 交互层按文件头是「加分、不 gate」：得分点不参与判定，所以「agent 没停下来问、
+    // 直接一轮做完」（对「没人可确认」的任务是合理路径）只是少挣这 1 分，不判负。
+    t.parked().points(1);
     // 问的内容与给的选择是否对：接口对不对 / 有没有 otel / 有没有 flag（多 prompt），外加三档接入方案。
     // 判据按项目传入（见函数头注），因为「问对」的内容随宿主接口与 otel 机制而变。
     t.judge.autoevals.closedQA(opts.clarifyCriteria, { on: t.reply }).points(3);
@@ -152,12 +151,10 @@ export async function evalInstall(
     // "shell" 是 canonical 工具名（codex 的 command_execution、claude-code 的 Bash 都归一到它），
     // input.command 挂正则只对上 shell 调用的命令串——写进文件的文字不会被 Write 类调用误计；
     // 命中的调用会作为证据带进报告。
-    // .soft()：本段注释明说「没挣到也不连坐 gate」，但 calledTool 默认 severity 是 gate、
-    // .points() 不降级——只链 .points 会让「没敲这条命令」判负，与「加分、不连坐」相悖。
-    t.calledTool("shell", { input: { command: /\bniceeval\s+init\b/ } }).points(1).soft(); // 托管指引该由 CLI 写入，不是手抄
+    t.calledTool("shell", { input: { command: /\bniceeval\s+init\b/ } }).points(1); // 托管指引该由 CLI 写入，不是手抄
     // (?![\s\S]*--dry)：同一条命令里带 --dry 的不算真跑。不强制 --output agent——
     // 非 TTY 下 auto profile 本来就落到 agent，逼显式 flag 会误伤
-    t.calledTool("shell", { input: { command: /\bniceeval\s+exp\b(?![\s\S]*--dry)/ } }).points(1).soft();
-    t.calledTool("shell", { input: { command: /\bniceeval\s+show\b/ } }).points(1).soft();
+    t.calledTool("shell", { input: { command: /\bniceeval\s+exp\b(?![\s\S]*--dry)/ } }).points(1);
+    t.calledTool("shell", { input: { command: /\bniceeval\s+show\b/ } }).points(1);
   });
 }
