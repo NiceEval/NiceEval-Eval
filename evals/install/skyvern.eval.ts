@@ -6,7 +6,7 @@ import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 // 不调用 evalAdapter：起 Skyvern 服务 + 拉浏览器重且不稳，断「真跑通」测到的是环境波动而不是文档效果
 //（INIT.md 的完成清单仍要求真跑一次，agent 做不做由交互层/产出质量层如实计分）
 import { evalExperiment } from "./share/eval-experiment.ts";
-import { evalInstall } from "./share/eval-install.ts";
+import { evalInstall, evalInteraction } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
 import { evalExecutionEvidence } from "./share/eval-adapter.ts";
 import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
@@ -100,7 +100,8 @@ export default defineScoreEval({
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估执行取证（加分）。 ──
     // ── 五条接入路径共用同一套判定。 ──
-    await evalInstall(t, { version, clarify: CLARIFY, turn });
+    await evalInteraction(t, { clarify: CLARIFY, turn });
+    await evalInstall(t, { version });
     await evalExperiment(t);
     await evalExecutionEvidence(t);
 

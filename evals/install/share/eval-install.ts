@@ -16,10 +16,17 @@
  * API；取证一律「一条命令或一个文件」——探针只取证不判定，判定是紧跟着的一条 t.check 配
  * matcher，没有解析层、没有扫落盘的循环。
  *
- * evalInstall 与 evalExperiment（见 ./eval-experiment.ts）被 install 下五条接入路径 eval
- * 共用；不放顶层 lib/
- * 是因为它不服务 debug 这类非接入路径评估。locateInstallRoot 也住在这里——「装在了哪」
- * 天然是安装检查的一部分，evalExperiment / evalAdapter / fixture / agent-archive
+ * 一个考试项目一个评估函数，函数名就是考项名（评估什么就叫什么）：
+ * - evalInteraction —— 评估交互：动手前停下来问对没问对 + 替用户给罐头答复续轮；
+ * - evalInstall —— 评估安装：装成没装成（gate）+ 过程侧（加分）的落地取证。
+ * 拆成两个考项的原因：评估交互的四条澄清判据（接口 / otel / flag / 三档接入等级）与「挑
+ * 第一档」的罐头答复都假设被测系统是个要自写 adapter 的 AI 应用——对 sandbox 接入路径
+ * （评 coding agent，用内置 agents，没有自写 adapter，tier 三档不成立）不适用，那条路径
+ * 交互层各写各的，评估安装仍走同一份。
+ *
+ * 两者与 evalExperiment（见 ./eval-experiment.ts）被 install 下多条接入路径 eval 共用；
+ * 不放顶层 lib/ 是因为它不服务 debug 这类非接入路径评估。locateInstallRoot 也住在这里——
+ * 「装在了哪」天然是安装检查的一部分，evalExperiment / evalAdapter / fixture / agent-archive
  * 都从这里取用。
  */
 
@@ -106,21 +113,18 @@ export async function locateInstallRoot(sandbox: ScoreTestContext["sandbox"]): P
 }
 
 /**
- * 评估安装（计分制）：交互层（加分）+ 装成没装成（gate）+ 过程侧（加分）。见文件头注。
+ * 评估交互（加分，不 gate）：动手前停下来问对没问对，判完替用户给罐头答复驱动续轮。
  *
  * 前置：装机任务已由 eval 发出（`t.send(...)`），此刻 agent 应已 park 在澄清请求上。
  *
  * `clarify` 必须由调用方按项目传入项目专属事实（接口形状 / otel 机制 / 可做变体的参数）：
- * 判据的**机制**五条路径通用，住在 ./clarify-criteria.ts；判据里的**事实**逐项目不同，
+ * 判据的**机制**各路径通用，住在 ./clarify-criteria.ts；判据里的**事实**逐项目不同，
  * 一份通用判据会把项目专属事实写死成假设。这里只负责把两者拼起来并按点计分。
  */
-export async function evalInstall(
+export async function evalInteraction(
   t: ScoreTestContext,
-  opts: { version: string; clarify: ClarifyFacts; turn: TurnHandle<ScoreAssertionHandle> },
+  opts: { clarify: ClarifyFacts; turn: TurnHandle<ScoreAssertionHandle> },
 ): Promise<void> {
-  const sandbox = t.sandbox;
-  const candidate = readCandidateManifest(opts.version);
-
   // ── 交互层（加分，不 gate）：动手前先停下来把仓库里看不出的四件事问清楚 ──────────
   // 判的是第一轮回复，所以要在 respond 续轮之前取——`t.reply` 是「最近一轮的助手回复」，
   // respond 之后它就变成下一轮的了。四条判据共用这一份快照。
@@ -160,8 +164,18 @@ export async function evalInstall(
   } else {
     await t.send(PICK_TIER_1);
   }
+}
 
-  // ── 事后取证：agent 干完后再回看装成没装成 + 过程侧 ──────────────────────────────
+/**
+ * 评估安装：agent 干完后回看「装成没装成（gate）+ 过程侧（加分）」的落地取证。
+ *
+ * 前置：agent 已拿到方案并干完活（通常紧跟 evalInteraction 之后调；本函数只取证，
+ * 不再驱动任何轮次）。
+ */
+export async function evalInstall(t: ScoreTestContext, opts: { version: string }): Promise<void> {
+  const sandbox = t.sandbox;
+  const candidate = readCandidateManifest(opts.version);
+
   const root = await locateInstallRoot(sandbox);
   const at = root ?? ".";
 

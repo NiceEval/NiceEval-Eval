@@ -5,7 +5,7 @@ import { saveAgentOutput } from "./share/agent-archive.ts";
 import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 import { evalAdapter, evalExecutionEvidence } from "./share/eval-adapter.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
-import { evalInstall } from "./share/eval-install.ts";
+import { evalInstall, evalInteraction } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
 import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
 
@@ -92,7 +92,8 @@ export default defineScoreEval({
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）
     // ── + 评估执行取证（加分）。五条接入路径共用同一套判定（评估adapter 仅两条轻路径调）。 ──
-    await evalInstall(t, { version, clarify: CLARIFY, turn });
+    await evalInteraction(t, { clarify: CLARIFY, turn });
+    await evalInstall(t, { version });
     await evalExperiment(t);
     await evalAdapter(t);
     await evalExecutionEvidence(t);
