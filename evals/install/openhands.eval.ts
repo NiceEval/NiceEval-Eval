@@ -8,7 +8,8 @@ import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
-import { buildQualityRubrics, qualityPreamble, type QualityFacts } from "./share/quality-criteria.ts";
+import { evalExecutionEvidence } from "./share/eval-adapter.ts";
+import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 OpenHands（前身 OpenDevin，自主编码 agent）。
@@ -41,8 +42,8 @@ const CORE_USE_CASE =
   "结果（第 10 项 = 55）；给它一个信息不足、明显无法完成的任务，不应假装完成、编一个结果";
 
 // 传输事实（按 OpenHands 1.11.0 实测源码填；1.11.0 已整体改写，旧的 /api/conversations +
-// Socket.IO oh_event/oh_user_action 后端已删除）。一份事实两处用：喂澄清判据的【问接口】，
-// 也喂下面 judge 的「传输保真」维度——以前这两处各写一份全文，改一处就漂一处。
+// Socket.IO oh_event/oh_user_action 后端已删除），喂澄清判据的【问接口】。adapter 写没写对不再用
+// judge 读源码判——链路真通没通由 evalExecutionEvidence 机械取证（show --execution 有 ASSISTANT）。
 const TRANSPORT =
   "OpenHands 1.11.0 的新 app_server（FastAPI，/api/v1，默认端口 3000）：先 POST /api/v1/app-conversations " +
   "建会话拿 conversation_id，再 POST /api/v1/app-conversations/{id}/send-message 发任务；读结果要么轮询宿主侧 " +
@@ -62,19 +63,6 @@ const QUALITY: QualityFacts = {
     "被测系统是能自主干活的编码 agent，最核心的编造风险：给它一个信息不足、无法完成的任务时，" +
     "它会假装完成、编一个看似合理的结果。",
 };
-
-// 传输保真判据（就地全文，不走共享构造器——判 adapter 的判据几乎全是本项目协议事实，机制只有
-// 末尾两句通用 N 从句，抽共享只剩字符串转发，见 quality-criteria.ts 文件头）。
-const TRANSPORT_FIDELITY =
-  `${qualityPreamble("OpenHands")}\n` +
-  `被测系统是「${CORE_USE_CASE}」，它对外的传输方式是：${TRANSPORT}。\n` +
-  `判断：adapter（agent 手写的 send 实现）是否确实走 1.11.0 的 app_server /api/v1 协议——` +
-  `POST /api/v1/app-conversations 建会话拿 conversation_id、POST .../send-message 发任务、再通过轮询 ` +
-  `GET events 或连 agent server 的原生 WebSocket 读 ActionEvent / ObservationEvent，映射成 niceeval 的事件流？\n` +
-  `合格（Y）：能看到 POST /api/v1/app-conversations 建会话、send-message 发任务、并通过 events 轮询或` +
-  `原生 WebSocket 读取 action/observation 事件推进到结束。\n` +
-  `不合格（N）：照旧版 Socket.IO oh_event/oh_user_action 写（1.11.0 已删除）；或 adapter 进程内直接 ` +
-  `import 并调用 openhands 的函数；或在 adapter 里 spawn/启动 openhands 进程；或根本没有对应的网络请求。`;
 
 // 项目专属事实，喂澄清判据；判据的机制部分见 ./share/clarify-criteria.ts。这几段是「事实」
 // 不是「判据」——只描述 OpenHands 是什么样，不规定 agent 该说什么，judge 拿它做背景核对而非
@@ -118,9 +106,11 @@ export default defineScoreEval({
       `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。五条接入路径共用同一套判定。 ──
+    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估执行取证（加分）。 ──
+    // ── 五条接入路径共用同一套判定。 ──
     await evalInstall(t, { version, clarify: CLARIFY, turn });
     await evalExperiment(t);
+    await evalExecutionEvidence(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
     // 一条 find+cat 命令把 agent 手写的 .ts 带路径头串成材料（含 adapter）——「传输方式
@@ -130,9 +120,8 @@ export default defineScoreEval({
 
     await t.group("产出质量层", async () => {
       // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
-      // 传输保真就地写全文（判 adapter，见上面 TRANSPORT_FIDELITY）；其余四维判 eval 设计，
-      // 机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
-      t.judge.autoevals.closedQA(`【传输保真】${TRANSPORT_FIDELITY}`, { on: material }).points(1);
+      // 四维只判 eval 设计（adapter 链路由评估执行取证机械判，不进 judge）：机制与反模式从句
+      // 住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
       for (const r of buildQualityRubrics(QUALITY)) {
         t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
       }

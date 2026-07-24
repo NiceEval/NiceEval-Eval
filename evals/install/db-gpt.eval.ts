@@ -3,11 +3,11 @@ import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate
 import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
 import type { ClarifyFacts } from "./share/clarify-criteria.ts";
-import { evalAdapter } from "./share/eval-adapter.ts";
+import { evalAdapter, evalExecutionEvidence } from "./share/eval-adapter.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
-import { buildQualityRubrics, qualityPreamble, type QualityFacts } from "./share/quality-criteria.ts";
+import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 DB-GPT（数据库对话式分析 + AWEL 工作流平台）。
@@ -24,8 +24,8 @@ import { buildQualityRubrics, qualityPreamble, type QualityFacts } from "./share
 const EXPECTED_PAGES =
   /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/;
 
-// 传输事实（按 DB-GPT v0.8.1 实测源码填）。一份事实两处用：喂澄清判据的【问接口】，也喂
-// 产出质量判据的「传输保真」维度。
+// 传输事实（按 DB-GPT v0.8.1 实测源码填），喂澄清判据的【问接口】。adapter 写没写对不用
+// judge 读源码判——链路真通没通由 evalExecutionEvidence 机械取证（show --execution 有 ASSISTANT）。
 const TRANSPORT =
   "纯 HTTP + JSON、SSE 流式、无 WebSocket，默认端口 5670；OpenAI Chat Completions 兼容入口是 " +
   "POST /api/v2/chat/completions（Bearer 鉴权，标准 messages 形状），前端主聊天另走私有形状的 " +
@@ -52,18 +52,6 @@ const QUALITY: QualityFacts = {
     "结果集而不是明确报不存在。注意负例必须在真的触达数据库能力的模式下问才成立——chat_normal " +
     "本来就查不了任何表，拒答是必然的，分不出编造与否。",
 };
-
-// 传输保真判据（就地全文，不走共享构造器——判 adapter 的判据几乎全是本项目协议事实，机制只有
-// 末尾两句通用 N 从句，抽共享只剩字符串转发，见 quality-criteria.ts 文件头）。
-const TRANSPORT_FIDELITY =
-  `${qualityPreamble("DB-GPT")}\n` +
-  `被测系统是「${QUALITY.coreUseCase}」，它对外的传输方式是：${TRANSPORT}。\n` +
-  `判断：adapter（agent 手写的 send 实现）是否确实通过这个 HTTP 协议与 DB-GPT 通信，` +
-  `并把响应映射成 niceeval 的事件流？\n` +
-  `合格（Y）：能看到向 /api/v2/chat/completions（Bearer、标准 messages 形状）或 ` +
-  `/api/v1/chat/completions（私有形状）发 HTTP 请求，解析 SSE 或非流式响应并把助手回复映射成消息事件。\n` +
-  `不合格（N）：adapter 进程内直接 import 并调用 DB-GPT 的函数；或在 adapter 里 spawn/启动 DB-GPT 进程；` +
-  `或根本没有对应的网络请求。`;
 
 // 项目专属事实（按 DB-GPT v0.8.1 实测源码填），喂澄清判据；判据的机制部分见
 // ./share/clarify-criteria.ts。这三段是「事实」不是「判据」——只描述 DB-GPT 是什么样，
@@ -107,21 +95,20 @@ export default defineScoreEval({
       `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）。 ──
-    // ── 五条接入路径共用同一套判定。 ──
+    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）
+    // ── + 评估执行取证（加分）。五条接入路径共用同一套判定（评估adapter 仅两条轻路径调）。 ──
     await evalInstall(t, { version, clarify: CLARIFY, turn });
     await evalExperiment(t);
     await evalAdapter(t);
+    await evalExecutionEvidence(t);
 
-    // ── 产出质量层（纯加分）：judge 读 agent 手写的 .ts 源码按维度判质量。与 evalAdapter
-    // 不互斥——那边看「真联上了没」（活联通性），这边看「写出来的评估成不成立」（源码质量）。
+    // ── 产出质量层（纯加分）：judge 读 agent 手写的 .ts 源码按维度判 eval 设计质量。 ──
     const material = await agentSourceMaterial(t.sandbox);
 
     await t.group("产出质量层", async () => {
       // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
-      // 传输保真就地写全文（判 adapter，见上面 TRANSPORT_FIDELITY）；其余四维判 eval 设计，
+      // 四维只判 eval 设计（adapter 链路由评估adapter/评估执行取证机械判，不进 judge）：
       // 机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
-      t.judge.autoevals.closedQA(`【传输保真】${TRANSPORT_FIDELITY}`, { on: material }).points(1);
       for (const r of buildQualityRubrics(QUALITY)) {
         t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
       }

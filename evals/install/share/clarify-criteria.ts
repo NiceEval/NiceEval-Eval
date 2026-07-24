@@ -32,10 +32,7 @@
  * **升档**，是另一件事，不在这里判。
  */
 
-/**
- * 一条接入路径的项目专属事实。同一份事实喂给澄清判据与 judge 的「传输保真」维度，
- * 各 eval 只写一遍——喂 judge 的 TRANSPORT 与喂澄清判据的传输描述曾经各写一份全文，改一处漂一处。
- */
+/** 一条接入路径的项目专属事实，喂澄清判据（transport 各 eval 抽成常量，按实测源码只写一遍）。 */
 export interface ClarifyFacts {
   /** 被测系统名，进 rubric 正文（如 "DB-GPT"） */
   system: string;

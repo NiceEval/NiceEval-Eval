@@ -22,6 +22,35 @@ import { commandSucceeded, satisfies } from "niceeval/expect";
 import { locateInstallRoot } from "./eval-install.ts";
 
 /**
+ * 评估执行取证（纯加分，1 分）：adapter 是否真把被测系统的响应映射成了标准事件流。
+ *
+ * 不用 judge 读 adapter 源码判「协议对不对」——链路真通没通，`niceeval show --execution`
+ * 一条命令就能取证：不带范围 = 当前 Scope 全部 attempt 逐节展开执行树，事件流里的助手
+ * 消息按角色大写渲染成 `ASSISTANT` 节点。执行树里有 ASSISTANT，就说明 agent 写的 send
+ * 真收到了回应并映射成了消息事件；adapter 没写对/没跑过/只跑出 errored 的，执行树里
+ * 不会有任何 assistant 消息。五条接入路径都调（与 evalAdapter 不同——那个要起被测系统、
+ * 只有两条轻路径调；这条只读已落盘的结果，谁都能调）。
+ *
+ * 写法约定同文件头：只信 agent 自装的 CLI，取证一条命令，判定紧跟一条 t.check 配 matcher。
+ */
+export async function evalExecutionEvidence(t: ScoreTestContext): Promise<void> {
+  const sandbox = t.sandbox;
+  const at = (await locateInstallRoot(sandbox)) ?? ".";
+
+  const execution = await sandbox.runShell(`npx --no-install niceeval show --execution 2>&1`, { cwd: at });
+
+  await t.group("评估执行取证", async () => {
+    t.check(
+      execution.stdout,
+      satisfies(
+        (s) => /^\s*ASSISTANT\b/m.test(s as string),
+        "show --execution 的执行树里有 ASSISTANT 消息（adapter 真把被测系统的响应映射成了事件流）",
+      ),
+    ).points(1);
+  });
+}
+
+/**
  * 评估adapter（软分，不 gate）：agent 写的 adapter 有没有真联上被测系统。
  * 见文件头注：只信 agent 自装的 CLI，不判跑了几次，只被两条 install eval 调用。
  */

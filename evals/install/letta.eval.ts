@@ -8,7 +8,8 @@ import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
-import { buildQualityRubrics, qualityPreamble, type QualityFacts } from "./share/quality-criteria.ts";
+import { evalExecutionEvidence } from "./share/eval-adapter.ts";
+import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 Letta（前身 MemGPT，有状态记忆对话 agent）。
@@ -32,8 +33,8 @@ const CORE_USE_CASE =
   "（韩梅梅 / Orbit），而不是重新反问或答非所问；问一件从没告诉过它的私人信息（如「我住在哪个城市」）" +
   "应明确说不知道，而不是编一个具体城市名";
 
-// 传输事实（按 Letta 0.16.8 实测源码填）。一份事实两处用：喂澄清判据的【问接口】，也喂
-// 下面 judge 的「传输保真」维度——以前这两处各写一份全文，改一处就漂一处。
+// 传输事实（按 Letta 0.16.8 实测源码填），喂澄清判据的【问接口】。adapter 写没写对不再用
+// judge 读源码判——链路真通没通由 evalExecutionEvidence 机械取证（show --execution 有 ASSISTANT）。
 const TRANSPORT =
   "两跳 HTTP（FastAPI，默认端口 8283）：先 POST /v1/agents 建一个 agent 拿 agent_id，再 POST " +
   "/v1/agents/{agent_id}/messages 发消息（非流式，另有 /messages/stream 才流式）；响应是 LettaResponse" +
@@ -57,18 +58,6 @@ const QUALITY: QualityFacts = {
     "被测系统是有记忆的 agent，最核心的编造风险：问一件从没告诉过它的私人信息（如所在城市）时，" +
     "它会编一个看似合理的具体值而不是承认不知道。",
 };
-
-// 传输保真判据（就地全文，不走共享构造器——判 adapter 的判据几乎全是本项目协议事实，机制只有
-// 末尾两句通用 N 从句，抽共享只剩字符串转发，见 quality-criteria.ts 文件头）。
-const TRANSPORT_FIDELITY =
-  `${qualityPreamble("Letta")}\n` +
-  `被测系统是「${CORE_USE_CASE}」，它对外的传输方式是：${TRANSPORT}。\n` +
-  `判断：adapter（agent 手写的 send 实现）是否确实通过这个两跳的 HTTP 协议与被测系统通信——` +
-  `先建 agent 拿 agent_id、再往 /v1/agents/{agent_id}/messages 发消息，并把响应里的分型消息映射成 ` +
-  `niceeval 的事件流？\n` +
-  `合格（Y）：能看到向这两个 HTTP 端点发请求、解析响应里的 assistant / reasoning 等分型消息并产出文本/事件。\n` +
-  `不合格（N）：adapter 进程内直接 import 并调用 letta 的函数；或在 adapter 里 spawn/启动 letta 服务进程；` +
-  `或根本没有对应的网络请求。`;
 
 const CLARIFY: ClarifyFacts = {
   system: "Letta",
@@ -108,9 +97,11 @@ export default defineScoreEval({
       `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。五条接入路径共用同一套判定。 ──
+    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估执行取证（加分）。 ──
+    // ── 五条接入路径共用同一套判定。 ──
     await evalInstall(t, { version, clarify: CLARIFY, turn });
     await evalExperiment(t);
+    await evalExecutionEvidence(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
     // 一条 find+cat 命令把 agent 手写的 .ts 带路径头串成材料（含 adapter）——「传输方式
@@ -120,9 +111,8 @@ export default defineScoreEval({
 
     await t.group("产出质量层", async () => {
       // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
-      // 传输保真就地写全文（判 adapter，见上面 TRANSPORT_FIDELITY）；其余四维判 eval 设计，
-      // 机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
-      t.judge.autoevals.closedQA(`【传输保真】${TRANSPORT_FIDELITY}`, { on: material }).points(1);
+      // 四维只判 eval 设计（adapter 链路由评估执行取证机械判，不进 judge）：机制与反模式从句
+      // 住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
       for (const r of buildQualityRubrics(QUALITY)) {
         t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
       }

@@ -3,11 +3,11 @@ import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate
 import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
 import type { ClarifyFacts } from "./share/clarify-criteria.ts";
-import { evalAdapter } from "./share/eval-adapter.ts";
+import { evalAdapter, evalExecutionEvidence } from "./share/eval-adapter.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
-import { buildQualityRubrics, qualityPreamble, type QualityFacts } from "./share/quality-criteria.ts";
+import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 GPT Researcher（自动化研究报告 agent）。
@@ -24,8 +24,8 @@ import { buildQualityRubrics, qualityPreamble, type QualityFacts } from "./share
 const EXPECTED_PAGES =
   /docs-site\/zh\/(how-to|tutorials)\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/;
 
-// 传输事实（按 GPT Researcher v3.6.0 实测源码填）。一份事实两处用：喂澄清判据的【问接口】，
-// 也喂产出质量判据的「传输保真」维度。
+// 传输事实（按 GPT Researcher v3.6.0 实测源码填），喂澄清判据的【问接口】。adapter 写没写对不用
+// judge 读源码判——链路真通没通由 evalExecutionEvidence 机械取证（show --execution 有 ASSISTANT）。
 const TRANSPORT =
   "自研 WebSocket /ws（FastAPI，默认 0.0.0.0:8000，端点在 backend/server/app.py 而非 server.py）：连上后发" +
   "文本命令 \"start \" 后跟一段 JSON（json.loads(data[6:])，字段含 task / report_type / tone / report_source 等）" +
@@ -34,7 +34,9 @@ const TRANSPORT =
   "只在前端）。虽然也有 REST（/api/chat 要 report 字段、/report/ 收 task/report_type…）但都不是 OpenAI " +
   "Chat Completions 形状，主路径也不是普通的 REST 请求-响应";
 
-// 产出质量事实（判据机制见 ./share/quality-criteria.ts）。
+// 产出质量事实（判据机制见 ./share/quality-criteria.ts）。历史产物里最典型的劣质形态
+// （.agent-output/ 实跑取证）：REST /report/ 配 generate_in_background=true——整个 eval 只
+// 提交任务、断言 API 回执，报告正文没被观测过。这形态由「断言具体」的传输回执 N 从句兜住。
 const QUALITY: QualityFacts = {
   system: "GPT Researcher",
   coreUseCase:
@@ -47,20 +49,6 @@ const QUALITY: QualityFacts = {
     "被测系统自主检索并写报告，最核心的编造风险：给一个虚构的、不可能有可靠来源的主题时，" +
     "它会写出一篇看似有据的报告而不是明确说无法核实。",
 };
-
-// 传输保真判据（就地全文，不走共享构造器——判 adapter 的判据几乎全是本项目协议事实，机制只有
-// 末尾两句通用 N 从句，抽共享只剩字符串转发，见 quality-criteria.ts 文件头）。
-// 第一条不合格从句来自 .agent-output/ 实跑取证：历史产物里最典型的劣质形态是 REST /report/ 配
-// generate_in_background=true——整个 eval 只提交任务、断言 API 回执，报告正文从头到尾没被观测过。
-const TRANSPORT_FIDELITY =
-  `${qualityPreamble("GPT Researcher")}\n` +
-  `被测系统是「${QUALITY.coreUseCase}」，它对外的传输方式是：${TRANSPORT}。\n` +
-  `判断：adapter（agent 手写的 send 实现）是否确实起一次研究并**取回报告正文**，映射成 niceeval 的事件流？\n` +
-  `合格（Y）：走 /ws 发 "start " 帧、收 type=report 分段帧拼出正文（主路径）；或走 REST /report/ 且 ` +
-  `generate_in_background=false 同步拿到报告正文也算。\n` +
-  `不合格（N）：generate_in_background=true 只提交后台任务——从头到尾只拿到任务回执，没有取回任何` +
-  `报告正文；或 adapter 进程内直接 import 并调用 gpt-researcher 的函数；或在 adapter 里 spawn/启动 ` +
-  `gpt-researcher 进程；或根本没有对应的网络请求。`;
 
 // 项目专属事实（按 GPT Researcher v3.6.0 实测源码填），喂澄清判据；判据的机制部分见
 // ./share/clarify-criteria.ts。这三段是「事实」不是「判据」——只描述这个系统是什么样，
@@ -102,21 +90,20 @@ export default defineScoreEval({
       `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）。 ──
-    // ── 五条接入路径共用同一套判定。 ──
+    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）
+    // ── + 评估执行取证（加分）。五条接入路径共用同一套判定（评估adapter 仅两条轻路径调）。 ──
     await evalInstall(t, { version, clarify: CLARIFY, turn });
     await evalExperiment(t);
     await evalAdapter(t);
+    await evalExecutionEvidence(t);
 
-    // ── 产出质量层（纯加分）：judge 读 agent 手写的 .ts 源码按维度判质量。与 evalAdapter
-    // 不互斥——那边看「真联上了没」（活联通性），这边看「写出来的评估成不成立」（源码质量）。
+    // ── 产出质量层（纯加分）：judge 读 agent 手写的 .ts 源码按维度判 eval 设计质量。 ──
     const material = await agentSourceMaterial(t.sandbox);
 
     await t.group("产出质量层", async () => {
       // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
-      // 传输保真就地写全文（判 adapter，见上面 TRANSPORT_FIDELITY）；其余四维判 eval 设计，
+      // 四维只判 eval 设计（adapter 链路由评估adapter/评估执行取证机械判，不进 judge）：
       // 机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
-      t.judge.autoevals.closedQA(`【传输保真】${TRANSPORT_FIDELITY}`, { on: material }).points(1);
       for (const r of buildQualityRubrics(QUALITY)) {
         t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
       }

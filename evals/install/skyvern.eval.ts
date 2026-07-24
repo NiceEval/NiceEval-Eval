@@ -8,7 +8,8 @@ import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
-import { buildQualityRubrics, qualityPreamble, type QualityFacts } from "./share/quality-criteria.ts";
+import { evalExecutionEvidence } from "./share/eval-adapter.ts";
+import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 Skyvern（用浏览器替你办事的操作型 agent）。
@@ -34,8 +35,8 @@ const CORE_USE_CASE =
   "找到指定字段并返回它的值」，agent 应真的导航到该页、从页面上抽出那个具体字段返回（如价格、版本号、标题）；" +
   "让它抽一个页面上根本不存在的字段，应明确报「找不到 / 页面上没有」而不是编一个看似合理的值";
 
-// 传输事实（按 Skyvern v1.0.47 实测源码填）。一份事实两处用：喂澄清判据的【问接口】，也喂
-// 下面 judge 的「传输保真」维度——以前这两处各写一份全文，改一处就漂一处。
+// 传输事实（按 Skyvern v1.0.47 实测源码填），喂澄清判据的【问接口】。adapter 写没写对不再用
+// judge 读源码判——链路真通没通由 evalExecutionEvidence 机械取证（show --execution 有 ASSISTANT）。
 const TRANSPORT =
   "异步提交 + 轮询终态的 HTTP（FastAPI，默认端口 8000；base_router 前缀是 /v1，不是 /api/v1）：" +
   "POST /v1/run/tasks 提交任务（body 含 prompt 与起始 url，x-api-key 鉴权，也接受 Authorization: Bearer）拿 run_id，" +
@@ -53,18 +54,6 @@ const QUALITY: QualityFacts = {
     "被测系统操作真实网页，最核心的编造风险：让它抽一个页面上根本不存在的字段时，" +
     "它会编一个看似合理的值而不是明确报找不到。",
 };
-
-// 传输保真判据（就地全文，不走共享构造器——判 adapter 的判据几乎全是本项目协议事实，机制只有
-// 末尾两句通用 N 从句，抽共享只剩字符串转发，见 quality-criteria.ts 文件头）。
-const TRANSPORT_FIDELITY =
-  `${qualityPreamble("Skyvern")}\n` +
-  `被测系统是「${CORE_USE_CASE}」，它对外的传输方式是：${TRANSPORT}。\n` +
-  `判断：adapter（agent 手写的 send 实现）是否确实走这个「异步提交 + 轮询终态」的 HTTP 协议——` +
-  `POST 提交任务拿 run_id、再轮询 GET run 直到终态、从结果里取抽取产物，并映射成 niceeval 的事件流？\n` +
-  `合格（Y）：能看到 POST /v1/run/tasks（带 x-api-key、body 有 prompt/url）、拿 run_id、循环 GET ` +
-  `/v1/runs/{run_id} 轮询直到终态（completed/failed/terminated/canceled/timed_out）、从 output 解析抽取结果。\n` +
-  `不合格（N）：只 POST 一次不轮询、拿不到终态结果；或 adapter 进程内直接 import 并调用 skyvern 的函数；` +
-  `或在 adapter 里 spawn/启动 skyvern 进程；或根本没有对应的网络请求。`;
 
 // 项目专属事实，喂澄清判据；判据的机制部分见 ./share/clarify-criteria.ts。这几段是「事实」
 // 不是「判据」——只描述 Skyvern 是什么样，不规定 agent 该说什么，judge 拿它做背景核对而非
@@ -109,9 +98,11 @@ export default defineScoreEval({
       `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。五条接入路径共用同一套判定。 ──
+    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估执行取证（加分）。 ──
+    // ── 五条接入路径共用同一套判定。 ──
     await evalInstall(t, { version, clarify: CLARIFY, turn });
     await evalExperiment(t);
+    await evalExecutionEvidence(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
     // 一条 find+cat 命令把 agent 手写的 .ts 带路径头串成材料（含 adapter）——「传输方式
@@ -121,9 +112,8 @@ export default defineScoreEval({
 
     await t.group("产出质量层", async () => {
       // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
-      // 传输保真就地写全文（判 adapter，见上面 TRANSPORT_FIDELITY）；其余四维判 eval 设计，
-      // 机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
-      t.judge.autoevals.closedQA(`【传输保真】${TRANSPORT_FIDELITY}`, { on: material }).points(1);
+      // 四维只判 eval 设计（adapter 链路由评估执行取证机械判，不进 judge）：机制与反模式从句
+      // 住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
       for (const r of buildQualityRubrics(QUALITY)) {
         t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
       }

@@ -11,14 +11,11 @@
  * - **事实**是逐项目的——核心用例形状、什么算触达差异化能力（DB-GPT 的 chat_normal 是裸 LLM
  *   旁路）、最核心的编造风险，各不一样。所以事实由各 eval 以 QualityFacts 传进来。
  *
- * ## 传输保真为什么不在这里
+ * ## adapter 质量为什么不在这里
  *
- * 同层还有第五维「传输保真」（adapter 是否真走被测系统的协议），它**逐 eval 就地写全文**、
- * 不走这个构造器：判 adapter 的判据几乎全部由项目协议事实构成（端点、握手、帧形状、项目
- * 专属的不合格形态），机制部分只有两句通用 N 从句（进程内 import / spawn 服务 / 无网络请求，
- * 各 eval 就地重复这两句即可）——抽成共享后 "facts" 字段装的其实是判据正文，函数只剩字符串
- * 转发，读的人要拼两个文件才知道 judge 看什么。机制占大头才值得抽；判据全文即事实的维度，
- * 就地写全文更好读。各 eval 用 qualityPreamble 保持同一份材料框定。
+ * adapter 写没写对不用 judge 读源码判——链路真通没通是可机械取证的事实：agent 自装的 CLI
+ * `show --execution` 的执行树里有没有 ASSISTANT 消息（见 ./eval-adapter.ts 的
+ * evalExecutionEvidence，五条路径都调）。judge 只判机器验不了的设计质量，即下面四维。
  *
  * ## 一条判据只判一个点
  *
@@ -59,21 +56,17 @@ export interface QualityRubric {
   criteria: string;
 }
 
-/**
- * 每条 rubric 的公共开头：先框定材料是什么，再强调「一次只判一个点」。
- * 导出给各 eval 就地写的「传输保真」判据复用，保持同一份材料框定（见文件头注）。
- */
-export const qualityPreamble = (system: string): string =>
+/** 每条 rubric 的公共开头：先框定材料是什么，再强调「一次只判一个点」 */
+const preamble = (system: string): string =>
   `背景：给你的材料是 agent 为「把 niceeval 接入 ${system}」写出的 .ts 源码，带路径头，` +
   `按路径自行区分 experiment / eval / adapter。\n` +
   `本条判据只判其中一个点，其它点由别的判据各自判——不要因为材料在别的点上有缺陷就给这一条判 N。\n`;
 
 /**
- * 把一条接入路径的项目事实展开成四条独立质量判据（不含就地写的「传输保真」，见文件头注）。
- * 调用方各挂 `.points(1)`。机制共享、事实逐项目、一条只判一个点、纯加分不 gate。
+ * 把一条接入路径的项目事实展开成四条独立质量判据。调用方各挂 `.points(1)`。
+ * 机制共享、事实逐项目、一条只判一个点、纯加分不 gate。
  */
 export function buildQualityRubrics(f: QualityFacts): QualityRubric[] {
-  const preamble = qualityPreamble;
   return [
     {
       key: "用例贴合",
