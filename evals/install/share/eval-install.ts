@@ -235,11 +235,15 @@ export async function evalInstall(
     // "shell" 是 canonical 工具名（codex 的 command_execution、claude-code 的 Bash 都归一到它），
     // input.command 挂正则只对上 shell 调用的命令串——写进文件的文字不会被 Write 类调用误计；
     // 命中的调用会作为证据带进报告。
-    t.calledTool("shell", { input: { command: /\bniceeval\s+init\b/ } }).points(1); // 托管指引该由 CLI 写入，不是手抄
-    // (?![\s\S]*--dry)：同一条命令里带 --dry 的不算真跑。不要求带 --json——CLI 只有两种形态
-    // （人读文本 / --json），非 TTY 下人读文本本就自动降级为只追加流，agent 直接跑默认形态
-    // 完全合理，逼它加 --json 才算数会误伤。
-    t.calledTool("shell", { input: { command: /\bniceeval\s+exp\b(?![\s\S]*--dry)/ } }).points(1);
-    t.calledTool("shell", { input: { command: /\bniceeval\s+show\b/ } }).points(1);
+    // `(?:@\S+)?\s+(?:--\s+)?`：CLI 的合法调用形态不止 `npx niceeval <cmd>`——canary.7 实跑里
+    // codex 全程用 `npm exec niceeval -- exp baseline`（`--` 分隔符卡在包名与子命令之间），
+    // `npx niceeval@<version> <cmd>` 也常见。旧正则 `niceeval\s+exp` 对不上这两种，把真跑过的
+    // 分误杀成 0（2026-07-24 canary.7 取证）。
+    t.calledTool("shell", { input: { command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?init\b/ } }).points(1); // 托管指引该由 CLI 写入，不是手抄
+    // (?![\s\S]*--dry|[\s\S]*--help)：同一条命令里带 --dry / --help 的不算真跑。不要求带 --json
+    // ——CLI 只有两种形态（人读文本 / --json），非 TTY 下人读文本本就自动降级为只追加流，
+    // agent 直接跑默认形态完全合理，逼它加 --json 才算数会误伤。
+    t.calledTool("shell", { input: { command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?exp\b(?![\s\S]*--dry|[\s\S]*--help)/ } }).points(1);
+    t.calledTool("shell", { input: { command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?show\b/ } }).points(1);
   });
 }
