@@ -8,6 +8,7 @@ import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
+import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 Letta（前身 MemGPT，有状态记忆对话 agent）。
@@ -43,6 +44,24 @@ const TRANSPORT =
 // 项目专属事实，喂澄清判据；判据的机制部分见 ./share/clarify-criteria.ts。这几段是「事实」
 // 不是「判据」——只描述 Letta 是什么样，不规定 agent 该说什么，judge 拿它做背景核对而非
 // 要求逐字复述（otel 那条尤其：变量名是非标准的，不该要求 agent 背出来）。
+// 产出质量事实（判据机制见 ./share/quality-criteria.ts）：合格证据形状按 Letta 0.16.8
+// 实测协议填。CORE_USE_CASE / TRANSPORT 与上面同源——一份事实多处用。
+const QUALITY: QualityFacts = {
+  system: "Letta",
+  coreUseCase: CORE_USE_CASE,
+  transport: TRANSPORT,
+  transportPass:
+    "能看到先 POST /v1/agents 建 agent 拿 agent_id、再向 /v1/agents/{agent_id}/messages 发消息，" +
+    "解析响应里的 assistant / reasoning 等分型消息并产出文本/事件",
+  useCaseShape: "一个具体的、先告诉 agent 某个事实、随后要它复述该事实的多轮记忆场景（复用同一 agent_id）",
+  assertionPass:
+    "能看到多轮交互（复用会话/agent 状态），且断言后续轮的回答里出现之前提供的那个具体事实" +
+    "（如名字「韩梅梅」、项目名「Orbit」）",
+  negativeRisk:
+    "被测系统是有记忆的 agent，最核心的编造风险：问一件从没告诉过它的私人信息（如所在城市）时，" +
+    "它会编一个看似合理的具体值而不是承认不知道。",
+};
+
 const CLARIFY: ClarifyFacts = {
   system: "Letta",
   transport: TRANSPORT,
@@ -91,49 +110,11 @@ export default defineScoreEval({
     // Letta 是 Python 宿主，.ts 基本只有 agent 自己写的，不会混入宿主代码。
     const material = await agentSourceMaterial(t.sandbox);
 
-    const DIMENSIONS: { key: string; threshold: number; criteria: string }[] = [
-      {
-        key: "传输保真",
-        threshold: 0.7,
-        criteria: `被测系统是「${CORE_USE_CASE}」，它对外的传输方式是：${TRANSPORT}。
-判断：adapter（agent 手写的 send 实现）是否确实通过这个两跳的 HTTP 协议与被测系统通信——先建 agent 拿 agent_id、再往
-/v1/agents/{agent_id}/messages 发消息，并把响应里的分型消息映射成 niceeval 的事件流？
-合格（Y）：能看到向这两个 HTTP 端点发请求、带 Authorization: Bearer、解析响应里的 assistant / reasoning 等消息并产出文本/事件。
-不合格（N）：adapter 进程内直接 import 并调用 letta 的函数；或在 adapter 里 spawn/启动 letta 服务进程；或根本没有对应的网络请求。`,
-      },
-      {
-        key: "用例贴合",
-        threshold: 0.7,
-        criteria: `被测系统的真实核心用例：${CORE_USE_CASE}
-判断：eval 的 t.send() 输入是否贴着这个真实业务用例写——一个具体的、告诉 agent 某个事实、随后要它复述该事实的记忆场景？
-不合格（N）：输入是 "hello" / "你好" / "test" 这类与业务无关的寒暄或占位内容。`,
-      },
-      {
-        key: "断言具体",
-        threshold: 0.7,
-        criteria: `判断：eval 是否真的验证了「跨轮记忆」——即先在一轮里告诉 agent 一个具体事实，再在后续轮里问它，
-断言后续轮的回答里出现之前说过的那个具体事实（如名字「韩梅梅」、项目名「Orbit」）？
-合格（Y）：能看到多轮交互（复用会话/agent 状态），且断言用 matcher 或 judge 检查回答里出现之前提供的具体事实。
-不合格（N）：整个 eval 只有单轮、或只有 turn.succeeded()、或只断言「有回答 / 回答长度>0」这类与记忆内容无关的判定。`,
-      },
-      {
-        key: "负例覆盖",
-        threshold: 0.5,
-        criteria: `被测系统是有记忆的 agent，最核心的风险是：问一件从没告诉过它的私人信息时，它会编一个看似合理的具体值而不是承认不知道。
-判断：eval 是否包含一条针对这个负例的用例——问一件从没在对话里提供过的私人信息（如所在城市），断言 agent 明确答「不知道 / 你没告诉过我」且没有编造出一个具体值？`,
-      },
-      {
-        key: "实验-eval 耦合",
-        threshold: 0.7,
-        criteria: `判断：experiment 引用的 agent 与 eval 断言的被测系统是否是同一个 Letta 有状态记忆 agent，而不是各写各的、互不搭界？
-不合格（N）：experiment 用的是 echoAgent / 通用占位 agent，或引用的 agent 与 eval 的被测系统看不出关联。`,
-      },
-    ];
-
     await t.group("产出质量层", async () => {
-      // judge 是软分（severity=soft），不 gate verdict——只把「装好了但产出质量差」量化出来。
-      for (const d of DIMENSIONS) {
-        t.judge.autoevals.closedQA(`【${d.key}】${d.criteria}`, { on: material }).atLeast(d.threshold);
+      // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
+      // 判据机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
+      for (const r of buildQualityRubrics(QUALITY)) {
+        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
       }
     });
 

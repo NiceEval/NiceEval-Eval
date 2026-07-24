@@ -8,6 +8,7 @@ import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
+import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 Skyvern（用浏览器替你办事的操作型 agent）。
@@ -40,6 +41,23 @@ const TRANSPORT =
   "POST /v1/run/tasks 提交任务（body 含 prompt 与起始 url，x-api-key 鉴权，也接受 Authorization: Bearer）拿 run_id，" +
   "再轮询 GET /v1/runs/{run_id} 直到 status 到终态（completed / failed / terminated / canceled / timed_out，" +
   "只等 completed/failed 会永久轮询），从结果的 output 字段取抽取产物。非流式、非 OpenAI 形状";
+
+// 产出质量事实（判据机制见 ./share/quality-criteria.ts）：合格证据形状按 Skyvern v1.0.47
+// 实测协议填。CORE_USE_CASE / TRANSPORT 与上面同源——一份事实多处用。
+const QUALITY: QualityFacts = {
+  system: "Skyvern",
+  coreUseCase: CORE_USE_CASE,
+  transport: TRANSPORT,
+  transportPass:
+    "能看到 POST /v1/run/tasks（带 x-api-key、body 有 prompt/url）拿 run_id、循环 GET /v1/runs/{run_id} " +
+    "轮询直到终态（completed/failed/terminated/canceled/timed_out）、从 output 解析抽取结果",
+  transportFail: "；或只 POST 一次不轮询、拿不到终态结果",
+  useCaseShape: "一个具体的、带起始 URL 与目标字段的浏览器操作/抽取任务",
+  assertionPass: "断言检查抽取产物里出现那个具体字段值（价格、版本号、标题等具体内容）",
+  negativeRisk:
+    "被测系统操作真实网页，最核心的编造风险：让它抽一个页面上根本不存在的字段时，" +
+    "它会编一个看似合理的值而不是明确报找不到。",
+};
 
 // 项目专属事实，喂澄清判据；判据的机制部分见 ./share/clarify-criteria.ts。这几段是「事实」
 // 不是「判据」——只描述 Skyvern 是什么样，不规定 agent 该说什么，judge 拿它做背景核对而非
@@ -94,48 +112,11 @@ export default defineScoreEval({
     // skyvern-frontend 已在 clone 时剪掉，这里再兜一层排除。
     const material = await agentSourceMaterial(t.sandbox, ["skyvern-frontend"]);
 
-    const DIMENSIONS: { key: string; threshold: number; criteria: string }[] = [
-      {
-        key: "传输保真",
-        threshold: 0.7,
-        criteria: `被测系统是「${CORE_USE_CASE}」，它对外的传输方式是：${TRANSPORT}。
-判断：adapter（agent 手写的 send 实现）是否确实走这个「异步提交 + 轮询终态」的 HTTP 协议——POST 提交任务拿 run_id、
-再轮询 GET run 直到终态、从结果里取抽取产物，并映射成 niceeval 的事件流？
-合格（Y）：能看到 POST /v1/run/tasks（带 x-api-key、body 有 prompt/url）、拿 run_id、循环 GET /v1/runs/{run_id} 轮询直到终态（completed/failed/terminated/canceled/timed_out）、从 output 解析抽取结果。
-不合格（N）：adapter 进程内直接 import 并调用 skyvern 的函数；或在 adapter 里 spawn/启动 skyvern 进程；或只 POST 一次不轮询、拿不到终态结果；或根本没有对应的网络请求。`,
-      },
-      {
-        key: "用例贴合",
-        threshold: 0.7,
-        criteria: `被测系统的真实核心用例：${CORE_USE_CASE}
-判断：eval 的 t.send() 输入是否贴着这个真实业务用例写——一个具体的、带起始 URL 的浏览器操作/抽取任务？
-不合格（N）：输入是 "hello" / "你好" / "test" / "帮我上网查查" 这类没有具体页面与目标字段的寒暄或占位内容。`,
-      },
-      {
-        key: "断言具体",
-        threshold: 0.7,
-        criteria: `判断：eval 的断言是否检查了这个抽取任务应得到的具体结果，而不是只判任务跑完？
-合格（Y）：断言检查抽取产物里出现那个具体字段值（价格、版本号、标题等具体内容），用 matcher 或 judge 对内容做判定。
-不合格（N）：整个 eval 只有 turn.succeeded()，或只断言「任务 status 是 completed」「有结果」这类与抽取内容无关的判定。`,
-      },
-      {
-        key: "负例覆盖",
-        threshold: 0.5,
-        criteria: `被测系统操作真实网页，最核心的风险是：让它抽一个页面上根本不存在的字段时，它会编一个看似合理的值而不是明确报找不到。
-判断：eval 是否包含一条针对这个负例的用例——让 agent 抽一个页面上不存在的字段，断言它明确报「找不到 / 页面上没有」且没有编造出一个具体值？`,
-      },
-      {
-        key: "实验-eval 耦合",
-        threshold: 0.7,
-        criteria: `判断：experiment 引用的 agent 与 eval 断言的被测系统是否是同一个 Skyvern 浏览器操作 agent，而不是各写各的、互不搭界？
-不合格（N）：experiment 用的是 echoAgent / 通用占位 agent，或引用的 agent 与 eval 的被测系统看不出关联。`,
-      },
-    ];
-
     await t.group("产出质量层", async () => {
-      // judge 是软分（severity=soft），不 gate verdict——只把「装好了但产出质量差」量化出来。
-      for (const d of DIMENSIONS) {
-        t.judge.autoevals.closedQA(`【${d.key}】${d.criteria}`, { on: material }).atLeast(d.threshold);
+      // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
+      // 判据机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
+      for (const r of buildQualityRubrics(QUALITY)) {
+        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
       }
     });
 

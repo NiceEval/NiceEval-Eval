@@ -10,7 +10,9 @@
  * ——「真跑一次」本来就写在 INIT.md 的完成清单里（Actually run it once and get it green），
  * 五条路径都适用。但 Letta / Skyvern / OpenHands 要起的东西太重也太飘（Letta 要起服务、
  * Skyvern 还要拉浏览器、OpenHands 要起 app_server + sandbox 内的 agent server），断言它跑通
- * 测到的是环境波动而不是文档效果，所以那三条改用 judge 读 agent 手写的源码来评产出质量。
+ * 测到的是环境波动而不是文档效果，所以那三条只保留产出质量层（judge 读源码，见
+ * ./quality-criteria.ts——五条路径都有那层，与这里的活联通性不互斥：那边判「写出来的评估
+ * 成不成立」，这边判「真联上了没」）。
  *
  * 写法约定：判定一律用官方断言词汇，不发明领域 API；取证一律「一条命令或一个文件」。
  */

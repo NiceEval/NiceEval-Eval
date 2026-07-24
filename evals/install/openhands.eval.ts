@@ -8,6 +8,7 @@ import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
+import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 OpenHands（前身 OpenDevin，自主编码 agent）。
@@ -49,6 +50,24 @@ const TRANSPORT =
   "/sockets/events/{id}?session_api_key=（承载 SDK 的 ActionEvent / ObservationEvent），映射成 niceeval 事件流" +
   "直到 agent 结束（app_server 是薄代理、agent 实跑在 sandbox 内独立的 agent server / openhands-agent-server 包；" +
   "非 OpenAI 形状；旧版 Socket.IO oh_event/oh_user_action 已删除，别用）";
+
+// 产出质量事实（判据机制见 ./share/quality-criteria.ts）：合格证据形状按 OpenHands 1.11.0
+// 实测协议填。CORE_USE_CASE / TRANSPORT 与上面同源——一份事实多处用。
+const QUALITY: QualityFacts = {
+  system: "OpenHands",
+  coreUseCase: CORE_USE_CASE,
+  transport: TRANSPORT,
+  transportPass:
+    "能看到 POST /api/v1/app-conversations 建会话拿 conversation_id、POST .../send-message 发任务、" +
+    "并通过轮询 GET events 或连 agent server 的原生 WebSocket 读取 ActionEvent / ObservationEvent " +
+    "推进到结束",
+  transportFail: "；或照旧版 Socket.IO oh_event/oh_user_action 写（1.11.0 已删除）",
+  useCaseShape: "一个具体的、结果确定可核对的小编码任务",
+  assertionPass: "断言检查产出里出现那个确定结果（如斐波那契第 10 项 = 55，或某段代码的具体运行输出）",
+  negativeRisk:
+    "被测系统是能自主干活的编码 agent，最核心的编造风险：给它一个信息不足、无法完成的任务时，" +
+    "它会假装完成、编一个看似合理的结果。",
+};
 
 // 项目专属事实，喂澄清判据；判据的机制部分见 ./share/clarify-criteria.ts。这几段是「事实」
 // 不是「判据」——只描述 OpenHands 是什么样，不规定 agent 该说什么，judge 拿它做背景核对而非
@@ -102,49 +121,11 @@ export default defineScoreEval({
     // frontend 已在 clone 时剪掉，这里再兜一层排除。
     const material = await agentSourceMaterial(t.sandbox, ["frontend"]);
 
-    const DIMENSIONS: { key: string; threshold: number; criteria: string }[] = [
-      {
-        key: "传输保真",
-        threshold: 0.7,
-        criteria: `被测系统是「${CORE_USE_CASE}」，它对外的传输方式是：${TRANSPORT}。
-判断：adapter（agent 手写的 send 实现）是否确实走 1.11.0 的 app_server /api/v1 协议——POST /api/v1/app-conversations
-建会话拿 conversation_id、POST .../send-message 发任务、再通过轮询 GET events 或连 agent server 的原生 WebSocket
-读 ActionEvent / ObservationEvent，映射成 niceeval 的事件流？
-合格（Y）：能看到 POST /api/v1/app-conversations 建会话、send-message 发任务、并通过 events 轮询或原生 WebSocket 读取 action/observation 事件推进到结束。
-不合格（N）：adapter 进程内直接 import 并调用 openhands 的函数；或在 adapter 里 spawn/启动 openhands 进程；或照旧版 Socket.IO oh_event/oh_user_action 写（1.11.0 已删除）；或根本没有对应的网络请求。`,
-      },
-      {
-        key: "用例贴合",
-        threshold: 0.7,
-        criteria: `被测系统的真实核心用例：${CORE_USE_CASE}
-判断：eval 的 t.send() 输入是否贴着这个真实业务用例写——一个具体的、结果确定可核对的小编码任务？
-不合格（N）：输入是 "hello" / "你好" / "test" / "帮我写点代码" 这类没有确定结果、无法核对的寒暄或占位内容。`,
-      },
-      {
-        key: "断言具体",
-        threshold: 0.7,
-        criteria: `判断：eval 的断言是否检查了这个编码任务应得到的具体确定结果，而不是只判 agent 跑完？
-合格（Y）：断言检查产出里出现那个确定结果（如斐波那契第 10 项 = 55，或某段代码的具体运行输出），用 matcher 或 judge 对内容做判定。
-不合格（N）：整个 eval 只有 turn.succeeded()，或只断言「agent 结束了」「有产出」这类与具体结果无关的判定。`,
-      },
-      {
-        key: "负例覆盖",
-        threshold: 0.5,
-        criteria: `被测系统是能自主干活的编码 agent，最核心的风险是：给它一个信息不足、无法完成的任务时，它会假装完成、编一个看似合理的结果。
-判断：eval 是否包含一条针对这个负例的用例——给一个明显无法完成/信息不足的任务，断言 agent 明确表示无法完成/需要更多信息，而不是编造出一个已完成的结果？`,
-      },
-      {
-        key: "实验-eval 耦合",
-        threshold: 0.7,
-        criteria: `判断：experiment 引用的 agent 与 eval 断言的被测系统是否是同一个 OpenHands 自主编码 agent，而不是各写各的、互不搭界？
-不合格（N）：experiment 用的是 echoAgent / 通用占位 agent，或引用的 agent 与 eval 的被测系统看不出关联。`,
-      },
-    ];
-
     await t.group("产出质量层", async () => {
-      // judge 是软分（severity=soft），不 gate verdict——只把「装好了但产出质量差」量化出来。
-      for (const d of DIMENSIONS) {
-        t.judge.autoevals.closedQA(`【${d.key}】${d.criteria}`, { on: material }).atLeast(d.threshold);
+      // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
+      // 判据机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
+      for (const r of buildQualityRubrics(QUALITY)) {
+        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
       }
     });
 
