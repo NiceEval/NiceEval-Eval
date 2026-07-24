@@ -45,6 +45,9 @@ const CLARIFY: ClarifyFacts = {
 export default defineScoreEval({
   description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
   environment: "python",
+  // INIT.md 的完成清单含「真跑一次并 show 可见」，装+读文档+写三件套+端到端一轮下来
+  // 全局 20min 不够（canary.4 上 gpt-researcher 干到一半被掐死过），install 组统一放宽。
+  timeoutMs: 35 * 60 * 1000,
   async test(t) {
     const version = t.flags.candidateVersion as string;
 
@@ -57,6 +60,9 @@ export default defineScoreEval({
       excludeDirs: ["docs", "assets"],
     });
 
+    // send 是「用户会原样复制的那句话」：只有读引导 + 装包 + 版本钉死。写三件套、真跑一次、
+    // show 可见这些行为要求全部住在 INIT.md 的 TODO 清单里——agent 做没做到是文档的读数，
+    // 不由 prompt 代劳。五条接入路径同一份文案。
     const turn = await t.send(
       `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
       `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,

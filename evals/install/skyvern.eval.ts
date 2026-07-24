@@ -3,7 +3,8 @@ import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate
 import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
 import type { ClarifyFacts } from "./share/clarify-criteria.ts";
-// 不调用 evalAdapter：任务描述没要求 agent 真跑一次（起 Skyvern 服务 + 浏览器重且不稳），evalAdapter 断的正是那件事
+// 不调用 evalAdapter：起 Skyvern 服务 + 拉浏览器重且不稳，断「真跑通」测到的是环境波动而不是文档效果
+//（INIT.md 的完成清单仍要求真跑一次，agent 做不做由交互层/产出质量层如实计分）
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
@@ -60,6 +61,9 @@ const CLARIFY: ClarifyFacts = {
 export default defineScoreEval({
   description: "把 niceeval 接入 Skyvern（浏览器操作自动化 agent）",
   environment: "python",
+  // INIT.md 的完成清单含「真跑一次并 show 可见」，agent 大概率会尝试起被测系统，
+  // 全局 20min 不够（canary.4 上 gpt-researcher 干到一半被掐死过），install 组统一放宽。
+  timeoutMs: 35 * 60 * 1000,
   async test(t) {
     const version = t.flags.candidateVersion as string;
 
@@ -72,10 +76,12 @@ export default defineScoreEval({
       excludeDirs: ["skyvern-frontend", "docs"],
     });
 
+    // send 是「用户会原样复制的那句话」：只有读引导 + 装包 + 版本钉死。写三件套、真跑一次、
+    // show 可见这些行为要求全部住在 INIT.md 的 TODO 清单里——agent 做没做到是文档的读数，
+    // 不由 prompt 代劳。五条接入路径同一份文案。
     const turn = await t.send(
-      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo, then finish the ` +
-        `integration — adapter, eval, and experiment.\n\n` +
-        `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
+      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
+      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）。五条接入路径共用同一套判定。 ──

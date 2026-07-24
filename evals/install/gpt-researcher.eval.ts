@@ -47,6 +47,9 @@ const CLARIFY: ClarifyFacts = {
 export default defineScoreEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
   environment: "python",
+  // INIT.md 的完成清单含「真跑一次并 show 可见」，装+读文档+写三件套+端到端一轮下来
+  // 全局 20min 不够（canary.4 上这条正确迭代到一半被掐死），install 组统一放宽。
+  timeoutMs: 35 * 60 * 1000,
   async test(t) {
     const version = t.flags.candidateVersion as string;
 
@@ -58,13 +61,12 @@ export default defineScoreEval({
       ref: "v3.6.0",
     });
 
+    // send 是「用户会原样复制的那句话」：只有读引导 + 装包 + 版本钉死。写三件套、真跑一次、
+    // show 可见这些行为要求全部住在 INIT.md 的 TODO 清单里——agent 做没做到是文档的读数，
+    // 不由 prompt 代劳。五条接入路径同一份文案。
     const turn = await t.send(
-      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo, then finish the ` +
-        `integration — adapter, eval, and experiment.\n\n` +
-        `Then actually run your eval once, end to end — bring up whatever the integration needs so a real ` +
-        `request reaches the system under test and a real response comes back — and confirm the result is ` +
-        `viewable with \`niceeval show\`. A wired-up adapter that has never actually run once is not done.\n\n` +
-        `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
+      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
+      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）。 ──

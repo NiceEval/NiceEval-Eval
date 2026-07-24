@@ -35,11 +35,14 @@ export async function evalAdapter(t: ScoreTestContext): Promise<void> {
 
   await t.group("评估adapter", async () => {
     t.check(show, commandSucceeded().atLeast(1));
+    // 只要正向证据（出现 passed/failed = 请求真出去、回应真回来），不再排斥 errored 字样：
+    // 「第一次跑挂、修好再跑通」是文件头明说合理的路径，历史里留着 errored 行不该连坐。
+    // 连不上被测系统的 agent 本来就产不出任何 passed/failed。
     t.check(
       show.stdout,
       satisfies(
-        (s) => /\b(passed|failed)\b/i.test(s as string) && !/\berrored\b/i.test(s as string),
-        "niceeval show 显示的 verdict 是 passed/failed（真联上了被测系统；连不上会是 errored）",
+        (s) => /\b(passed|failed)\b/i.test(s as string),
+        "niceeval show 显示的 verdict 有 passed/failed（真联上了被测系统；从没联上只会有 errored）",
       ).atLeast(1),
     );
   });
