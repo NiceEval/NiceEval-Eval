@@ -148,7 +148,13 @@ export async function evalInstall(
   // respond 会抛「There is no pending input.requested」把整题打成 errored。所以真 park 了走
   // respond；没 park 就用同 session 的下一条消息把答复递过去，让 agent 拿到方案继续干活——
   // parked 那 1 分它没挣到已如实记，但后面的 gate / 产出 / 路由取证不能因此全部断粮。
-  const PICK_TIER_1 = "简单接入——写两个实验、先不接 otel，也先不做 flag。";
+  // 罐头答复要接得住 agent 实际会问的问题：canary.6 实跑里两条路径都问了「端点确认？
+  // 被测服务谁起？judge 用什么 key？」，只答档位会让下一轮再停一次。最后一句关掉
+  // 「继续等确认」的口子——真用户不在场，这条评估只给一次答复机会。
+  const PICK_TIER_1 =
+    "简单接入——写两个实验、先不接 otel，也先不做 flag。" +
+    "接口就用你探到的那个；被测服务需要的话你自己起；judge 按文档处理，没有可用 key 就降级。" +
+    "其余你自行决定，不用再等我确认。";
   if (opts.turn.status === "waiting") {
     await t.respond(PICK_TIER_1);
   } else {
