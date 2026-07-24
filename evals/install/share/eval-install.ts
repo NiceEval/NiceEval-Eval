@@ -142,13 +142,17 @@ export async function evalInstall(
   //
   // 但「停下来问」本身就是被测行为、不是前提：五条路径的任务描述都不再声明「没人可确认」
   // （INIT.md 只在任务明确说没人可确认时才允许 agent 自行决定，那句话在场会把这一整层变成
-  // 「守文档就扣分」的死分），所以该问就该问——但 agent 仍可能不问、一轮把活做完。这时
-  // turn 是 completed/failed 而非 waiting，没有待处理的 input.requested——若仍无条件
-  // respond，会抛「There is no pending input.requested」把整题打成 errored，连后面的
-  // gate / 路由 / adapter 都白评。所以只在真 park 了才续轮；没 park 就直接进入事后取证，
-  // agent 一轮里已经产出的三件套照样按 gate / 加分评（交互层那几分它没挣到，已如实记）。
+  // 「守文档就扣分」的死分），所以该问就该问——但 agent 可能不 park：要么一轮把活做完，
+  // 要么把澄清问题写进回复文本就结束本轮（canary.6 实跑里 codex 两条路径都是后者——判交互
+  // 的四条 judge 全给了 Y，turn 却是 completed）。这时没有待处理的 input.requested，无条件
+  // respond 会抛「There is no pending input.requested」把整题打成 errored。所以真 park 了走
+  // respond；没 park 就用同 session 的下一条消息把答复递过去，让 agent 拿到方案继续干活——
+  // parked 那 1 分它没挣到已如实记，但后面的 gate / 产出 / 路由取证不能因此全部断粮。
+  const PICK_TIER_1 = "简单接入——写两个实验、先不接 otel，也先不做 flag。";
   if (opts.turn.status === "waiting") {
-    await t.respond("简单接入——写两个实验、先不接 otel，也先不做 flag。");
+    await t.respond(PICK_TIER_1);
+  } else {
+    await t.send(PICK_TIER_1);
   }
 
   // ── 事后取证：agent 干完后再回看装成没装成 + 过程侧 ──────────────────────────────
