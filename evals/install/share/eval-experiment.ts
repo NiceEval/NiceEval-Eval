@@ -11,43 +11,47 @@
 
 import type { ScoreTestContext } from "niceeval";
 import { isTrue, satisfies } from "niceeval/expect";
-import { locateInstallRoot } from "./eval-install.ts";
+import { locateInstallRoot, parseExpPlanDocument, type ExpPlanDocument } from "./eval-install.ts";
 
 /** 评估exp质量（软分，不 gate）：装对了之后写得讲不讲究。 */
 export async function evalExperiment(t: ScoreTestContext): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
 
-  const dry = await sandbox.runShell(`npx --no-install niceeval exp --dry --output ci 2>&1`, { cwd: at });
+  // --dry --json 输出单个 ExpPlanDocument（见 eval-install.ts 的 parseExpPlanDocument）；
+  // stderr 分流到 /dev/null，stdout 上只留纯净 JSON。
+  const dry = await sandbox.runShell(`npx --no-install niceeval exp --dry --json 2>/dev/null`, { cwd: at });
+  const dryPlan = parseExpPlanDocument(dry.stdout);
   const shared = (
     await sandbox.runShell(`find experiments agents adapters -maxdepth 2 -iname 'shared*.ts' 2>/dev/null`, {
       cwd: at,
     })
   ).stdout.trim();
 
+  // satisfies() 的 predicate 参数类型固定是 unknown（见 niceeval/expect），这里在断言体内
+  // 一次性收窄回 ExpPlanDocument | null，三条判据共用同一份收窄结果。
+  const asPlan = (v: unknown) => v as ExpPlanDocument | null;
+
   await t.group("评估exp质量", async () => {
     // 一格实验什么也比不了：baseline 之外至少还要有一个对比格。宿主接口完全不支持
     // 任何变体时允许退化，所以是软分不 gate。
     t.check(
-      dry.stdout,
-      satisfies(
-        (s) => ((s as string).match(/^niceeval: plan-row /gm)?.length ?? 0) >= 2,
-        "至少两格实验配置——baseline 加至少一个对比",
-      ).atLeast(1),
+      dryPlan,
+      satisfies((v) => (asPlan(v)?.matrix.length ?? 0) >= 2, "至少两格实验配置——baseline 加至少一个对比").atLeast(
+        1,
+      ),
     );
     // compare-models 是 INIT.md 明确要求的默认组织方式
     t.check(
-      dry.stdout,
+      dryPlan,
       satisfies(
-        (s) => /experiment="?[^"\s]*\bcompare-models\//.test(s as string),
+        (v) => (asPlan(v)?.matrix ?? []).some((row) => row.experimentId.includes("compare-models/")),
         "按 compare-models 实验组组织",
       ).atLeast(1),
     );
-    // 接入期每格 runs=1：先跑通一次再谈统计，多 runs 只是烧时间和预算
-    t.check(
-      dry.stdout,
-      satisfies((s) => !/\bruns=(?!1\b)\d+/.test(s as string), "每格实验 runs=1").atLeast(1),
-    );
+    // 接入期每格 runs=1：先跑通一次再谈统计，多 runs 只是烧时间和预算。ExpPlanDocument.runs
+    // 是这次 --dry 选中范围内统一适用的每格 runs 数（total = matrix 行数 × runs）。
+    t.check(dryPlan, satisfies((v) => asPlan(v)?.runs === 1, "每格实验 runs=1").atLeast(1));
     // 一两个实验不配抽象层：shared.ts 是文档里给「实验多了以后」的写法，起手就抽是过度设计
     t.check(shared.length === 0, isTrue(`没有先抽 shared.ts 共享抽象（实际：${shared || "无"}）`).atLeast(1));
   });

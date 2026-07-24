@@ -27,8 +27,11 @@ export async function evalAdapter(t: ScoreTestContext): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
 
-  // 自装 CLI 能不能把跑出来的结果显示出来
-  const show = await sandbox.runShell(`npx --no-install niceeval show --output ci 2>&1`, { cwd: at });
+  // 自装 CLI 能不能把跑出来的结果显示出来。show 没有 --output 这类 profile flag（两形态契约:
+  // 不加 flag = 人读文本,非 TTY 自动降级为无框纯文本;--json 是机器面）,gate:show 尚未落地
+  // --json,这里先用不带 flag 的默认人读文本;--json 落地后可把下面的字符串判定升级为结构化
+  // 字段校验。
+  const show = await sandbox.runShell(`npx --no-install niceeval show 2>&1`, { cwd: at });
 
   await t.group("评估adapter", async () => {
     t.check(show, commandSucceeded().atLeast(1));

@@ -29,6 +29,66 @@ import { readCandidateManifest } from "../../../lib/candidate.ts";
 import { buildClarifyRubrics, type ClarifyFacts } from "./clarify-criteria.ts";
 
 /**
+ * `niceeval exp --dry --json` 的单文档形状（`docs/feature/experiments/cli.md#机器怎么读--json`）。
+ * 不从 `niceeval` 包里取——包的公开面导出的是运行时事件流类型，这个形状是候选 CLI 输出的
+ * 纯文本协议，候选版本与 harness 自身的 devDependency 版本无关，这里按契约本地声明。
+ */
+export interface ExpPlanRow {
+  experimentId: string;
+  evalId: string;
+  /** 命中缓存指纹，本次不会派发新 attempt。 */
+  reused: boolean;
+}
+
+export interface ExpPlanDocument {
+  format: "niceeval.exp-plan";
+  schemaVersion: number;
+  /** matrix 行数 × runs。 */
+  total: number;
+  evals: number;
+  configs: number;
+  runs: number;
+  /** matrix 逐行 reused 之和。 */
+  reused: number;
+  matrix: ExpPlanRow[];
+}
+
+/**
+ * 解析 `niceeval exp --dry --json` 的 stdout。正常情况下整段 stdout 就是一个 JSON 文档；
+ * `npx --no-install` 理论上不产生额外噪音，但为防御偶发的 npm 输出混入 stdout（stderr 已用
+ * `2>/dev/null` 分流），兜底按 `format` marker 定位最后一个能闭合的 `{...}` 块再解析。
+ * 两条路径都失败时返回 null，交给调用方按 gate/软分各自的语义处理。
+ */
+export function parseExpPlanDocument(stdout: string): ExpPlanDocument | null {
+  const trimmed = stdout.trim();
+  try {
+    return JSON.parse(trimmed) as ExpPlanDocument;
+  } catch {
+    // 整段不是纯 JSON，继续走 marker 兜底
+  }
+  const marker = '"format":"niceeval.exp-plan"';
+  const markerIdx = trimmed.lastIndexOf(marker);
+  if (markerIdx === -1) return null;
+  const start = trimmed.lastIndexOf("{", markerIdx);
+  if (start === -1) return null;
+  let depth = 0;
+  for (let i = start; i < trimmed.length; i++) {
+    if (trimmed[i] === "{") depth++;
+    else if (trimmed[i] === "}") {
+      depth--;
+      if (depth === 0) {
+        try {
+          return JSON.parse(trimmed.slice(start, i + 1)) as ExpPlanDocument;
+        } catch {
+          return null;
+        }
+      }
+    }
+  }
+  return null;
+}
+
+/**
  * 找 agent 把 niceeval 装在了哪；没装返回 null。
  *
  * 不假设一定在 workdir 根：python-service 这类非 JS 宿主的正确做法就是
@@ -107,10 +167,13 @@ export async function evalInstall(
     })
   ).stdout.trim();
   // 用 agent 自己装的那个 CLI 来发现 eval / 规划实验——同时验证了「装的东西是能跑的」。
-  // --dry 只解析 experiments/ 并规划矩阵，一行 plan-row 对应一格能加载成功的配置；
-  // 配置文件存在但加载报错时 dry-run 非零退出、规划数清零，数 .ts 文件骗不了它。
+  // --dry --json 只解析 experiments/ 并输出单个 ExpPlanDocument，matrix 里一行对应一格能
+  // 加载成功的配置；配置文件存在但加载报错时 dry-run 非零退出、matrix 清零，数 .ts 文件骗不
+  // 了它。stderr 分流到 /dev/null，只留 stdout 上纯净的 JSON 文档（解析兜底见
+  // parseExpPlanDocument）。
   const list = await sandbox.runShell(`npx --no-install niceeval list 2>&1`, { cwd: at });
-  const dry = await sandbox.runShell(`npx --no-install niceeval exp --dry --output ci 2>&1`, { cwd: at });
+  const dry = await sandbox.runShell(`npx --no-install niceeval exp --dry --json 2>/dev/null`, { cwd: at });
+  const dryPlan = parseExpPlanDocument(dry.stdout);
   const hasTsconfig = await sandbox.fileExists(`${at === "." ? "" : at + "/"}tsconfig.json`);
   const tsc = hasTsconfig
     ? await sandbox.runShell(`npx --no-install tsc --noEmit 2>&1`, { cwd: at })
@@ -137,8 +200,13 @@ export async function evalInstall(
       ),
     );
     t.check(
-      dry.stdout,
-      satisfies((s) => /^niceeval: plan-row /m.test(s as string), "exp --dry 能规划出至少一个 experiment"),
+      dryPlan,
+      // satisfies() 的 predicate 参数类型固定是 unknown（见 niceeval/expect），这里收窄回
+      // ExpPlanDocument | null。
+      satisfies((v) => {
+        const p = v as ExpPlanDocument | null;
+        return p !== null && p.matrix.length > 0;
+      }, "exp --dry 能规划出至少一个 experiment"),
     );
     // 非 TS 宿主可以没有 tsconfig，这时不判——有 tsconfig 才要求 agent 自己的代码干净
     if (tsc) {
@@ -158,8 +226,9 @@ export async function evalInstall(
     // input.command 挂正则只对上 shell 调用的命令串——写进文件的文字不会被 Write 类调用误计；
     // 命中的调用会作为证据带进报告。
     t.calledTool("shell", { input: { command: /\bniceeval\s+init\b/ } }).points(1); // 托管指引该由 CLI 写入，不是手抄
-    // (?![\s\S]*--dry)：同一条命令里带 --dry 的不算真跑。不强制 --output agent——
-    // 非 TTY 下 auto profile 本来就落到 agent，逼显式 flag 会误伤
+    // (?![\s\S]*--dry)：同一条命令里带 --dry 的不算真跑。不要求带 --json——CLI 只有两种形态
+    // （人读文本 / --json），非 TTY 下人读文本本就自动降级为只追加流，agent 直接跑默认形态
+    // 完全合理，逼它加 --json 才算数会误伤。
     t.calledTool("shell", { input: { command: /\bniceeval\s+exp\b(?![\s\S]*--dry)/ } }).points(1);
     t.calledTool("shell", { input: { command: /\bniceeval\s+show\b/ } }).points(1);
   });
