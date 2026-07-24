@@ -7,7 +7,7 @@ import { evalAdapter } from "./share/eval-adapter.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
-import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
+import { buildQualityRubrics, qualityPreamble, type QualityFacts } from "./share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 DB-GPT（数据库对话式分析 + AWEL 工作流平台）。
@@ -40,10 +40,6 @@ const QUALITY: QualityFacts = {
     "数据库对话式分析平台：用户用自然语言问库表和数据，DB-GPT 经 chat_data / chat_db_qa / " +
     "chat_dashboard 等对话模式（配套 chat_param 指定具体的库）对接真实数据库，生成 SQL / 查询结果 / " +
     "分析；chat_normal 只是裸 LLM 闲聊，不触达任何数据库能力",
-  transport: TRANSPORT,
-  transportPass:
-    "能看到向 /api/v2/chat/completions（Bearer、标准 messages 形状）或 /api/v1/chat/completions" +
-    "（私有形状）发 HTTP 请求，解析 SSE 或非流式响应并把助手回复映射成消息事件",
   useCaseShape:
     "一个具体的数据问答/分析请求，且 chat_mode 用的是能触达数据库能力的模式" +
     "（chat_data / chat_db_qa / chat_dashboard 等，非 normal 模式配套 chat_param）",
@@ -56,6 +52,18 @@ const QUALITY: QualityFacts = {
     "结果集而不是明确报不存在。注意负例必须在真的触达数据库能力的模式下问才成立——chat_normal " +
     "本来就查不了任何表，拒答是必然的，分不出编造与否。",
 };
+
+// 传输保真判据（就地全文，不走共享构造器——判 adapter 的判据几乎全是本项目协议事实，机制只有
+// 末尾两句通用 N 从句，抽共享只剩字符串转发，见 quality-criteria.ts 文件头）。
+const TRANSPORT_FIDELITY =
+  `${qualityPreamble("DB-GPT")}\n` +
+  `被测系统是「${QUALITY.coreUseCase}」，它对外的传输方式是：${TRANSPORT}。\n` +
+  `判断：adapter（agent 手写的 send 实现）是否确实通过这个 HTTP 协议与 DB-GPT 通信，` +
+  `并把响应映射成 niceeval 的事件流？\n` +
+  `合格（Y）：能看到向 /api/v2/chat/completions（Bearer、标准 messages 形状）或 ` +
+  `/api/v1/chat/completions（私有形状）发 HTTP 请求，解析 SSE 或非流式响应并把助手回复映射成消息事件。\n` +
+  `不合格（N）：adapter 进程内直接 import 并调用 DB-GPT 的函数；或在 adapter 里 spawn/启动 DB-GPT 进程；` +
+  `或根本没有对应的网络请求。`;
 
 // 项目专属事实（按 DB-GPT v0.8.1 实测源码填），喂澄清判据；判据的机制部分见
 // ./share/clarify-criteria.ts。这三段是「事实」不是「判据」——只描述 DB-GPT 是什么样，
@@ -111,7 +119,9 @@ export default defineScoreEval({
 
     await t.group("产出质量层", async () => {
       // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
-      // 判据机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
+      // 传输保真就地写全文（判 adapter，见上面 TRANSPORT_FIDELITY）；其余四维判 eval 设计，
+      // 机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
+      t.judge.autoevals.closedQA(`【传输保真】${TRANSPORT_FIDELITY}`, { on: material }).points(1);
       for (const r of buildQualityRubrics(QUALITY)) {
         t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
       }

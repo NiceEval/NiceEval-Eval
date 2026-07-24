@@ -1,22 +1,29 @@
 /**
- * 产出质量判据（closeQA rubric 的构造器）：agent 写出的三件套（experiment / eval / adapter）
- * 质量好不好。judge 读 agent 手写的 .ts 源码（见 ./fixture.ts 的 agentSourceMaterial），按维度
- * 分别判。
+ * 产出质量判据（closeQA rubric 的构造器）：agent 写出的 eval / experiment 设计质量好不好。
+ * judge 读 agent 手写的 .ts 源码（见 ./fixture.ts 的 agentSourceMaterial），按维度分别判。
  *
  * 「什么算好」分两半，这个文件负责把两半焊在一起（同 ./clarify-criteria.ts 的机制/事实分家）：
  *
- * - **机制**是通用的——五个维度（传输保真 / 用例贴合 / 断言具体 / 负例覆盖 / 实验-eval 耦合）
- *   与各维度里的反模式从句（自指元问题、传输回执同义反复、教答案式负例、脆断言）五条接入
- *   路径完全一样。这些反模式来自 .agent-output/ 里实跑产物的人工 review：劣质产物高度集中在
- *   这几类，且与宿主是谁无关。
- * - **事实**是逐项目的——被测系统的真实协议、核心用例形状、什么算触达差异化能力（DB-GPT 的
- *   chat_normal 是裸 LLM 旁路、gpt-researcher 的 background 提交拿不到报告正文）、最核心的编造
- *   风险，各不一样。所以事实由各 eval 以 QualityFacts 传进来。
+ * - **机制**是通用的——四个维度（用例贴合 / 断言具体 / 负例覆盖 / 实验-eval 耦合）与各维度里
+ *   的反模式从句（自指元问题、传输回执同义反复、教答案式负例、脆断言）五条接入路径完全一样。
+ *   这些反模式来自 .agent-output/ 里实跑产物的人工 review：劣质产物高度集中在这几类，且与
+ *   宿主是谁无关。
+ * - **事实**是逐项目的——核心用例形状、什么算触达差异化能力（DB-GPT 的 chat_normal 是裸 LLM
+ *   旁路）、最核心的编造风险，各不一样。所以事实由各 eval 以 QualityFacts 传进来。
+ *
+ * ## 传输保真为什么不在这里
+ *
+ * 同层还有第五维「传输保真」（adapter 是否真走被测系统的协议），它**逐 eval 就地写全文**、
+ * 不走这个构造器：判 adapter 的判据几乎全部由项目协议事实构成（端点、握手、帧形状、项目
+ * 专属的不合格形态），机制部分只有两句通用 N 从句（进程内 import / spawn 服务 / 无网络请求，
+ * 各 eval 就地重复这两句即可）——抽成共享后 "facts" 字段装的其实是判据正文，函数只剩字符串
+ * 转发，读的人要拼两个文件才知道 judge 看什么。机制占大头才值得抽；判据全文即事实的维度，
+ * 就地写全文更好读。各 eval 用 qualityPreamble 保持同一份材料框定。
  *
  * ## 一条判据只判一个点
  *
- * 返回五条独立 rubric，调用方各挂 `.points(1)`，而不是一条 rubric 里 AND 五个要件：closedQA 是
- * 二值打分器（Y=1 / N=0），五要件写进一条里，「传输对了、负例缺了」和「全错」拿一样的 0 分。
+ * 返回四条独立 rubric，调用方各挂 `.points(1)`，而不是一条 rubric 里 AND 多个要件：closedQA 是
+ * 二值打分器（Y=1 / N=0），多要件写进一条里，「用例对了、负例缺了」和「全错」拿一样的 0 分。
  * 这层是**纯加分**——Y 挣 1 分、N 挣 0 分，不 gate：品味红了东西还是能用的，没挣到只是没提分。
  * （以前三条路径各自内联这套维度并用 `.atLeast(threshold)`：closedQA 二值下 (0,1] 里任何阈值
  * 行为都一样，阈值是摆设；且 atLeast 只判不给分，与「加分」语义不符，统一改挂 `.points(1)`。）
@@ -28,21 +35,12 @@
  * 必然误判。它们不是「没做到更好」而是「做了也无效」，所以进判据不进 INIT.md 的教学义务。
  */
 
-/**
- * 一条接入路径的产出质量事实。transport 与 ClarifyFacts.transport 同源（各 eval 抽一个
- * TRANSPORT 常量两处喂），其余字段按被测系统实测源码填。
- */
+/** 一条接入路径的产出质量事实，按被测系统实测源码填。 */
 export interface QualityFacts {
   /** 被测系统名，进 rubric 正文（如 "DB-GPT"） */
   system: string;
   /** 真实核心用例：这个系统到底是干什么的、差异化能力在哪 */
   coreUseCase: string;
-  /** 对外传输形状，按实测源码填（与澄清判据共用同一份常量） */
-  transport: string;
-  /** 传输保真的合格证据形状：在 adapter 源码里看到什么就算真走了这个协议 */
-  transportPass: string;
-  /** 追加的项目专属不合格从句（如「只提交 background 任务拿回执」），以「；或」开头拼接 */
-  transportFail?: string;
   /** 用例贴合的合格形状：什么样的 t.send() 输入算贴着核心用例写 */
   useCaseShape: string;
   /** 追加的项目专属旁路从句（如「chat_normal 下问算术」），以「；或」开头拼接 */
@@ -61,29 +59,22 @@ export interface QualityRubric {
   criteria: string;
 }
 
-/** 每条 rubric 的公共开头：先框定材料是什么，再强调「一次只判一个点」 */
-const preamble = (system: string): string =>
+/**
+ * 每条 rubric 的公共开头：先框定材料是什么，再强调「一次只判一个点」。
+ * 导出给各 eval 就地写的「传输保真」判据复用，保持同一份材料框定（见文件头注）。
+ */
+export const qualityPreamble = (system: string): string =>
   `背景：给你的材料是 agent 为「把 niceeval 接入 ${system}」写出的 .ts 源码，带路径头，` +
   `按路径自行区分 experiment / eval / adapter。\n` +
   `本条判据只判其中一个点，其它点由别的判据各自判——不要因为材料在别的点上有缺陷就给这一条判 N。\n`;
 
 /**
- * 把一条接入路径的项目事实展开成五条独立质量判据。调用方各挂 `.points(1)`。
- * 见文件头注：机制共享、事实逐项目、一条只判一个点、纯加分不 gate。
+ * 把一条接入路径的项目事实展开成四条独立质量判据（不含就地写的「传输保真」，见文件头注）。
+ * 调用方各挂 `.points(1)`。机制共享、事实逐项目、一条只判一个点、纯加分不 gate。
  */
 export function buildQualityRubrics(f: QualityFacts): QualityRubric[] {
+  const preamble = qualityPreamble;
   return [
-    {
-      key: "传输保真",
-      criteria:
-        `${preamble(f.system)}\n` +
-        `被测系统是「${f.coreUseCase}」，它对外的传输方式是：${f.transport}。\n` +
-        `判断：adapter（agent 手写的 send 实现）是否确实通过这个真实协议与 ${f.system} 通信，` +
-        `并把响应映射成 niceeval 的事件流？\n` +
-        `合格（Y）：${f.transportPass}。\n` +
-        `不合格（N）：adapter 进程内直接 import 并调用 ${f.system} 的函数；或在 adapter 里 spawn/启动 ` +
-        `${f.system} 进程；或根本没有对应的网络请求${f.transportFail ?? ""}。`,
-    },
     {
       key: "用例贴合",
       criteria:
