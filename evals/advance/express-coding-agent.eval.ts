@@ -1,13 +1,14 @@
 import { defineScoreEval } from "niceeval";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
-import { saveAgentOutput } from "./share/agent-archive.ts";
-import { evalExecutionEvidence } from "./share/eval-adapter.ts";
-import { evalExperiment } from "./share/eval-experiment.ts";
-import { evalInstall } from "./share/eval-install.ts";
-import { evalSandboxCreation } from "./share/eval-sandbox.ts";
-import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
-import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
+import { saveAgentOutput } from "../install/share/agent-archive.ts";
+import { evalExecutionEvidence } from "../install/share/eval-adapter.ts";
+import { evalAuthoringPractice } from "../install/share/eval-authoring.ts";
+import { evalExperiment } from "../install/share/eval-experiment.ts";
+import { evalInstall } from "../install/share/eval-install.ts";
+import { evalSandboxCreation } from "../install/share/eval-sandbox.ts";
+import { agentSourceMaterial, cloneFixture } from "../install/share/fixture.ts";
+import { buildQualityRubrics, type QualityFacts } from "../install/share/quality-criteria.ts";
 
 /**
  * 接入路径：sandbox fixture 评 coding agent（宿主 Express，第六条路径）。
@@ -146,11 +147,15 @@ export default defineScoreEval({
       await t.send(PICK_SANDBOX);
     }
 
-    // ── 通用检查：评估安装（gate + 过程侧）+ 评估exp质量（软分）+ 评估执行取证（加分）。
-    // ── 评估adapter 不调：这条路径没有自写 adapter，「联上被测系统」无从谈起。 ────────
+    // ── 通用检查：评估安装（gate + 过程侧 + 最佳实践）+ 评估exp质量（软分 + 最佳实践）
+    // ── + 评估执行取证（加分）+ 评估eval写法最佳实践（纯加分）。
+    // ── 评估adapter / 评估adapter最佳实践 都不调：这条路径没有自写 adapter，「联上被测系统」
+    // ── 与「send 写得对不对」都无从谈起；评估安装也不传 standaloneWorkspace——宿主 Express
+    // ── 自己就是个 JS 包，装在根目录才是 INIT.md 说的对做法。 ──────────────────────────
     await evalInstall(t, { version });
     await evalExperiment(t);
     await evalExecutionEvidence(t);
+    await evalAuthoringPractice(t);
 
     // ── 产出质量层（纯加分）+ 核心考项：评估sandbox创建（gate + 加分 + judge 三维）。 ──
     const material = await agentSourceMaterial(t.sandbox);

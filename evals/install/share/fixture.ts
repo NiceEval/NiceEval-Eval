@@ -75,6 +75,44 @@ export async function cloneFixture(sandbox: SandboxRunShell, repo: FixtureRepo):
 export const DEFAULT_SOURCE_IGNORE_DIRS = [".git", ".next", "node_modules", "dist", "build", "coverage"];
 
 /**
+ * 按一条列文件的命令，把 agent 手写的那几个文件带路径头取回沙箱外，供机械判据 grep。
+ *
+ * 与 agentSourceMaterial 的分工：那个是喂 judge 的**全量**材料（整个装机目录的 .ts，经
+ * downloadDirectory 原样搬回本地）；这个是喂 t.check 正则的**定向**取证——只要 adapter /
+ * experiment / eval 里的某一族，一条命令列出路径、就地 cat，不落本地盘。
+ *
+ * 写法约定同各 eval-*.ts 头注：探针只取证不判定。`listCommand` 只负责一行一个路径地列出来
+ * （`grep -rl` / `find`），拼接与 `// @file <路径>` 头由这里统一加，判定交给调用方紧跟的
+ * t.check。头用 `@file` 而不是裸 `// <路径>`：源码里以 `// ` 开头的普通注释行满地都是，
+ * 逐文件切分（见 splitAgentFiles）必须有个不会撞车的标记。
+ * `head -20` 是防御性上限：agent 正常只会写三五个文件，真写了几十个也不该把整个沙箱读回来。
+ */
+export async function readAgentFiles(
+  sandbox: ScoreTestContext["sandbox"],
+  at: string,
+  listCommand: string,
+): Promise<string> {
+  const probe = await sandbox.runShell(
+    `{ ${listCommand} ; } 2>/dev/null | head -20 | while IFS= read -r f; do echo "// @file $f"; cat "$f"; done`,
+    { cwd: at },
+  );
+  return probe.stdout;
+}
+
+/**
+ * 把一份 readAgentFiles 的输出按 `// @file <路径>` 头切回逐文件。
+ *
+ * 「每个实验文件都写了 description」这类判据要逐文件判，不能整份文本一起 test——一个文件写了
+ * 别的文件没写，整份也会命中。空数组表示一个文件都没取到。
+ */
+export function splitAgentFiles(source: string): string[] {
+  return source
+    .split(/^\/\/ @file (?=\S)/m)
+    .map((part) => part.trim())
+    .filter((part) => part.length > 0);
+}
+
+/**
  * 把 agent 手写的 .ts 源码带路径头串成一份 judge 材料。
  *
  * niceeval 的 sandbox 不设「按扩展名过滤的批量读取器」——批量取回只有 downloadDirectory

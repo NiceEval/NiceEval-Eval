@@ -1,5 +1,5 @@
 /**
- * 评估安装（计分制 / 加分式）：一条题内叠加挣分，分从 0 往上累加、不声明满分。三段挣分：
+ * 评估安装（计分制 / 加分式）：一条题内叠加挣分，分从 0 往上累加、不声明满分。四段挣分：
  *
  * 1. 交互层（加分）——装机任务发出后，好的 agent 不闷头做，而是先停下来（park 在一个待
  *    输入请求上）把仓库里看不出的四件事问清楚，拿到方案再动手。`t.parked()` 判「停没停下来
@@ -11,6 +11,9 @@
  *    整题按判定面判负（`.points` 与 severity 正交）。
  * 3. 过程侧（加分）——agent 自己有没有真的敲命令把它跑起来（而不是手抄托管指引、只写文件
  *    不执行）。每条检查点值 1 分。
+ * 4. 最佳实践（加分）——装的姿势对不对：装成 devDependency、托管指引是 init 写的托管区块、
+ *    非 JS 宿主另建独立 eval 工作区且是 ESM。判据逐条来自 INIT.md 的 Step 1 / Step 2，
+ *    跟第 2 段的区别是「能不能用」与「以后好不好维护」之别，所以是加分不是 gate。
  *
  * 写法约定：判定一律用官方断言词汇（parked / calledTool / matchers / judge），不发明领域
  * API；取证一律「一条命令或一个文件」——探针只取证不判定，判定是紧跟着的一条 t.check 配
@@ -18,7 +21,7 @@
  *
  * 一个考试项目一个评估函数，函数名就是考项名（评估什么就叫什么）：
  * - evalInteraction —— 评估交互：动手前停下来问对没问对 + 替用户给罐头答复续轮；
- * - evalInstall —— 评估安装：装成没装成（gate）+ 过程侧（加分）的落地取证。
+ * - evalInstall —— 评估安装：装成没装成（gate）+ 过程侧（加分）+ 最佳实践（加分）的落地取证。
  * 拆成两个考项的原因：评估交互的四条澄清判据（接口 / otel / flag / 三档接入等级）与「挑
  * 第一档」的罐头答复都假设被测系统是个要自写 adapter 的 AI 应用——对 sandbox 接入路径
  * （评 coding agent，用内置 agents，没有自写 adapter，tier 三档不成立）不适用，那条路径
@@ -95,6 +98,23 @@ export function parseExpPlanDocument(stdout: string): ExpPlanDocument | null {
   return null;
 }
 
+/** 装机落点那份 package.json 里，最佳实践层要看的三件事。 */
+export interface InstallManifest {
+  /** ESM 形态标记：INIT.md 要求新建的 eval 工作区带 `"type": "module"` */
+  type?: string;
+  dependencies?: Record<string, string>;
+  devDependencies?: Record<string, string>;
+}
+
+/** 解析装机落点的 package.json；没有或解析不了返回 null（判据按「没挣到」处理，不抛）。 */
+export function parsePackageJson(stdout: string): InstallManifest | null {
+  try {
+    return JSON.parse(stdout.trim()) as InstallManifest;
+  } catch {
+    return null;
+  }
+}
+
 /**
  * 找 agent 把 niceeval 装在了哪；没装返回 null。
  *
@@ -167,12 +187,20 @@ export async function evalInteraction(
 }
 
 /**
- * 评估安装：agent 干完后回看「装成没装成（gate）+ 过程侧（加分）」的落地取证。
+ * 评估安装：agent 干完后回看「装成没装成（gate）+ 过程侧（加分）+ 最佳实践（加分）」的落地取证。
  *
  * 前置：agent 已拿到方案并干完活（通常紧跟 evalInteraction 之后调；本函数只取证，
  * 不再驱动任何轮次）。
+ *
+ * `standaloneWorkspace` 声明「这条路径的宿主不是 JS 项目」：INIT.md 对这种宿主要求另建一个
+ * 独立子目录放自己的 package.json（并给它 `"type": "module"`），不许装进宿主已有的包。
+ * 五条 AI 应用路径（Python 宿主）传 true；sandbox 路径的宿主 Express 自己就是个 JS 包，
+ * 装在根目录才是对的，不传——那两条判据对它无事实可验，不发空对空的分。
  */
-export async function evalInstall(t: ScoreTestContext, opts: { version: string }): Promise<void> {
+export async function evalInstall(
+  t: ScoreTestContext,
+  opts: { version: string; standaloneWorkspace?: boolean },
+): Promise<void> {
   const sandbox = t.sandbox;
   const candidate = readCandidateManifest(opts.version);
 
@@ -202,6 +230,15 @@ export async function evalInstall(t: ScoreTestContext, opts: { version: string }
   const tsc = hasTsconfig
     ? await sandbox.runShell(`npx --no-install tsc --noEmit 2>&1`, { cwd: at })
     : null;
+
+  // 最佳实践层的两个探针（判据见下面的 t.group）：装机落点那份 package.json，以及托管指引
+  // 里有没有 init 的托管区块标记。都是「一个文件」，解析放在断言体外、判定紧跟 t.check。
+  const pkg = parsePackageJson((await sandbox.runShell(`cat package.json 2>/dev/null`, { cwd: at })).stdout);
+  const managedBlock = (
+    await sandbox.runShell(`grep -l 'BEGIN:niceeval-agent-rules' AGENTS.md CLAUDE.md 2>/dev/null | head -1`, {
+      cwd: at,
+    })
+  ).stdout.trim();
 
   await t.group("评估安装", async () => {
     // 装成没装成是后面一切的前提：这几条是 gate（不给分），红了 verdict 直接 failed。
@@ -259,5 +296,48 @@ export async function evalInstall(t: ScoreTestContext, opts: { version: string }
     // agent 直接跑默认形态完全合理，逼它加 --json 才算数会误伤。
     t.calledTool("shell", { input: { command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?exp\b(?![\s\S]*--dry|[\s\S]*--help)/ } }).points(1);
     t.calledTool("shell", { input: { command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?show\b/ } }).points(1);
+  });
+
+  // ── 最佳实践（纯加分，每条 1 分）：装成了之后，装的姿势对不对。 ───────────────────
+  // 判据逐条来自 INIT.md 的 Step 1 / Step 2（「装哪、装成什么依赖、托管指引谁写」），
+  // 与上面的 gate 是两回事：gate 判「能不能用」，这里判「以后还好不好维护」。
+  // 全部 .points(1) 不 gate——姿势不讲究不影响这次跑通。
+  //
+  // 注意这几条是**新版本才教得到的分**：0.9.x 那代的 INIT.md 还没有「非 JS 宿主另建工作区 +
+  // type: module + 装成 devDependency」这几句（实测 tag v0.9.1 的 INIT.md 里搜不到）。
+  // 以后要把老候选加回对比组，它在这里读低分是如实读数，不是判据写错了。
+  await t.group("评估安装最佳实践", async () => {
+    // niceeval 是开发期工具，进 devDependencies；混进 dependencies 会被被测系统的生产
+    // 安装一起拉下去。INIT.md 的安装命令本身就是 `add -D niceeval`。
+    t.check(
+      pkg,
+      satisfies((v) => {
+        const m = v as InstallManifest | null;
+        return !!m?.devDependencies?.niceeval && !m?.dependencies?.niceeval;
+      }, "niceeval 装在 devDependencies 里（不是 dependencies）"),
+    ).points(1);
+
+    // 托管指引由 `niceeval init` 写入：带 BEGIN/END 标记的托管区块，升级后重跑 init
+    // 就能刷新。手抄一段同样的文字也能过上面那条 gate（它只 grep 关键字），但升级后不会更新。
+    t.check(
+      managedBlock.length > 0,
+      isTrue(`托管指引是 init 写入的托管区块（有 BEGIN:niceeval-agent-rules 标记，实际：${managedBlock || "无"}）`),
+    ).points(1);
+
+    if (opts.standaloneWorkspace) {
+      // 宿主不是 JS 项目：INIT.md 要求新建一个独立子目录装，不要装进宿主里已有的包——
+      // 那些 package.json 与 lockfile 属于被测系统，混进去会连累它的工具链，也会把宿主
+      // 自己的类型错误拉进 agent 的 typecheck。
+      t.check(
+        root !== null && root !== ".",
+        isTrue(`eval 工作区是新建的独立子目录（实际装在：${root ?? "未安装"}）`),
+      ).points(1);
+      // 新建的 package.json 要 `"type": "module"`：`npm init -y` 默认 CommonJS，
+      // 那种形态下 config / eval 文件用不了顶层 await。
+      t.check(
+        pkg,
+        satisfies((v) => (v as InstallManifest | null)?.type === "module", 'eval 工作区的 package.json 是 ESM（"type": "module"）'),
+      ).points(1);
+    }
   });
 }

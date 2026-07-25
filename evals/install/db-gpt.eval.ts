@@ -3,7 +3,8 @@ import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate
 import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
 import type { ClarifyFacts } from "./share/clarify-criteria.ts";
-import { evalAdapter, evalExecutionEvidence } from "./share/eval-adapter.ts";
+import { evalAdapter, evalAdapterPractice, evalExecutionEvidence } from "./share/eval-adapter.ts";
+import { evalAuthoringPractice } from "./share/eval-authoring.ts";
 import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall, evalInteraction } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
@@ -96,12 +97,15 @@ export default defineScoreEval({
     );
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）
-    // ── + 评估执行取证（加分）。五条接入路径共用同一套判定（评估adapter 仅两条轻路径调）。 ──
+    // ── + 评估执行取证（加分）+ 最佳实践两层（纯加分：adapter 的 send 写法、eval 的断言写法，
+    // ── 判据逐条来自候选自己发的文档）。五条接入路径共用同一套判定（评估adapter 仅两条轻路径调）。 ──
     await evalInteraction(t, { clarify: CLARIFY, turn });
-    await evalInstall(t, { version });
+    await evalInstall(t, { version, standaloneWorkspace: true });
     await evalExperiment(t);
     await evalAdapter(t);
     await evalExecutionEvidence(t);
+    await evalAdapterPractice(t);
+    await evalAuthoringPractice(t);
 
     // ── 产出质量层（纯加分）：judge 读 agent 手写的 .ts 源码按维度判 eval 设计质量。 ──
     const material = await agentSourceMaterial(t.sandbox);

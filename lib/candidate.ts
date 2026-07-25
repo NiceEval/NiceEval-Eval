@@ -20,6 +20,30 @@ import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node
 import { tmpdir } from "node:os";
 import { resolve } from "node:path";
 
+/**
+ * 带退避重试的 fetch。
+ *
+ * 物化候选发生在**实验加载**这一步，比任何 sandbox 都早：这里抛错的代价是整条命令直接
+ * 死掉（连没被选中的实验也一起，因为发现阶段会 import 全部实验文件）。而这几个请求打的是
+ * 公网 registry 与 GitHub raw，瞬时的 ECONNRESET / TLS 握手失败是常态，不代表候选有问题。
+ * 所以传输层错误一律重试；HTTP 状态码交给调用方判断（404 这类要立刻响，重试没有意义）。
+ */
+async function fetchWithRetry(url: string, init?: RequestInit, attempts = 3): Promise<Response> {
+  let lastError: unknown;
+  for (let attempt = 1; attempt <= attempts; attempt++) {
+    try {
+      return await fetch(url, init);
+    } catch (error) {
+      lastError = error;
+      if (attempt === attempts) break;
+      const cause = error instanceof Error ? (error.cause as Error | undefined) : undefined;
+      console.log(`请求 ${url} 失败（${cause?.message ?? String(error)}），${attempt}/${attempts}，重试中…`);
+      await new Promise((done) => setTimeout(done, 500 * 2 ** (attempt - 1)));
+    }
+  }
+  throw new Error(`请求 ${url} 连续 ${attempts} 次失败（网络问题，不是候选本身的问题）`, { cause: lastError });
+}
+
 /** 候选根目录，每个版本一个子目录，由 ensureCandidate 写入 */
 export const CANDIDATE_ROOT = resolve(import.meta.dirname, "../.candidate");
 
@@ -42,7 +66,7 @@ export function candidateInitDocUrl(version: string): string {
 export async function ensureCandidate(target: string): Promise<string> {
   if (existsSync(candidatePaths(target).manifest)) return target;
 
-  const res = await fetch("https://registry.npmjs.org/niceeval");
+  const res = await fetchWithRetry("https://registry.npmjs.org/niceeval");
   if (!res.ok) throw new Error(`解析候选「${target}」失败：拉取 niceeval 包元数据 HTTP ${res.status}`);
   const packument = (await res.json()) as {
     "dist-tags": Record<string, string>;
@@ -57,7 +81,7 @@ export async function ensureCandidate(target: string): Promise<string> {
 
   // 随包文档清单：下载 tarball 只为列出目录，列完就丢，不进 .candidate/
   console.log(`物化候选 niceeval@${version}…`);
-  const tarball = await fetch(versionMeta.dist.tarball);
+  const tarball = await fetchWithRetry(versionMeta.dist.tarball);
   if (!tarball.ok) throw new Error(`下载 tarball 失败：HTTP ${tarball.status}`);
   const scratch = resolve(tmpdir(), `niceeval-${version}-${process.pid}.tgz`);
   writeFileSync(scratch, Buffer.from(await tarball.arrayBuffer()));
@@ -75,7 +99,7 @@ export async function ensureCandidate(target: string): Promise<string> {
 
   // 只探活，不落盘：eval 运行时让 agent 直接读这个 URL
   const initDocUrl = candidateInitDocUrl(version);
-  const initDoc = await fetch(initDocUrl, { method: "HEAD" });
+  const initDoc = await fetchWithRetry(initDocUrl, { method: "HEAD" });
   if (!initDoc.ok) {
     throw new Error(
       `探活 ${initDocUrl} 失败：HTTP ${initDoc.status}。` +

@@ -1,15 +1,16 @@
 import { defineScoreEval } from "niceeval";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
-import { saveAgentOutput } from "./share/agent-archive.ts";
-import type { ClarifyFacts } from "./share/clarify-criteria.ts";
+import { saveAgentOutput } from "../install/share/agent-archive.ts";
+import type { ClarifyFacts } from "../install/share/clarify-criteria.ts";
 // 不调用 evalAdapter：起 OpenHands app_server + sandbox 内 agent server 重且不稳，断「真跑通」测到的是
 // 环境波动而不是文档效果（INIT.md 的完成清单仍要求真跑一次，agent 做不做由交互层/产出质量层如实计分）
-import { evalExperiment } from "./share/eval-experiment.ts";
-import { evalInstall, evalInteraction } from "./share/eval-install.ts";
-import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
-import { evalExecutionEvidence } from "./share/eval-adapter.ts";
-import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
+import { evalExperiment } from "../install/share/eval-experiment.ts";
+import { evalInstall, evalInteraction } from "../install/share/eval-install.ts";
+import { agentSourceMaterial, cloneFixture } from "../install/share/fixture.ts";
+import { evalAdapterPractice, evalExecutionEvidence } from "../install/share/eval-adapter.ts";
+import { evalAuthoringPractice } from "../install/share/eval-authoring.ts";
+import { buildQualityRubrics, type QualityFacts } from "../install/share/quality-criteria.ts";
 
 /**
  * 接入路径：真实开源项目 OpenHands（前身 OpenDevin，自主编码 agent）。
@@ -106,12 +107,15 @@ export default defineScoreEval({
       `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
     );
 
-    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估执行取证（加分）。 ──
-    // ── 五条接入路径共用同一套判定。 ──
+    // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估执行取证（加分）
+    // ── + 最佳实践两层（纯加分：adapter 的 send 写法、eval 的断言写法，判据逐条来自候选
+    // ── 自己发的文档）。五条接入路径共用同一套判定。 ──
     await evalInteraction(t, { clarify: CLARIFY, turn });
-    await evalInstall(t, { version });
+    await evalInstall(t, { version, standaloneWorkspace: true });
     await evalExperiment(t);
     await evalExecutionEvidence(t);
+    await evalAdapterPractice(t);
+    await evalAuthoringPractice(t);
 
     // ── 第二层：产出质量层（judge）。按维度分别判 agent 写出的三件套质量。 ──
     // 一条 find+cat 命令把 agent 手写的 .ts 带路径头串成材料（含 adapter）——「传输方式
