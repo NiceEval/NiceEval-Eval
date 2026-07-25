@@ -44,16 +44,22 @@ export async function evalAuthoringPractice(t: ScoreTestContext): Promise<void> 
   const src = (v: unknown) => v as string;
 
   await t.group("评估eval写法最佳实践", async () => {
-    // 官方断言词汇：驱动走 t.send / t.respond，判定走 t.check + niceeval/expect 的 matcher
-    // （或 t.succeeded / t.calledTool 这类作用域断言）。自己 if + throw 也能让 attempt 变红，
-    // 但那样断言不进结果、报告里看不到逐条明细，`niceeval show` 也无从下钻。
+    // 官方断言词汇：判定走官方断言 API，而不是自己 if + throw——后者也能让 attempt 变红，但断言
+    // 不进结果、报告里看不到逐条明细，`niceeval show` 也无从下钻。
+    //
+    // 两种写法都算数，不要求 import niceeval/expect：`t.check(值, matcher)` 走 matcher，
+    // 而 turn 作用域断言（`turn.messageIncludes(/…/)`、`turn.succeeded()`、`turn.judge.*`）自带
+    // 判定、不需要 matcher，所以那种 eval 里根本不会出现这个 import。2026-07-25 canary.10 实测
+    // 撞到过：db-gpt 那格通篇 `guidance.messageIncludes(...)` + `guidance.judge.autoevals...`，
+    // 是这批里写得最好的 eval，却被旧判据（要求 import + `t.` 前缀）判成 N。
     t.check(
       source,
       satisfies(
         (s) =>
-          /from\s+["']niceeval\/expect["']/.test(src(s)) &&
-          /\bt\.(check|succeeded|calledTool|messageIncludes|judge)\b/.test(src(s)),
-        "断言用官方词汇（t.check / 作用域断言 + niceeval/expect 的 matcher），不是自己 throw",
+          /\.(check|require)\s*\(|\.messageIncludes\s*\(|\.calledTool\s*\(|\.succeeded\s*\(|\.judge\./.test(
+            src(s),
+          ),
+        "断言用官方词汇（t.check + matcher，或 turn 作用域断言），不是自己 throw",
       ),
     ).points(1);
 
@@ -66,9 +72,12 @@ export async function evalAuthoringPractice(t: ScoreTestContext): Promise<void> 
       source,
       satisfies(
         (s) =>
-          /\bt\.judge\b|\bincludesUrl\s*\(|\bhasSections\s*\(|\bmatches\s*\(|\bsimilarity\s*\(/.test(src(s)) ||
-          /\b(includes|excludes)\s*\(\s*\//.test(src(s)),
-        "留了经得起措辞变化的判定（t.judge 语义评分、includesUrl / hasSections 这类形状断言，或多措辞等价的正则）",
+          // judge 不限定接收者：`t.judge.*` 与 turn 作用域的 `turn.judge.*` 都算（同上一条判据
+          // 注里那格 canary.10 实测样本）。正则形态同理——`messageIncludes(/a|b/)` 与
+          // `includes(/a|b/)` 等价，都是「多措辞等价的正则」。
+          /\.judge\.|\bincludesUrl\s*\(|\bhasSections\s*\(|\bmatches\s*\(|\bsimilarity\s*\(/.test(src(s)) ||
+          /\b(includes|excludes|messageIncludes)\s*\(\s*\//.test(src(s)),
+        "留了经得起措辞变化的判定（judge 语义评分、includesUrl / hasSections 这类形状断言，或多措辞等价的正则）",
       ),
     ).points(1);
 
