@@ -57,14 +57,18 @@ export async function evalAuthoringPractice(t: ScoreTestContext): Promise<void> 
       ),
     ).points(1);
 
-    // 措辞开放的回答要留一条经得起换措辞的判定：t.judge 的语义评分，或形状断言
-    // （includesUrl / hasSections / matchesSchema 这类）。全篇只有精确 includes 的 eval
-    // 换个说法就误判——文档把这条单列为「没 key 时的降级路径」，两边挣同一分。
+    // 措辞开放的回答要留一条经得起换措辞的判定，文档给的三条路子都算数：t.judge 的语义评分、
+    // 形状断言（includesUrl / hasSections / matches / similarity），以及**多措辞等价的正则**
+    // ——`includes(/no reliable sources|cannot find|does not exist/i)` 就是它，2026-07-25 首跑
+    // 里 gpt-researcher 两格的负例正是这么写的，漏掉它会把一个正确写法判成 N。
+    // 判 N 的是全篇只有精确字符串 includes 的 eval：换个说法就误判。
     t.check(
       source,
       satisfies(
-        (s) => /\bt\.judge\b|\bincludesUrl\s*\(|\bhasSections\s*\(|\bmatches\s*\(|\bsimilarity\s*\(/.test(src(s)),
-        "留了经得起措辞变化的判定（t.judge 语义评分，或 includesUrl / hasSections / matches 这类形状断言）",
+        (s) =>
+          /\bt\.judge\b|\bincludesUrl\s*\(|\bhasSections\s*\(|\bmatches\s*\(|\bsimilarity\s*\(/.test(src(s)) ||
+          /\b(includes|excludes)\s*\(\s*\//.test(src(s)),
+        "留了经得起措辞变化的判定（t.judge 语义评分、includesUrl / hasSections 这类形状断言，或多措辞等价的正则）",
       ),
     ).points(1);
 

@@ -65,15 +65,30 @@ export async function evalExperiment(t: ScoreTestContext): Promise<void> {
   // 上面四条判的是「这组实验作为一次运行成不成立」（几格、怎么组织、跑几次），这里判的是
   // 每个实验文件内部的写法——判据来自 write-experiment.mdx（一个文件一格配置、静态配置进
   // adapter 工厂、模型对比各钉一个 model）与从零接入页的收尾自检（没有没人读的死配置）。
-  const experiments = await readAgentFiles(
+  const probed = await readAgentFiles(
     sandbox,
     at,
     `grep -rl 'defineExperiment' --include='*.ts' . --exclude-dir=node_modules`,
   );
-  const files = splitAgentFiles(experiments);
+  // 取回来的还不都是实验文件：`niceeval init` 生成的 niceeval.config.ts 里就有一行注释
+  // 「Add experiments/ with defineExperiment(...) to run evals.」，grep -l 必然命中它
+  // （2026-07-25 首跑实测：四格全被这一个文件把「都写了 description」判成 N）。所以逐文件
+  // 再筛一道——只留真的**调用**了 defineExperiment 的（导出 / 赋值 / return 位置），
+  // 注释里提一嘴的不算。
+  const files = splitAgentFiles(probed).filter((f) =>
+    /(export\s+default|=|return)\s*defineExperiment\s*\(/.test(f),
+  );
+  const experiments = files.join("\n");
   // model 的字面值去重：模型对比要求两个实验文件各钉一个**不同**的 model，写成同一个值的
-  // 两格比不出任何东西。只数字面量——`model: someVar` 这种变量形态数不到，宁可少给一分。
-  const models = new Set(Array.from(experiments.matchAll(/model:\s*["'`]([^"'`]+)["'`]/g), (m) => m[1]));
+  // 两格比不出任何东西。只数实验文件里的（config 里的 judge 模型不是对比的变量，不算）。
+  // 取整个 model: 表达式再从里面抽引号字面量，而不是要求引号紧跟冒号——实测 agent 普遍写成
+  // `model: process.env.X ?? "gpt-4o-mini"`，只认紧跟形态会把这类全读成「无」，看不出
+  // 「两格其实钉的是同一个默认模型」这个真实读数。变量形态（没有任何字面量）仍然数不到。
+  const models = new Set(
+    Array.from(experiments.matchAll(/model:\s*([^\n]+)/g), (m) => m[1]).flatMap((expr) =>
+      Array.from(expr.matchAll(/["'`]([^"'`]+)["'`]/g), (lit) => lit[1]),
+    ),
+  );
 
   await t.group("评估exp质量最佳实践", async () => {
     // 每个实验文件都写 description：报告与 CLI 的对比表按它认人，缺了只剩一个路径 id。
