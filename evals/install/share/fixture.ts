@@ -34,14 +34,20 @@ export interface FixtureRepo {
  * （对着同一个 ref 重新 clone 得到同样的文件），但也意味着体积可能很大——
  * `excludeDirs` 用 sparse-checkout 剪掉体积大又与「装 niceeval」无关的目录。
  *
- * clone 完立刻删 `.git`：宿主自带的历史与 niceeval 自己的 git 基线是两回事，
- * 留着它只会带来歧义，不带来任何断言用得上的信息。
+ * 普通 clone 先落到临时目录，再把工作树复制进沙箱：NiceEval 在 eval.run 前会在 workdir
+ * 创建 `__niceeval__/results.json`，所以不能假设目标 `.` 为空。复制前删掉上游 `.git`：
+ * 宿主自带的历史与 niceeval 自己的 git 基线是两回事，留着它只会带来歧义。
  */
 function cloneScript(repo: FixtureRepo): string {
   if (!repo.excludeDirs?.length) {
     return `set -e
-git clone --quiet --depth 1 --branch '${repo.ref}' --single-branch '${repo.repoUrl}' .
-rm -rf .git`;
+fixture_dir="$(mktemp -d)"
+trap 'rm -rf "$fixture_dir"' EXIT
+git clone --quiet --depth 1 --branch '${repo.ref}' --single-branch '${repo.repoUrl}' "$fixture_dir"
+rm -rf "$fixture_dir/.git"
+cp -a "$fixture_dir"/. .
+rm -rf "$fixture_dir"
+trap - EXIT`;
   }
 
   const sparsePattern = ["/*", ...repo.excludeDirs.map((d) => `!/${d}/`)].join("\n");
