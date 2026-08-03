@@ -1,6 +1,6 @@
 /**
  * 评估exp质量（软分，不 gate）：装对了之后写得讲不讲究——至少两格实验（baseline + 对比）、
- * 按 compare-models 组织、每格 runs=1、不为一两个实验先抽 shared.ts。品味红了东西还是能用
+ * 按 compare-models 组织、每格 attempts=1、不为一两个实验先抽 shared.ts。品味红了东西还是能用
  * 的，不 gate。
  *
  * 之后再叠一层「评估exp质量最佳实践」（纯加分）：每个实验文件内部的写法——都写了 description、
@@ -54,9 +54,15 @@ export async function evalExperiment(t: ScoreTestContext): Promise<void> {
         "按 compare-models 实验组组织",
       ).atLeast(1),
     );
-    // 接入期每格 runs=1：先跑通一次再谈统计，多 runs 只是烧时间和预算。ExpPlanDocument.runs
-    // 是这次 --dry 选中范围内统一适用的每格 runs 数（total = matrix 行数 × runs）。
-    t.check(dryPlan, satisfies((v) => asPlan(v)?.runs === 1, "每格实验 runs=1").atLeast(1));
+    // 接入期每格 attempts=1：先跑通一次再谈统计，多次重复只是烧时间和预算。当前协议字段是
+    // attempts；0.11.0 对照候选仍输出旧字段 runs，所以探针只在协议边界保留兼容读取。
+    t.check(
+      dryPlan,
+      satisfies((v) => {
+        const plan = asPlan(v);
+        return (plan?.attempts ?? plan?.runs) === 1;
+      }, "每格实验 attempts=1").atLeast(1),
+    );
     // 一两个实验不配抽象层：shared.ts 是文档里给「实验多了以后」的写法，起手就抽是过度设计
     t.check(shared.length === 0, isTrue(`没有先抽 shared.ts 共享抽象（实际：${shared || "无"}）`).atLeast(1));
   });

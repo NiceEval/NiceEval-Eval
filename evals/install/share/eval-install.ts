@@ -53,11 +53,14 @@ export interface ExpPlanRow {
 export interface ExpPlanDocument {
   format: "niceeval.exp-plan";
   schemaVersion: number;
-  /** matrix 行数 × runs。 */
+  /** matrix 行数 × attempts。 */
   total: number;
   evals: number;
   configs: number;
-  runs: number;
+  /** 当前候选的每格重复次数。 */
+  attempts?: number;
+  /** niceeval <= 0.11.0 的旧字段；用于对照组协议兼容。 */
+  runs?: number;
   /** matrix 逐行 reused 之和。 */
   reused: number;
   matrix: ExpPlanRow[];

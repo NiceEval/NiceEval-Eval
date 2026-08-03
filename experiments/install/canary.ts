@@ -24,6 +24,5 @@ export default defineExperiment({
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith(),
   evals: ["install/"],
-  runs: 1,
-  maxConcurrency: 2,
+  attempts: 1,
 });

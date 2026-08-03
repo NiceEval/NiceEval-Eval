@@ -21,6 +21,6 @@ export default defineExperiment({
   flags: { agentRules: false, candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith(),
   evals: ["debug/"],
-  runs: 1,
+  attempts: 1,
   maxConcurrency: 2,
 });

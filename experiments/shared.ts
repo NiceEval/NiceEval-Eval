@@ -2,7 +2,7 @@
  * 各实验共用的 sandbox 与 agent 装配。
  *
  * 实验之间应该只差一个变量——差别越少，分数差能归因到的东西越明确。
- * 这里只钉死 agent 装配与 sandbox 基线；runs/maxConcurrency 之类的运行档位
+ * 这里只钉死 agent 装配与 sandbox 基线；attempts/maxConcurrency 之类的运行档位
  * 各实验自己写，不再共用一个常量。
  */
 
