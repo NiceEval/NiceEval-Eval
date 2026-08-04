@@ -7,8 +7,8 @@ to before writing any eval, experiment, adapter, or niceeval config. That index 
 the bundled Chinese docs are the authoritative version matching this installation.
 After a run, drill into failures with `niceeval show` — pick an `@<locator>` from the
 compact index it prints, then `niceeval show @<locator>` for a compact overview, or add
-`--source` / `--execution` / `--diff` for evidence; the snapshot directories the CLI prints
-are the structured source of truth: `snapshot.json` holds the run's metadata and each
+`--source` / `--execution` / `--diff` for evidence; the run directories the CLI prints
+are the structured source of truth: `run.json` holds the run's metadata and each
 `<evalId>/a<attempt>/result.json` holds that attempt's verdict and assertions, next to
 its artifact files (`events.json` / `trace.json` / `diff.json`).
 <!-- END:niceeval-agent-rules -->
