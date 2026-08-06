@@ -134,7 +134,7 @@ export async function agentSourceMaterial(
   const at = (await locateInstallRoot(sandbox)) ?? ".";
   const staging = await mkdtemp(join(tmpdir(), "niceeval-agent-source-"));
   try {
-    await sandbox.downloadDirectory(staging, at, {
+    await sandbox.downloadDirectory(at, staging, {
       ignore: [...DEFAULT_SOURCE_IGNORE_DIRS, ...extraIgnoreDirs],
     });
     const paths = (await readdir(staging, { recursive: true })).filter((p) => p.endsWith(".ts"));

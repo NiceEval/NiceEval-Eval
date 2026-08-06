@@ -68,7 +68,6 @@ const CLARIFY: ClarifyFacts = {
 
 export default defineScoreEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
-  environment: "python",
   // INIT.md 的完成清单含「真跑一次并 show 可见」，装+读文档+写三件套+端到端一轮下来
   // 全局 20min 不够（canary.4 上这条正确迭代到一半被掐死），install 组统一放宽。
   timeoutMs: 35 * 60 * 1000,

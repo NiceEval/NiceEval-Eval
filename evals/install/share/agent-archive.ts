@@ -57,14 +57,16 @@ export async function saveAgentOutput(t: ScoreTestContext, target: string): Prom
     // 搬运。adapter 目录既可能叫 agents 也可能叫 adapters，都试。
     for (const dir of ["evals", "experiments", "agents", "adapters"]) {
       await t.sandbox
-        .downloadDirectory(resolve(root, dir), `${prefix}${dir}`)
+        .downloadDirectory(`${prefix}${dir}`, resolve(root, dir))
         .then(() => (got = true))
         .catch(() => {}); // 该目录不存在就跳过
     }
     // niceeval.config.ts 是 install root 上的单文件，downloadDirectory 下不了，单取。
-    const cfg = await t.sandbox.downloadFile(`${prefix}niceeval.config.ts`).catch(() => null);
+    const cfg = await t.sandbox
+      .downloadFile(`${prefix}niceeval.config.ts`, resolve(root, "niceeval.config.ts"))
+      .then(() => true)
+      .catch(() => false);
     if (cfg) {
-      writeFileSync(resolve(root, "niceeval.config.ts"), cfg);
       got = true;
     }
     if (!got) return undefined;
@@ -75,7 +77,6 @@ export async function saveAgentOutput(t: ScoreTestContext, target: string): Prom
         `target=${target}`,
         `candidateVersion=${version}`,
         `model=${model}`,
-        `sandboxId=${t.sandbox.sandboxId}`,
         "",
       ].join("\n"),
     );

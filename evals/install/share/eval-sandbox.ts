@@ -34,7 +34,9 @@ import { locateInstallRoot } from "./eval-install.ts";
 /** 文档「用哪个装哪个」表：provider 工厂 → 必须进依赖的 SDK 包名。localSandbox 免装，不在表里。 */
 const PROVIDER_SDK = [
   ["e2bSandbox", "e2b"],
-  ["dockerSandbox", "dockerode"],
+  ["dockerImageSandbox", "dockerode"],
+  ["dockerfileSandbox", "dockerode"],
+  ["dockerComposeSandbox", "dockerode"],
   ["vercelSandbox", "@vercel/sandbox"],
 ] as const;
 
@@ -98,7 +100,7 @@ export async function evalSandboxCreation(t: ScoreTestContext, opts: { material:
   // 预制制品定义的落点（构建脚本按内容 grep，Dockerfile 按文件名 find，合流去重）。
   const factories = (
     await sandbox.runShell(
-      `grep -rhoE '\\b(e2b|docker|vercel|local)Sandbox\\(' --include='*.ts' . --exclude-dir=node_modules 2>/dev/null | sort -u`,
+      `grep -rhoE '\\b(e2b|docker(Image|file|Compose)|vercel|local)Sandbox\\(' --include='*.ts' . --exclude-dir=node_modules 2>/dev/null | sort -u`,
       { cwd: at },
     )
   ).stdout.trim();

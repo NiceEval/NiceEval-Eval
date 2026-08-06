@@ -229,7 +229,7 @@ export async function evalInstall(
   const list = await sandbox.runShell(`npx --no-install niceeval list 2>&1`, { cwd: at });
   const dry = await sandbox.runShell(`npx --no-install niceeval exp --dry --json 2>/dev/null`, { cwd: at });
   const dryPlan = parseExpPlanDocument(dry.stdout);
-  const hasTsconfig = await sandbox.fileExists(`${at === "." ? "" : at + "/"}tsconfig.json`);
+  const hasTsconfig = await sandbox.pathExists(`${at === "." ? "" : at + "/"}tsconfig.json`);
   const tsc = hasTsconfig
     ? await sandbox.runShell(`npx --no-install tsc --noEmit 2>&1`, { cwd: at })
     : null;

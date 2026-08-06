@@ -86,12 +86,12 @@ export async function evalAdapterPractice(t: ScoreTestContext): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
 
-  // 一条命令取回 agent 手写的 adapter：按 defineAgent 认人，不按目录约定认——文档说
+  // 一条命令取回 agent 手写的 adapter：按新旧两代 define*Agent 认人，不按目录约定认——文档说
   // adapter 放 `agents/*.ts`「或用户项目里约定的目录」，按路径找会漏掉放别处的。
   const source = await readAgentFiles(
     sandbox,
     at,
-    `grep -rl 'defineAgent' --include='*.ts' . --exclude-dir=node_modules`,
+    `grep -rlE 'define(Direct|Sandbox)?Agent' --include='*.ts' . --exclude-dir=node_modules`,
   );
   // satisfies() 的 predicate 参数固定收 unknown（见 niceeval/expect），七条判据共用这一个收窄。
   const src = (v: unknown) => v as string;
@@ -131,8 +131,8 @@ export async function evalAdapterPractice(t: ScoreTestContext): Promise<void> {
     t.check(
       source,
       satisfies(
-        (s) => /(return|=>)\s*defineAgent\s*\(/.test(src(s)),
-        "静态配置走工厂参数（工厂函数返回 defineAgent，换环境只改实验文件一行）",
+        (s) => /(return|=>)\s*define(Direct|Sandbox)?Agent\s*\(/.test(src(s)),
+        "静态配置走工厂参数（工厂函数返回 define*Agent，换环境只改实验文件一行）",
       ),
     ).points(1);
 
@@ -161,7 +161,7 @@ export async function evalAdapterPractice(t: ScoreTestContext): Promise<void> {
       source,
       satisfies(
         (s) =>
-          /\bfrom(ChatCompletion|Responses|AiSdk|ClaudeSdkMessages|PiAgentEvents|CodexThreadEvents)\s*\(|deltaStream\s*\(|driveFrameStream\s*\(|uiMessageStreamAgent\s*\(/.test(
+          /\b(turnFrom(ChatCompletion|Responses|AiSdk)|create(ClaudeSdkEventStream|PiAgentEventStream|CodexThreadEventStream)|from(ChatCompletion|Responses|AiSdk|ClaudeSdkMessages|PiAgentEvents|CodexThreadEvents))\s*\(|deltaStream\s*\(|driveFrameStream\s*\(|uiMessageStreamAgent\s*\(/.test(
             src(s),
           ) || /["']action\.called["']|["']thinking["']|["']input\.requested["']/.test(src(s)),
         "过程也归一进了事件流（官方转换器，或手写 action.called / thinking 映射），不是只映射最终文本",

@@ -23,11 +23,11 @@ import { provisionTargetAppEnv } from "../lib/target-app-env.ts";
 const NICEEVAL_EVAL_CODEX_NODE24_E2B_TEMPLATE = "niceeval-eval-codex-node24:2026-07-20";
 
 /**
- * Python 环境 profile 用的 template：从上面那个 Node 24 template 派生（不是直接从原始
- * codex template），烘焙了 DB-GPT / GPT Researcher / Vanna 三条接入路径要用的 Python 工具链
- * （见 scripts/build-e2b-python-template.ts）。只有声明了 `environment: "python"` 的 eval
- * 才会落到这个 template；没声明的（包括以后新增的 TS 项目 eval）用默认 template，不会被
- * 拖慢也不需要 apt/root。
+ * Python 项目用的 template：从上面那个 Node 24 template 派生（不是直接从原始
+ * codex template），烘焙了 DB-GPT / GPT Researcher 与 Python 高级安装题要用的工具链
+ * （见 scripts/build-e2b-python-template.ts）。新版 NiceEval 不再提供 eval `environment` /
+ * provider `environments` profile；实验必须显式选择整格使用的 template，所以 Python 与
+ * Node 题分别放在不同 experiment 里。
  *
  * 重新烘焙后把这个字符串换成新 tag，不用改调用方。
  */
@@ -70,14 +70,15 @@ function assertNodeMajor(major: number): SandboxHook {
  * 无感——版本只活在 experiment 的 `flags.candidateVersion` 与 eval 的 `t.send()` 里，
  * 不用再在两处（sandbox 装配 + flags）之间手动保持同步。
  *
- * `environments.python` 给声明了 `environment: "python"` 的 eval（DB-GPT / GPT Researcher /
- * Vanna 三条接入路径）换成烘焙好 Python 工具链的 template；其余 eval 落回默认 template。
+ * `profile` 由实验文件显式选择。不要在一格实验里混跑 Node 与 Python template；需要同一候选
+ * 覆盖两类题时写两格，只让 `evals` 选择范围与 template 配对变化。
  */
-export function sandboxWith() {
-  return e2bSandbox({
-    template: NICEEVAL_EVAL_CODEX_NODE24_E2B_TEMPLATE,
-    environments: { python: { template: NICEEVAL_EVAL_PYTHON_E2B_TEMPLATE } },
-  })
-    .setup(assertNodeMajor(24))
-    .setup(provisionTargetAppEnv());
+export function sandboxWith(profile: "node" | "python" = "node") {
+  const base = e2bSandbox({
+    template:
+      profile === "python"
+        ? NICEEVAL_EVAL_PYTHON_E2B_TEMPLATE
+        : NICEEVAL_EVAL_CODEX_NODE24_E2B_TEMPLATE,
+  }).setup(assertNodeMajor(24));
+  return profile === "python" ? base.setup(provisionTargetAppEnv()) : base;
 }

@@ -1,14 +1,14 @@
 /**
  * 烘焙一个带 Python 工具链的 e2b template，派生自本仓库自己的 Node 24 template
  * （见 scripts/build-e2b-node24-template.ts），不是直接从原始 codex template 派生——
- * 官方 codex template 实测是 Node v20.9.0，「默认」与「python」这两个 environment profile
- * 得共用同一条 Node 24 基线，否则 Python 组会漂回 v20，被 assertNodeMajor(24) 拦下。
+ * 官方 codex template 实测是 Node v20.9.0，Node 与 Python 两套 template 必须共用同一条
+ * Node 24 基线，否则 Python 组会漂回 v20，被 assertNodeMajor(24) 拦下。
  *
  * BASE_TEMPLATE 必须跟 experiments/shared.ts 里默认 `template` 字段填的那个 ref 一致——
  * 重新烘焙 node24 template 换了新 tag 后，这里也要跟着换，两处手动同步。
  *
  * 装的东西对齐 `lib/target-app-env.ts` 里 `provisionTargetAppEnv()` 原本在运行时装的那一套：
- * DB-GPT / GPT Researcher / Vanna 三条接入路径都是真实 Python 项目要用到的最小工具链。
+ * DB-GPT / GPT Researcher 与 Python 高级安装题都要使用这套最小工具链。
  * 模板烘焙好之后，那个钩子里对应的 apt-get/uv 安装段就该整段删掉——变成运行时只做一次
  * `command -v` 探测的保险丝，真正的安装成本从「每个 attempt」降到「模板更新时才付一次」。
  *
@@ -19,10 +19,8 @@
  *   pnpm exec tsx scripts/build-e2b-python-template.ts [tag]   # tag 省略则用今天日期
  *
  * 跑完会打印一个完整 template ref（形如 `<team>/niceeval-eval-python:<tag>`）。把它填进
- * `experiments/shared.ts` 的 `NICEEVAL_EVAL_PYTHON_E2B_TEMPLATE`，再把
- * `evals/install/{vanna,db-gpt,gpt-researcher}.eval.ts` 的 `defineEval({ environment: "python", ... })`
- * 打开——这两步我先没做，因为在拿到真实 template ref 之前打开会导致这三条 eval 在
- * plan 阶段就找不到 environment profile 而报错。
+ * `experiments/shared.ts` 的 `NICEEVAL_EVAL_PYTHON_E2B_TEMPLATE`，再对 install 与
+ * advance 的 Python experiments 做一次 dry-run。
  */
 
 import { Template } from "e2b";

@@ -75,7 +75,6 @@ const CLARIFY: ClarifyFacts = {
 
 export default defineScoreEval({
   description: "把 niceeval 接入 Skyvern（浏览器操作自动化 agent）",
-  environment: "python",
   // INIT.md 的完成清单含「真跑一次并 show 可见」，agent 大概率会尝试起被测系统，
   // 全局 20min 不够（canary.4 上 gpt-researcher 干到一半被掐死过），install 组统一放宽。
   timeoutMs: 35 * 60 * 1000,

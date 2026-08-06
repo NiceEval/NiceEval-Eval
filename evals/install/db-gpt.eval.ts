@@ -72,7 +72,6 @@ const CLARIFY: ClarifyFacts = {
 
 export default defineScoreEval({
   description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
-  environment: "python",
   // INIT.md 的完成清单含「真跑一次并 show 可见」，装+读文档+写三件套+端到端一轮下来
   // 全局 20min 不够（canary.4 上 gpt-researcher 干到一半被掐死过），install 组统一放宽。
   timeoutMs: 35 * 60 * 1000,

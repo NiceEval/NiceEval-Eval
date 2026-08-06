@@ -31,12 +31,6 @@ export default defineConfig({
     apiKeyEnv: "CODEX_API_KEY",
   },
 
-  // 单个 attempt 里 agent 要读文档、装依赖、写三件套、跑一次实验，比普通 eval 慢得多。
-  //
-  // 这里放 40min 而不是 20min，是在绕开上游的一个回归：niceeval 的 cli.ts 把
-  // `timeoutMs: flags.timeout ?? exp.timeoutMs ?? config.timeoutMs` 直接塞进 run，导致
-  // attempt.ts 的解析链 `run ?? evalDef ?? config` 第一段就短路——**eval 级 timeoutMs 全部失效**
-  // （install 组各 eval 声明的 35min 被这里的值覆盖；2026-07-25 canary.10 跑批两格都在
-  // 1200000ms 整被掐，就是它）。上游把那行的 `?? config.timeoutMs` 去掉后，这里可以调回 20min。
-  timeoutMs: 40 * 60 * 1000,
+  // 常规上限；安装与迁移题会在各自 eval 上声明更长的 timeoutMs。
+  timeoutMs: 20 * 60 * 1000,
 });

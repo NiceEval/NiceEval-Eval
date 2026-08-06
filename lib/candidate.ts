@@ -37,7 +37,7 @@ async function fetchWithRetry(url: string, init?: RequestInit, attempts = 3): Pr
       lastError = error;
       if (attempt === attempts) break;
       const cause = error instanceof Error ? (error.cause as Error | undefined) : undefined;
-      console.log(`请求 ${url} 失败（${cause?.message ?? String(error)}），${attempt}/${attempts}，重试中…`);
+      console.error(`请求 ${url} 失败（${cause?.message ?? String(error)}），${attempt}/${attempts}，重试中…`);
       await new Promise((done) => setTimeout(done, 500 * 2 ** (attempt - 1)));
     }
   }
@@ -80,7 +80,8 @@ export async function ensureCandidate(target: string): Promise<string> {
   if (existsSync(manifest)) return version;
 
   // 随包文档清单：下载 tarball 只为列出目录，列完就丢，不进 .candidate/
-  console.log(`物化候选 niceeval@${version}…`);
+  // 诊断信息走 stderr，避免污染 `niceeval ... --json` 的结构化 stdout。
+  console.error(`物化候选 niceeval@${version}…`);
   const tarball = await fetchWithRetry(versionMeta.dist.tarball);
   if (!tarball.ok) throw new Error(`下载 tarball 失败：HTTP ${tarball.status}`);
   const scratch = resolve(tmpdir(), `niceeval-${version}-${process.pid}.tgz`);
@@ -110,7 +111,7 @@ export async function ensureCandidate(target: string): Promise<string> {
   mkdirSync(dir, { recursive: true });
   writeFileSync(manifest, JSON.stringify({ version, source: `npm:niceeval@${version}`, pages }, null, 2) + "\n");
   const hasDocs = pages.includes("INDEX.md");
-  console.log(`候选就绪：niceeval@${version}（随包文档 ${hasDocs ? `${pages.length - 1} 页 + INDEX.md` : "无"}）`);
+  console.error(`候选就绪：niceeval@${version}（随包文档 ${hasDocs ? `${pages.length - 1} 页 + INDEX.md` : "无"}）`);
   return version;
 }
 

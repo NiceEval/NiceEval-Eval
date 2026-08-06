@@ -11,7 +11,8 @@
 import type { BaseAssertionHandle, BaseTestContext } from "niceeval";
 
 /** fixture 目录(相对各 eval 文件),含最小宿主配置 + 整目录签入的 .niceeval,数据永不重跑 */
-export const DEBUG_FIXTURE_DIR = "../../../fixtures/results/coding-agent-memory";
+// uploadDirectory 按真正的 .eval.ts 所在目录（evals/debug/）解析，而不是按 share/ 解析。
+export const DEBUG_FIXTURE_DIR = "../../fixtures/results/coding-agent-memory";
 
 /**
  * 一次具体的失败 attempt:memory/agent-029-use-cache-directive 这条 eval 在

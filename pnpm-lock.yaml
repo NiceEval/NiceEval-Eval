@@ -372,7 +372,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  niceeval: link:../niceeval
+  niceeval: link:../NiceEval
 
 importers:
 
@@ -385,8 +385,8 @@ importers:
         specifier: ^2.35.0
         version: 2.35.0
       niceeval:
-        specifier: link:../niceeval
-        version: link:../niceeval
+        specifier: link:../NiceEval
+        version: link:../NiceEval
       react:
         specifier: ^19.2.7
         version: 19.2.7

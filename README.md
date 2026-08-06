@@ -1,191 +1,137 @@
-# NiceEval-Eval：niceeval 的文档效果评估仓库
+# NiceEval-Eval
 
-用 niceeval 评估**正在使用 niceeval 的 coding agent**，量化 `INIT.md` 与随包 `INDEX.md`
-这套文档链的真实效果，为文档文案的每次改版提供回归面。
+用 NiceEval 评估 coding agent 是否能正确安装、迁移和实际使用 NiceEval。这里评的是
+NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试。
 
-被测对象是 coding agent CLI（当前是 codex），跑在 Docker 隔离 workspace 里。
-**coding agent 与模型是测量仪器，不是被改进对象**——`debug/` 还留着一组对照组
-（`with-agent-rules` vs `no-agent-rules`）把模型能力从归因里剥离出去；`install/` 不靠
-对照组度量，各组只差被评的 niceeval 版本，见下面「install 评估的任务指令」。
+主仓库当前消费 `niceeval@^0.12.0`。工作区开发时，`pnpm-workspace.yaml` 会把宿主 CLI
+链接到相邻的 `../NiceEval` 源码；进入 E2B sandbox 的被测候选仍按明确版本从 npm 安装，
+避免把宿主工具与被评版本混为一件事。
 
-两组评估共用这个仓库，sandbox、候选版本与运行机制共享，fixture 与题面独立：
+## 评估分区
 
-| 评估 | 问题 | 设计文档 |
-|---|---|---|
-| `install/` | 从零接入：agent 能不能把 niceeval 装进一个真实项目并写出合格的三件套 | `agent-install-eval.md` |
-| `debug/` | 接入之后：agent 能不能从已有结果数据里查出一条指定信息 | `agent-debug-eval.md` |
+`evals/` 按用户所处阶段分成四组：
+
+| 目录 | 类型 | 回答的问题 | 当前场景 |
+| --- | --- | --- | --- |
+| `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher |
+| `advance/` | 高级安装评估 | 遇到复杂运行环境和第三方 agent 时，能否选择合适的接入层与 sandbox | Express coding-agent Sandbox、Letta、OpenHands、Skyvern |
+| `experiment/` | 实验评估 | 已经接入后，agent 能否运行、读结果、调试、自迭代，以及跨版本迁移 | 原样跑通、必失败后修复、0.9.1 → 0.12.0 长程迁移 |
+| `debug/` | 历史诊断评估 | 面对已落盘的真实结果，agent 能否只通过 CLI 找到指定证据 | 有/无 `niceeval init` 指引的对照组 |
+
+`install/` 和 `advance/` 都属于“把 NiceEval 装进去”，区别是前者覆盖常见真实项目，
+后者专门保留复杂 provider、sandbox 与框架集成路径。`experiment/` 不再重复考安装产物质量，
+而是考 NiceEval 已存在时的反馈闭环。
+
+## experiment/ 的三个确定性场景
+
+这组使用仓库内的小型项目夹具，不调用夹具自身的外部模型，因此能稳定验证 agent 是否真的
+完成了 NiceEval 工作流。
+
+### `run-existing`
+
+项目和实验一开始就是绿色。agent 必须读取随包 `INDEX.md`，运行 `local` experiment，
+再用 `niceeval show` 核对 verdict 与计数；不应修改项目，也不能直接读取 `.niceeval` 原始 JSON。
+
+### `repair-failing`
+
+harness 会在 agent 开始前先跑一次，并确认实验以 exit code 1 失败。失败原因是业务源码返回
+“14 days”，eval 要求“30 days”。agent 必须：
+
+1. 用 `--rerun all` 复现失败；
+2. 从输出取得 locator，并用 `niceeval show @<locator>` 下钻；
+3. 只修 `src/policy.ts`，不得改 agent、eval、experiment 或断言；
+4. 局部重跑到全绿，再用 `show` 核对。
+
+harness 在 agent 结束后会独立重跑，避免只凭最终回复判断成功。
+
+### `migrate-0.9`
+
+夹具先固定在 `niceeval@0.9.1`，并保留旧写法：`defineAgent` 与 experiment 的 `runs`。
+agent 要把依赖升级到候选版本，重新执行 `niceeval init`，只依据升级后的随包文档迁移到
+`defineDirectAgent`、显式 evidence coverage 与 `attempts`，最后跑完实验并用 `show` 验证。
+
+这个场景同时检查依赖版本、源码迁移和最终执行结果，不接受“改到能编译”为完成。
 
 ## 快速开始
 
 ```sh
 pnpm install
-export CODEX_API_KEY=sk-...      # 被测 agent
-export OPENAI_API_KEY=sk-...     # 裁判模型（产出质量层）
+export CODEX_API_KEY=...
+export CODEX_BASE_URL=...   # 使用自建 OpenAI-compatible 网关时需要
 
-pnpm exec niceeval exp install   # 跑安装评估
-pnpm exec niceeval show          # 看结果
+pnpm run typecheck
+pnpm exec niceeval list
 ```
 
-只跑一条 eval：
+只生成计划、不启动付费 agent：
 
 ```sh
-pnpm exec niceeval exp install install/vanna              # 只跑一条 eval
+pnpm --silent exec niceeval exp experiment/v0.12.0 --dry --json
+pnpm --silent exec niceeval exp install/v0.12.0 --dry --json
+pnpm --silent exec niceeval exp advance/v0.12.0-node --dry --json
+pnpm --silent exec niceeval exp advance/v0.12.0-python --dry --json
 ```
 
-## 三层评分
-
-三层从精确断言到 judge 逐层放宽，**只有「检查 niceeval 是否安装好」这层 gate**。这是刻意的：
-三层混成一个分数就失去了归因能力，而归因正是这套评估唯一的产出。
-
-| 层 | 判什么 | 严重度 | 失败意味着 |
-|---|---|---|---|
-| **检查 niceeval 是否安装好** | 安装链的客观事实：依赖解析到候选版本、config 存在、托管区块存在、typecheck 干净、niceeval 能发现 agent 写的 eval | `gate` | 链路走不通 → 修 `INIT.md` 对应步骤或 `init` 的行为 |
-| **产出质量层** | agent 写出的 experiment 与 eval 是否真的关联到这个被测系统——不是各写各的、互不搭界 | `soft` / judge | 契约没被读懂 → 定位到那一页 docs-site 改写 |
-| **路由层** | agent 是否以随包 `INDEX.md` 为入口、读到与任务匹配的页面、有没有退回官网 | `soft`（纯计量） | 路由不对 → `INDEX.template.md` 导语或页面 `description` |
-
-路由层不 gate，因为它回答的是「文档起作用了吗」，不是「这次接入算不算成功」。
-让它拖垮 verdict 会把文档问题和机制问题混成一个数字。
-
-失败按「路径 × 答案」的组合归因——路径对了答案还错，和路径就没走对，指向的是完全不同的修复面。
-
-## install 评估的任务指令
-
-`install/` 的每组配置只差被评的版本（`v0.9.1`、`v0.4` = 0.4.1）：每条 eval 的 `send()` 都
-明确指向那个版本按 tag 存档的 `INIT.md`（`READ ${candidateInitDocUrl(version)} ...`，
-GitHub raw 地址，不缓存进沙箱），agent 按它走「读引导 → 探测项目 → 装候选版本 → init →
-交接给随包 INDEX.md」这条完整链路。
-
-随包文档（`node_modules/niceeval/INDEX.md` 与 `docs-site/zh/**`）是包的一部分，agent 一
-装上包它就必然存在。随包文档起没起作用由**路由层单独计量**（有没有以 `INDEX.md` 为入口、
-有没有读到与宿主形态匹配的页面），不靠对照组。
-
-`debug/` 的对照组（`with-agent-rules` vs `no-agent-rules`）是另一回事，衡量的是「查已有
-结果」这条链路上**那段指针**的增量。自变量是 `niceeval init` 往 `AGENTS.md` 写的托管
-区块在不在：区块告诉 agent「niceeval 不在你的训练数据里，先读
-`node_modules/niceeval/INDEX.md`」，随包文档由此被接上。
-
-随包文档本身摘不掉（它是包的一部分），能摘的只有通往它的指针，所以自变量取在指针上——
-这是**结构性隔离**，两组题面逐字相同，差值里不掺 agent 的服从度。对照组要是自己摸到了
-`INDEX.md`，那本身就是结论：说明这套文档不靠指针也能被发现，不是需要剔掉的污染。
-
-托管区块的文案是候选自己 `src/cli.ts` 里的常量、各版本不同，所以由候选的 `init` 现写，
-harness 不抄——抄了就永远停在抄的那个版本。
-
-## 候选版本
-
-被评的是**某个具体版本的 niceeval 发布**，不是 npm 上的 latest。每个 experiment 用
-`CANDIDATE_VERSION` 明确钉一个版本号，这一个值贯穿三处：sandbox 投放哪个版本的
-`INIT.md`、eval 让 agent 装哪个版本、「检查 niceeval 是否安装好」这层核对哪个版本。
-
-没有手工 pin 步骤：experiment 加载时 `await ensureCandidate(<版本号或 dist-tag>)`
-（`lib/candidate.ts`），本地没有这个版本的 `.candidate/<version>/manifest.json` 就现场物化
-一份。canary 组传的是 dist-tag，上游随时发新 canary，这边下一次跑自动跟上。
-
-物化下来的只有 `manifest.json`（版本号 + 随包文档清单）：
-
-- **不存 tarball。** 候选一律是已发布版本，`pnpm add niceeval@<version>` 就能精确复现；
-  npm 的同一个版本号不可重发，版本号本身就是完整的身份。
-- **`INIT.md` 不缓存本地，按版本取自 GitHub tag**：它不在包的 `files` 白名单里，装了包也
-  拿不到；niceeval.com/INIT.md 只有「现在」这一份，没有历史版本。真正按版本存档的是
-  [`CorrectRoadH/niceeval`](https://github.com/CorrectRoadH/niceeval) 仓库的 tag，eval 让
-  agent 直接读 `https://raw.githubusercontent.com/CorrectRoadH/niceeval/v<version>/INIT.md`。
-  物化时会探一次这个 URL 是不是 200——链接失效在实验加载这一步就响。评「某个版本的文案
-  改版有没有效果」时，读到的就是那个版本发布时的 `INIT.md`，不会被网站今天的最新修订
-  悄悄替换掉。
-- **版本号要真的传达给 agent。** 题面明写「这台机器最终必须装上 niceeval@<version>」——
-  这是环境约束，不是提示怎么装；怎么装正是考点。不交代的话 agent 只会装 latest，
-  「依赖解析到候选版本」那条 gate 在版本对比组上必然红。
-- `manifest.json` 里记着这个版本随包发了哪些文档页，跑之前用来校验题库的合格落点还在不在
-  （见下面「两种零」）。
-- 环境钩子写下的文件进 git 基线，**不会被算进 agent 的 diff**，所以 diff 断言不会被污染。
-
-### 对比不同 niceeval 版本
-
-一个版本一个 experiment，只差版本这一个变量：
+明确决定花费后再运行实验：
 
 ```sh
-pnpm exec niceeval exp install/v0.9.1     # niceeval@0.9.1
-pnpm exec niceeval exp install/v0.4       # niceeval@0.4.1
+pnpm run experiment-eval
+pnpm run install-eval
+pnpm run debug-eval
 ```
 
-跟 `compare-models` 一样，这组对照只应该有一个变量：写新的版本对比组时把 `model`、
-eval 集合都钉死，只让 `CANDIDATE_VERSION` 变化。
+结果诊断只走 CLI：
 
-0.4.1 还没有随包文档这套机制（0 页、无 `INDEX.md`、`init` 也不写 `AGENTS.md` 托管区块），
-所以路由层在那一组读零是**正确结果**，正是这组要测出来的东西。
+```sh
+pnpm exec niceeval show --exp <experiment-id>
+pnpm exec niceeval show --exp <experiment-id> --history
+pnpm exec niceeval show @<locator>
+pnpm exec niceeval show @<locator> --execution
+pnpm exec niceeval show @<locator> --diff
+```
 
-### 两种零
+不要直接读取 `.niceeval/result.json`、`run.json` 或 `sources/*.json`。CLI 看不到需要的信息时，
+应把它记录成 NiceEval 的呈现缺口，而不是绕过 CLI 解析内部文件。
 
-路由层读出的 0 有两种，在分数上长得一模一样：
+## 候选版本与实验矩阵
 
-| | 含义 | 该怎么办 |
-|---|---|---|
-| **真 0** | 这个版本压根没有随包文档（0.4.1） | 什么都不用做，这就是结论 |
-| **假 0** | 有文档，但题库写的落点被改名/搬走了 | 更新题库，否则会被误读成「文档没起作用」 |
+安装组当前有三格：
 
-路由层是软分、按设计不 gate，所以假 0 不会让任何东西变红。跑之前拿题库的每个落点去
-`manifest.json` 的文档清单里核一遍，对不上就直接失败——把静默的假 0 变成响的。
-候选本来就没有随包文档时不报错：那是真 0。
+- `install/v0.12.0`：当前稳定发布基线；
+- `install/v0.11.0`：上一代对照；
+- `install/canary`：解析运行时的 canary dist-tag。
 
-## fixture
+每个 experiment 都通过 `ensureCandidate()` 物化候选清单，并把解析后的精确版本放进
+`flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
 
-### install fixture：真实开源项目矩阵
+高级安装与操作实验目前以 `0.12.0` 为迁移基线，分别拆成 Node、Python sandbox 和
+确定性的 Node 工作流，避免所有题共用一个不适合的环境。
 
-宿主不再是仓库里签入的静态代码，而是三个锁定了具体 tag 的真实开源 agent 项目——每条
-`evals/install/*.eval.ts` 用 `lib/fixture.ts` 的 `cloneFixture` 在每次 attempt 里把对应
-`repoUrl@ref` clone 进沙箱工作区，作为 agent 之后改动的起点。三条 eval 各写各的
-`send()` 文案、核心用例 rubric 与合格文档落点——`cloneFixture`、`collectMechanismFacts`、
-路由层判定这些机械的、跟具体宿主无关的部分留在 `lib/` 里当工具函数复用，但每条接入
-路径要考什么、断言怎么写，都是各文件自己的判断，不经过一个通用骨架来间接决定：
+`debug/` 是例外：它读取 NiceEval 0.4.6 产出的 schema 8 历史快照，reader 固定为最后验证过
+兼容的 0.9.1。新版本的主动失败与修复由 `experiment/repair-failing` 覆盖，避免把“旧 schema
+兼容性”混进“agent 会不会调试”的对照变量。
 
-| fixture | 项目 | 锁定 tag | 覆盖的接入路径 |
-|---|---|---|---|
-| `vanna` | [vanna-ai/vanna](https://github.com/vanna-ai/vanna) | `v2.0.2` | 非 TS 宿主 + 自研 JSON（非流式）→ 就地建 `package.json` + 手写 `send` |
-| `db-gpt` | [eosphoros-ai/DB-GPT](https://github.com/eosphoros-ai/DB-GPT) | `v0.8.1` | 非 TS 宿主 + OpenAI Chat Completions 兼容形状（仍无内置件）→ 手写 `send` |
-| `gpt-researcher` | [assafelovic/gpt-researcher](https://github.com/assafelovic/gpt-researcher) | `v3.6.0` | 非 TS 宿主 + 自研 WebSocket 帧协议 → 手写 `send` 与事件映射 |
+## 安装评估如何计分
 
-`ref` 锁定的是某次具体的大版本发布，不是分支：同一个 tag 重新 clone 得到完全相同的文件，
-跑分不会随上游新提交漂移。`DB-GPT` 仓库体积很大，`excludeDirs` 用 sparse-checkout 剪掉了
-与「装 niceeval」无关的 `docs/` 与 `assets/`；其余两个直接整仓库 clone。
+安装题把结论拆成三层：
 
-之前还接入过 `finrobot`（[AI4Finance-Foundation/FinRobot](https://github.com/AI4Finance-Foundation/FinRobot)
-`v1.0.0`），已移除：它拉财务数据打的是 FMP 已下线的 `/api/v3/`/`/api/v4/` legacy 端点
-（FMP 2025-08-31 后只认 `/stable/*`），拿真实 key 也全 403；上游 issue 开了近一年没修，
-唯一的修复 PR 也晾了一个多月没人理，判定为这个模块事实上停止维护，不是环境配置能解决的。
+| 层 | 检查内容 | 作用 |
+| --- | --- | --- |
+| 安装机制 | 候选版本、config、托管区块、typecheck、eval 可发现性 | gate，判断链路能否工作 |
+| 产出质量 | experiment 与 eval 是否真的覆盖宿主核心用例 | 软分，定位文档契约是否被理解 |
+| 文档路由 | 是否从随包 `INDEX.md` 读到匹配页面，是否退回在线 main 文档 | 软分，衡量随包文档是否被发现 |
 
-⚠️ **这三个 fixture 换来「贴真实项目」，也放弃了两个旧设计里的性质。** 一是旧的
-`ai-sdk-app` 覆盖的「AI SDK `useChat` → 内置 `uiMessageStreamAgent` 零映射」这条分支
-目前没有对应项目，暂时失去覆盖；二是旧宿主**确定性、零 LLM 调用、零 API key**，三个
-真实项目都要连真实模型才能真正跑起来，「检查 niceeval 是否
-安装好」这层里 `producedResults` 那条软分（见上面「三层评分」）在没有配那些 key 的环境里大概率读零——
-这是软分不是 gate，不影响 verdict，但看板上会显得「没跑通」。产出质量层的 judge 断言评的是
-agent **写出的 experiment/eval 代码**是否真的关联到被测系统、贴着真实用例、走真实传输，
-不依赖宿主真的启动成功。
+真实项目 fixture 锁定具体 tag：DB-GPT `v0.8.1`，GPT Researcher `v3.6.0`。DB-GPT 使用
+sparse checkout 排除与接入无关的大型文档和资源目录。agent 写出的产物会复制到 gitignored
+的 `.agent-output/` 供人工复核。
 
+## fixture 与边界
 
+- `fixtures/projects/experiment-ready`：0.12.0 绿色项目。
+- `fixtures/projects/experiment-failing`：0.12.0 确定性红色项目。
+- `fixtures/projects/migration-0.9`：可在 0.9.1 运行的旧 API 项目。
+- `fixtures/results/`：历史 debug 结果与人工核对题库，详情见
+  [`fixtures/results/README.md`](fixtures/results/README.md)。
 
-### debug fixture：签入的真实结果数据
-
-`fixtures/results/` 下是整目录签入的 `.niceeval` 结果数据加一份人工核对的题库。
-数据来自 `coding-agent-memory-evals`（niceeval 0.4.6 产出，10 个 experiment / 84 attempt），
-8 条题的标准答案全部从数据核对完毕。重新导出的步骤与验收标准见
-[`fixtures/results/README.md`](fixtures/results/README.md)。
-
-## 边界
-
-- **评文档链，不评 agent 编码能力。**
-- **不评 niceeval 的功能正确性。** `show` 输出自身的 bug 由 niceeval 仓库的单元测试与 E2E 守护；
-  这里测的是「这套输出加文档能否支撑 agent 完成任务」。本仓库变红不阻塞发版。
-- **debug fixture 只读。** 数据永不重跑，答案在出题时核对一次，之后不腐烂——
-  这让它能当作 CLI 输出改版的回归面。
-- **不追求覆盖全部文档页面。** fixture 按判断分支组织，页面级的文案质量由产出质量层的
-  失败归因倒查，不为每页文档造一个场景。
-
-## 一个已知的取舍
-
-`INIT.md` 里有一条架构硬规则：adapter 不能代管被测进程，应用应该由用户自己启动。
-但沙箱里没有「另一个人」来启动被测应用。任务指令因此明确写着：需要时自己在 shell 里
-把应用起到后台，**但不要把启动进程写进 adapter 代码**——被考的那条规则由此保持完整。
-
-相应地，「真的跑出过一次结果」只作软分不作 gate：它依赖 agent 是否顺手起了后台进程，
-波动大，gate 会把「装对了但没跑」误判成安装失败。
+仓库不验证 NiceEval 核心实现本身；核心 API、CLI 或报告问题应在相邻 `NiceEval/` 修复。
+这里也不自动跑全量或付费实验：更换候选、作废结果或批量重跑前必须先确认成本。

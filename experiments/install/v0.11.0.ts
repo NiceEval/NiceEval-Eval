@@ -3,8 +3,8 @@ import { ensureCandidate } from "../../lib/candidate.ts";
 import { agentUnderTest, sandboxWith } from "../shared.ts";
 
 /**
- * 当前 npm latest（0.11.0），install 组的基线格。跟 canary.ts 只差版本这一个变量——同一个
- * model、同一批 eval，分数差才归因得到「文档变了」。
+ * 上一代发布版（0.11.0），保留为 0.12.0 的迁移对照格。同一个 model、同一批 eval，
+ * 只让候选版本变化。
  *
  * 取代了原来的 v0.9.1 那格（已删）：那代文档在 0.10.x 的搬家（how-to/ 并入 tutorials/）之前，
  * INIT.md 也还没有「非 JS 宿主另建 eval 工作区 + `"type": "module"` + 装成 devDependency」
@@ -14,11 +14,11 @@ import { agentUnderTest, sandboxWith } from "../shared.ts";
 const NICEEVAL_VERSION = await ensureCandidate("0.11.0");
 
 export default defineExperiment({
-  description: "niceeval@0.11.0：INIT.md + 随包文档（当前 latest）",
+  description: "niceeval@0.11.0：0.12.0 之前的发布版对照",
   agent: agentUnderTest,
   model: "gpt-5.6-luna",
   flags: { candidateVersion: NICEEVAL_VERSION },
-  sandbox: sandboxWith(),
+  sandbox: sandboxWith("python"),
   evals: ["install/"],
   attempts: 1,
 });

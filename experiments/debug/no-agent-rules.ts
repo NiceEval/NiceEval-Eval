@@ -12,6 +12,8 @@ import { agentUnderTest, sandboxWith } from "../shared.ts";
  * 差值里不掺服从度。路由层照常计量：对照组要是自己摸到了 INDEX.md，那本身就是结论
  * （说明这套文档不靠指针也能被发现），不是需要剔掉的污染。
  */
+// 这组题读的是 0.4.6 产出的 schema 8 历史快照；固定在最后验证过兼容的 reader，
+// 不把「旧结果 schema 能否被新 CLI 读取」混入 agent 调试能力的对照实验。
 const NICEEVAL_VERSION = "0.9.1";
 
 export default defineExperiment({

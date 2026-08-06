@@ -7,6 +7,8 @@ import { agentUnderTest, sandboxWith } from "../shared.ts";
  * 这就是真实用户接入完之后的形态——区块把 agent 指向 `node_modules/niceeval/INDEX.md`，
  * 随包文档由此被真正接上。与对照组的差值，就是这条指针的价值。
  */
+// 这组题读的是 0.4.6 产出的 schema 8 历史快照；固定在最后验证过兼容的 reader，
+// 新版本的主动失败/修复反馈闭环由 experiment/repair-failing 覆盖。
 const NICEEVAL_VERSION = "0.9.1";
 
 export default defineExperiment({
