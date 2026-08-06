@@ -2,10 +2,10 @@
  * 评估安装（计分制 / 加分式）：一条题内叠加挣分，分从 0 往上累加、不声明满分。四段挣分：
  *
  * 1. 交互层（加分）——装机任务发出后，好的 agent 不闷头做，而是先停下来（park 在一个待
- *    输入请求上）把仓库里看不出的四件事问清楚，拿到方案再动手。`t.parked()` 判「停没停下来
- *    问」，四条 closeQA 各判一件「问得对不对、给的选择对不对」（判据构造见
- *    ./clarify-criteria.ts）。随后替用户挑第一档「简单接入」，用 `t.respond` 驱动下一轮把活
- *    干完——后面的取证才有东西可验。
+ *    输入请求上）把仓库里看不出的接入方案问清楚。`t.parked()` 判「停没停下来问」，四条
+ *    closeQA 各判接口 / OTel / flag / Tier。两条常见 install 路径还把 INIT.md 当作
+ *    create-eval 入口，叠加「首次评估定题」与「完成交接」两组判据。随后替用户给出一次罐头
+ *    答复，用 `t.respond` 驱动下一轮把活干完——后面的取证才有东西可验。
  * 2. 装成没装成（gate）——niceeval 装没装成、装的东西能不能跑。这几条是 gate：红了 verdict
  *    直接 failed，后面「写得好不好」「读没读对文档」都失去讨论前提。gate 不给分，但挂了就把
  *    整题按判定面判负（`.points` 与 severity 正交）。
@@ -37,6 +37,11 @@ import type { ScoreAssertionHandle, ScoreTestContext, TurnHandle } from "niceeva
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import { readCandidateManifest } from "../../../lib/candidate.ts";
 import { buildClarifyRubrics, type ClarifyFacts } from "./clarify-criteria.ts";
+import {
+  buildCreateEvalHandoffRubrics,
+  buildCreateEvalScopingRubrics,
+  type CreateEvalFacts,
+} from "./create-eval-criteria.ts";
 
 /**
  * `niceeval exp --dry --json` 的单文档形状（`docs/feature/experiments/cli.md#机器怎么读--json`）。
@@ -146,8 +151,14 @@ export async function locateInstallRoot(sandbox: ScoreTestContext["sandbox"]): P
  */
 export async function evalInteraction(
   t: ScoreTestContext,
-  opts: { clarify: ClarifyFacts; turn: TurnHandle<ScoreAssertionHandle> },
+  opts: {
+    clarify: ClarifyFacts;
+    turn: TurnHandle<ScoreAssertionHandle>;
+    /** 常见 install 路径传入；高级路径暂不混入这组分数。 */
+    createEval?: CreateEvalFacts;
+  },
 ): Promise<void> {
+  const createEval = opts.createEval;
   // ── 交互层（加分，不 gate）：动手前先停下来把仓库里看不出的四件事问清楚 ──────────
   // 判的是第一轮回复，所以要在 respond 续轮之前取——`t.reply` 是「最近一轮的助手回复」，
   // respond 之后它就变成下一轮的了。四条判据共用这一份快照。
@@ -164,6 +175,14 @@ export async function evalInteraction(
     }
   });
 
+  if (createEval) {
+    await t.group("首次评估定题", async () => {
+      for (const r of buildCreateEvalScopingRubrics(createEval)) {
+        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: clarifyReply }).points(1);
+      }
+    });
+  }
+
   // 替用户回答：挑第一档「简单接入」。respond 就是同一 session 的下一轮——agent 拿到方案后把
   // 活干完，后面的事后取证才有东西可验。三档里第一档最省，也不引入 otel / flag 的额外判定面。
   //
@@ -178,14 +197,31 @@ export async function evalInteraction(
   // 罐头答复要接得住 agent 实际会问的问题：canary.6 实跑里两条路径都问了「端点确认？
   // 被测服务谁起？judge 用什么 key？」，只答档位会让下一轮再停一次。最后一句关掉
   // 「继续等确认」的口子——真用户不在场，这条评估只给一次答复机会。
+  const EXPERIMENT_SCOPE = createEval ? "先做最小实验矩阵" : "写两个实验";
+  const CREATE_EVAL_ANSWER = createEval
+    ? "第一条 Eval 就测你从仓库确认的核心用例，用安全的本地 fixture / 测试数据；" +
+      "成功标准落在具体业务结果上，再加一条不在 prompt 里教标准答案的负例。" +
+      "候选只用系统实际接受的值，验证不了就先交一个可运行参照配置并说明。" +
+      "首跑每格一次、只跑最小矩阵，不扩大付费范围；"
+    : "";
   const PICK_TIER_1 =
-    "简单接入——写两个实验、先不接 otel，也先不做 flag。" +
+    `简单接入——${EXPERIMENT_SCOPE}、先不接 otel，也先不做 flag。` +
     "接口就用你探到的那个；被测服务需要的话你自己起；judge 按文档处理，没有可用 key 就降级。" +
+    CREATE_EVAL_ANSWER +
     "其余你自行决定，不用再等我确认。";
   if (opts.turn.status === "waiting") {
     await t.respond(PICK_TIER_1);
   } else {
     await t.send(PICK_TIER_1);
+  }
+
+  if (createEval) {
+    const handoffReply = t.reply;
+    await t.group("完成交接", async () => {
+      for (const r of buildCreateEvalHandoffRubrics(createEval)) {
+        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: handoffReply }).points(1);
+      }
+    });
   }
 }
 

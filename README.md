@@ -118,12 +118,19 @@ pnpm exec niceeval show @<locator> --diff
 | 层 | 检查内容 | 作用 |
 | --- | --- | --- |
 | 安装机制 | 候选版本、config、托管区块、typecheck、eval 可发现性 | gate，判断链路能否工作 |
+| 首次评估定题 | 核心评估面、真实数据、成败判据、运行约束、候选范围 | 软分，判断 INIT 是否把安装请求推进成有效 Eval |
 | 产出质量 | experiment 与 eval 是否真的覆盖宿主核心用例 | 软分，定位文档契约是否被理解 |
+| 完成交接 | 文件与复现命令、真实首跑结果、下一步选择 | 软分，判断 agent 是否交付可继续使用的评估入口 |
 | 文档路由 | 是否从随包 `INDEX.md` 读到匹配页面，是否退回在线 main 文档 | 软分，衡量随包文档是否被发现 |
 
 真实项目 fixture 锁定具体 tag：DB-GPT `v0.8.1`，GPT Researcher `v3.6.0`。DB-GPT 使用
 sparse checkout 排除与接入无关的大型文档和资源目录。agent 写出的产物会复制到 gitignored
 的 `.agent-output/` 供人工复核。
+
+`INIT.md` 在产品中的位置等同于一条 create-eval 入口：用户只说安装，完成标准却是写出并跑通
+第一条真实 Eval。因此 DB-GPT 与 GPT Researcher 还会检查 agent 是否先和用户定清评估面、
+真实数据、成功与失败判据、运行约束和候选范围，并在结束时如实交代首跑结果、复现入口与下一步。
+这些检查复用原安装 Attempt，只增加独立 Judge 计分点，不额外启动一套 coding-agent 任务。
 
 ## fixture 与边界
 

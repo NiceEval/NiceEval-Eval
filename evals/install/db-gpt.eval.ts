@@ -98,7 +98,11 @@ export default defineScoreEval({
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）
     // ── + 评估执行取证（加分）+ 最佳实践两层（纯加分：adapter 的 send 写法、eval 的断言写法，
     // ── 判据逐条来自候选自己发的文档）。五条接入路径共用同一套判定（评估adapter 仅两条轻路径调）。 ──
-    await evalInteraction(t, { clarify: CLARIFY, turn });
+    await evalInteraction(t, {
+      clarify: CLARIFY,
+      createEval: { quality: QUALITY, comparisonOptions: CLARIFY.flags },
+      turn,
+    });
     await evalInstall(t, { version, standaloneWorkspace: true });
     await evalExperiment(t);
     await evalAdapter(t);
