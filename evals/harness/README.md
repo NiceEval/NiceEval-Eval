@@ -36,8 +36,8 @@ Node、pnpm、Docker/Compose、精确候选 NiceEval、依赖和 `niceeval init`
 各种合法命令形态，而不需要维护命令正则。状态计数、failed/errored 分类、locator 下钻、因果
 归属与复验陈述必须同时得到回复和过程证据支持。
 
-机器只判断机器更可靠的事实：第一轮允许的精确文件范围、第二轮 diff allowlist、目标配置、
-回归 eval 是否保留，以及 agent 离场后运行的隐藏 black-box probe。Evaluator 不替 agent 运行
+机器断言只验证任务直接产物与行为：新增回归 eval、目标业务值或配置，以及 agent 离场后运行的
+隐藏 black-box probe；不维护全仓文件清单或逐字节防作弊 allowlist。Evaluator 不替 agent 运行
 或重跑内层 experiment，也不从 CLI/record 解析 verdict。0.12+ 与 0.9.x 的 rerun/carry 契约由
 候选版本感知的 judge rubric 分别判断。
 

@@ -20,7 +20,7 @@
 - LLM judge 同时读取回复与宿主侧真实 shell 命令，验证 agent 实际运行、用 locator/show 下钻、
   正确汇报计数，并完成两条不同的因果归属；不使用命令正则或结果 parser；
 - 第一轮最终 diff 必须为空；
-- 第二轮只允许修改 `src/policies.ts` 与 `evals/policy/warranty.eval.ts`，其它文件逐字节快照；
+- 第二轮直接检查 `src/policies.ts` 与 `evals/policy/warranty.eval.ts` 的目标修复；
 - warranty eval 必须恢复明确的 1-year 断言，不能只删掉失败条件；
 - 后置隐藏 probe 用未出现在五道 eval 里的同义提问检查五项业务行为，防止只改可见字面量；
 - 最终回复与命令证据必须共同证明 fresh full rerun 得到 `5 / 0 / 0`。

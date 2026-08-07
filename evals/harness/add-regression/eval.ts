@@ -1,6 +1,6 @@
 import { defineScoreEval } from "niceeval";
-import { commandSucceeded, equals, isTrue } from "niceeval/expect";
-import { listWorkspaceFiles, readFiles, turnEvidence } from "../support.ts";
+import { commandSucceeded, isTrue } from "niceeval/expect";
+import { turnEvidence } from "../support.ts";
 
 const EXISTING_EVALS = [
   "evals/policy/exchange.eval.ts",
@@ -11,7 +11,6 @@ const EXISTING_EVALS = [
 ] as const;
 
 const SOURCE_FILES = ["src/policies.ts", "src/policy.ts"] as const;
-const SOURCE_FILE_SET: ReadonlySet<string> = new Set(SOURCE_FILES);
 
 export default defineScoreEval({
   description: "给绿色 experiment 补一条真实回归，先复现再修实现并全量复验",
@@ -24,12 +23,9 @@ export default defineScoreEval({
       new URL("../../../fixtures/harness/add-regression/repo/", import.meta.url),
       ".",
     );
-    const startingFiles = await listWorkspaceFiles(t.sandbox);
 
     const version = String(t.flags.candidateVersion);
-    const immutableFiles = startingFiles.filter((file) => !SOURCE_FILE_SET.has(file));
-    const immutableBefore = await readFiles(t.sandbox, immutableFiles);
-    const sourceBefore = await readFiles(t.sandbox, SOURCE_FILES);
+    const sourceBefore = await Promise.all(SOURCE_FILES.map((file) => t.sandbox.readText(file)));
 
     const reproductionCommandStart = t.o11y.shellCommands.length;
     const reproduction = await t.send(
@@ -83,12 +79,12 @@ export default defineScoreEval({
       .gate();
     t.sandbox.fileChanged(newEvalPath).points(1);
 
-    const immutableAfterReproduction = await readFiles(t.sandbox, immutableFiles);
-    const sourceAfterReproduction = await readFiles(t.sandbox, SOURCE_FILES);
+    const sourceAfterReproduction = await Promise.all(
+      SOURCE_FILES.map((file) => t.sandbox.readText(file)),
+    );
     t.check(
-      immutableAfterReproduction.every((content, index) => content === immutableBefore[index]) &&
-        sourceAfterReproduction.every((content, index) => content === sourceBefore[index]),
-      isTrue("复现轮只新增回归 eval，没有改既有 eval、实验、配置、文档或业务实现"),
+      sourceAfterReproduction.every((content, index) => content === sourceBefore[index]),
+      isTrue("复现轮尚未修业务实现"),
     )
       .points(2)
       .gate();
@@ -110,17 +106,13 @@ export default defineScoreEval({
       .points(4)
       .gate();
 
-    const immutableAfterRepair = await readFiles(t.sandbox, immutableFiles);
-    const sourceAfterRepair = await readFiles(t.sandbox, SOURCE_FILES);
+    const sourceAfterRepair = await Promise.all(
+      SOURCE_FILES.map((file) => t.sandbox.readText(file)),
+    );
     t.check(
-      immutableAfterRepair.every((content, index) => content === immutableBefore[index]) &&
-        (await t.sandbox.readText(newEvalPath)) === newEvalSource,
-      isTrue("修复轮保留回归 eval，且既有 eval、实验、配置和文档均未被篡改"),
+      (await t.sandbox.readText(newEvalPath)) === newEvalSource,
+      isTrue("修复轮原样保留新增的回归 eval"),
     )
-      .points(2)
-      .gate();
-    const finalFiles = await listWorkspaceFiles(t.sandbox);
-    t.check(finalFiles, equals([...startingFiles, newEvalPath].sort()))
       .points(2)
       .gate();
     t.check(

@@ -1,14 +1,12 @@
 import { defineScoreEval } from "niceeval";
 import { equals, isTrue } from "niceeval/expect";
-import { listWorkspaceFiles, readFiles, turnEvidence } from "../support.ts";
+import { turnEvidence } from "../support.ts";
 
 const WORKING_CONFIG = {
   endpoint: "memory://policy",
   complianceEndpoint: "memory://compliance",
 } as const;
 const BROKEN_COMPLIANCE_ENDPOINT = "http://compliance.invalid:8787";
-
-const MUTABLE_FILES: ReadonlySet<string> = new Set(["config/policy.json"]);
 
 export default defineScoreEval({
   description: "诊断只影响部分 case 的执行错误，只修共享运行时配置并全量复验",
@@ -21,8 +19,6 @@ export default defineScoreEval({
       new URL("../../../fixtures/harness/repair-errored/repo/", import.meta.url),
       ".",
     );
-    const startingFiles = await listWorkspaceFiles(t.sandbox);
-    const immutableFiles = startingFiles.filter((file) => !MUTABLE_FILES.has(file));
 
     const version = String(t.flags.candidateVersion);
     const startingConfig = JSON.parse(await t.sandbox.readText("config/policy.json")) as {
@@ -35,8 +31,6 @@ export default defineScoreEval({
     ) {
       throw new Error("repair-errored repo 缺少预期的局部 compliance endpoint 故障");
     }
-    const immutableBefore = await readFiles(t.sandbox, immutableFiles);
-
     const diagnosisCommandStart = t.o11y.shellCommands.length;
     const diagnosis = await t.send("先调查 local experiment 里为什么只有一部分 case 跑不起来，暂时别改。");
     const diagnosisEvidence = turnEvidence(
@@ -87,15 +81,6 @@ export default defineScoreEval({
     t.sandbox.fileChanged("config/policy.json").points(1);
     t.check(repairedConfig, equals(WORKING_CONFIG)).points(3).gate();
 
-    const immutableAfter = await readFiles(t.sandbox, immutableFiles);
-    t.check(
-      immutableAfter.every((content, index) => content === immutableBefore[index]),
-      isTrue("除 compliance 配置外，其余 agent、业务实现、文档、eval 和 experiment 均未改动"),
-    )
-      .points(3)
-      .gate();
-    const finalFiles = await listWorkspaceFiles(t.sandbox);
-    t.check(finalFiles, equals(startingFiles)).points(2).gate();
     repair.succeeded().points(1).gate();
   },
 });

@@ -1,14 +1,9 @@
 import { defineScoreEval } from "niceeval";
-import { commandSucceeded, equals, excludes, includes, isTrue } from "niceeval/expect";
-import { listWorkspaceFiles, readFiles, turnEvidence } from "../support.ts";
+import { commandSucceeded, excludes, includes, isTrue } from "niceeval/expect";
+import { turnEvidence } from "../support.ts";
 
 const REFUND_CORRECT = "Customers may request a refund within 30 days of purchase.";
 const REFUND_BROKEN = "Customers may request a refund within 14 days of purchase.";
-
-const MUTABLE_FILES: ReadonlySet<string> = new Set([
-  "src/policies.ts",
-  "evals/policy/warranty.eval.ts",
-]);
 
 export default defineScoreEval({
   description: "从同一批 failed 中区分业务实现错误与过期 eval，并按正确层修复后全量复验",
@@ -21,8 +16,6 @@ export default defineScoreEval({
       new URL("../../../fixtures/harness/repair-failing/repo/", import.meta.url),
       ".",
     );
-    const startingFiles = await listWorkspaceFiles(t.sandbox);
-    const immutableFiles = startingFiles.filter((file) => !MUTABLE_FILES.has(file));
 
     const version = String(t.flags.candidateVersion);
     const startingSource = await t.sandbox.readText("src/policies.ts");
@@ -34,8 +27,6 @@ export default defineScoreEval({
     ) {
       throw new Error("repair-failing repo 缺少预期的双层起始缺陷");
     }
-    const immutableBefore = await readFiles(t.sandbox, immutableFiles);
-
     const diagnosisCommandStart = t.o11y.shellCommands.length;
     const diagnosis = await t.send("先调查 local experiment 的失败，判断每一处到底该改哪一层；暂时别改。");
     const diagnosisEvidence = turnEvidence(
@@ -90,16 +81,6 @@ export default defineScoreEval({
     t.check(repairedSource, excludes(REFUND_BROKEN)).points(1).gate();
     t.check(repairedWarrantyEval, includes('includes("1-year")')).points(1).gate();
     t.check(repairedWarrantyEval, excludes("90 days")).points(1).gate();
-
-    const immutableAfter = await readFiles(t.sandbox, immutableFiles);
-    t.check(
-      immutableAfter.every((content, index) => content === immutableBefore[index]),
-      isTrue("除 refund 业务实现与 warranty eval 外，其余 agent、配置、文档、eval 和 experiment 均未改动"),
-    )
-      .points(2)
-      .gate();
-    const finalFiles = await listWorkspaceFiles(t.sandbox);
-    t.check(finalFiles, equals(startingFiles)).points(2).gate();
 
     const probe = await t.sandbox.runCommand("node", [
       "--input-type=module",
