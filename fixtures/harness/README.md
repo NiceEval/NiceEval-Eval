@@ -4,12 +4,12 @@
 
 ```text
 fixtures/harness/
-├── run-existing/repo/      # 起始即 5 passed
-├── repair-failing/repo/    # 起始为 3 passed / 2 failed
-└── repair-errored/repo/    # 起始为 5 errored
+├── add-regression/repo/    # 五道全绿，但取消订单行为有未覆盖回归
+├── repair-failing/repo/    # 3 passed / 2 failed：实现错 + eval 过期
+└── repair-errored/repo/    # 3 passed / 2 errored：局部 compliance 故障
 ```
 
-每份 repo 自己持有 agent、配置、业务源码、文档、五道 inner eval 与 `local` experiment。
+每份 repo 自己持有 agent、配置、业务源码、文档、五道起始 inner eval 与 `local` experiment。
 修改某道题时可以直接编辑它的 repo，不需要同步 canonical fixture 或理解 evaluator 注入逻辑。
 它们使用真实 `.ts` 扩展名；宿主 discovery 不扫描 `fixtures/`，因此不需要 `*.fixture` 改名。
 

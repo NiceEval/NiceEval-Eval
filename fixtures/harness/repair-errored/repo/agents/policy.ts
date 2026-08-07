@@ -18,9 +18,12 @@ export default defineDirectAgent({
   async send(input: { text: string }) {
     const config = JSON.parse(
       await readFile(new URL("../config/policy.json", import.meta.url), "utf8"),
-    ) as { endpoint: string };
+    ) as { endpoint: string; complianceEndpoint: string };
     if (config.endpoint !== "memory://policy") {
       throw new Error(`connect ECONNREFUSED ${config.endpoint}`);
+    }
+    if (/refund|warranty/i.test(input.text) && config.complianceEndpoint !== "memory://compliance") {
+      throw new Error(`connect ECONNREFUSED ${config.complianceEndpoint}`);
     }
     return {
       status: "completed",

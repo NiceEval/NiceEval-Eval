@@ -7,6 +7,10 @@
 MemoryBench 与 terminal-bench 都出现过大量 `new`、accept 后仍 stale、以及只应补跑少量
 errored eval 的真实问题。这比单纯读取状态更能体现 Harness 使用能力。
 
+当前活跃 Harness 已覆盖一个较小但真实的子问题：0.12+ 修改被测源码后旧 failed 会被 carry，
+以及修好 errored 后 passed case 会被 carry；agent 必须在收工前 full rerun。本文仍保留的是
+更复杂的跨 fingerprint、missing 与 accept 组合题，不与活跃题重复。
+
 ## 重做方向
 
 - 起始仓库不携带 `.niceeval`，由第一轮当场跑出基线；

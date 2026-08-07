@@ -1,23 +1,26 @@
-# 修复 errored 实验
+# 修复局部 errored
 
 ## 题面
 
-第一轮只请 agent 调查 `local` experiment 为什么跑不起来；第二轮再让它修好并确认。
-不告诉它这是 `errored`、根因在哪一层，也不提供 NiceEval 命令。
+第一轮只让 agent 调查为什么 `local` 里只有一部分 case 跑不起来；第二轮才授权只修运行时配置
+并全量确认。不告诉它这是 `errored`，也不提供故障文件或 NiceEval 命令。
 
-## 起始项目
+## 起始状态
 
-本题自己的 `fixtures/harness/repair-errored/repo/` 直接携带不可达 backend endpoint。第一次
-实际运行会让五道题全部形成 `errored`，而不是 assertion `failed`。项目文档记录了本地
-backend 的正确配置；不依赖中央 fixture 或 evaluator 注入。
+普通 policy backend 已经可用，所以 exchange、shipping、privacy 三道通过；refund 与 warranty
+还要经过共享 compliance 服务，而 `config/policy.json` 把它指向不可达地址。第一次真实运行稳定
+得到 `3 passed / 0 failed / 2 errored`。这比“五道一起报同一个错”更能检验 blast radius 与
+failed/errored 分类。
 
-## 希望测试的内容
+## 判分深度
 
-- 是否自行运行 experiment，取得真实错误和 locator；
-- 是否用结果证据区分执行错误与断言失败；
-- 是否找到配置层根因，而不是修改业务答案、eval 或断言；
-- 是否在第二轮延续上下文，修改 `config/policy.json`；
-- 是否局部重跑并确认最终通过。
+- LLM judge 同时读取回复与宿主侧真实 shell 命令，验证实际运行、attempt 下钻、计数、受影响
+  case、ECONNREFUSED 证据和共享配置根因；不使用命令正则或结果 parser；
+- 第一轮最终 diff 必须为空；
+- 第二轮只允许 `config/policy.json` 变化，其余 agent、业务实现、文档、eval 与 experiment
+  逐字节保持不变；
+- 配置最终必须精确恢复 `memory://policy` 与 `memory://compliance` 两个端点；
+- 0.12+ 不能只自动重试两个 errored、携入三个 passed，必须实际做一次 full rerun；
+- 最终回复与真实命令证据共同确认 `5 / 0 / 0`。
 
-两轮回复的诊断与复验内容直接交给各自 turn 的 LLM judge；evaluator 不解析 `show`、record
-或命令文本。机械断言只负责“第一轮未改文件”、配置文件确实被修复及 endpoint 最终值。
+项目来自本题自己的 `fixtures/harness/repair-errored/repo/`，不携带 `.niceeval`。

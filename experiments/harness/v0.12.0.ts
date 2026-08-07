@@ -3,7 +3,7 @@ import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
 import { sandboxWith } from "../../lib/experiment-runtime.ts";
 
-/** 三道无历史记录的 Harness 工作流：运行、修复 failed、修复 errored。 */
+/** 三道无历史记录的 Harness 工作流：补回归、分层修复 failed、修复局部 errored。 */
 const NICEEVAL_VERSION = await ensureCandidate("0.12.0");
 
 export default defineExperiment({
@@ -13,5 +13,5 @@ export default defineExperiment({
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("node", NICEEVAL_VERSION),
   evals: (evalDef) => evalDef.tags.includes("harness"),
-  attempts: 1,
+  attempts: 3,
 });

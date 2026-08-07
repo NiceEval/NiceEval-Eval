@@ -18,7 +18,7 @@ export const POLICIES: ReadonlyArray<Policy> = [
   },
   {
     pattern: /warranty/i,
-    answer: "Products are covered by a 90-day limited warranty.",
+    answer: "Products are covered by a 1-year limited warranty.",
   },
   {
     pattern: /personal data|privacy/i,

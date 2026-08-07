@@ -12,5 +12,5 @@ export default defineExperiment({
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("node", NICEEVAL_VERSION),
   evals: (evalDef) => evalDef.tags.includes("harness"),
-  attempts: 1,
+  attempts: 3,
 });

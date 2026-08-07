@@ -17,6 +17,10 @@ export const POLICIES: ReadonlyArray<Policy> = [
     answer: "Orders ship within 2 business days and arrive within 5 business days.",
   },
   {
+    pattern: /cancel/i,
+    answer: "Orders may be canceled at any time before delivery.",
+  },
+  {
     pattern: /warranty/i,
     answer: "Products are covered by a 1-year limited warranty.",
   },

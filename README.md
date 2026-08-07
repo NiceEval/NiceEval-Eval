@@ -27,7 +27,7 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 | --- | --- | --- | --- |
 | `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher |
 | `roadmap/` | 扩展路线与未来设计 | 复杂第三方接入与暂缓实现的评估方向 | Express Sandbox、Letta、OpenHands、Skyvern，以及 3 个 Harness 设计稿 |
-| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈诊断、修复和复验 | 绿色运行、修复 failed、修复 errored |
+| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和 fresh full rerun | 补回归、分层修复 failed、修复局部 errored |
 
 `roadmap/` 下的 `.eval.ts` 是已实现但较复杂的安装路线；`roadmap/harness/*.md` 只是未来
 设计。`harness/` 物理上只放当前三道可运行题。
@@ -43,9 +43,10 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 ## Harness 的三个确定性场景
 
-这组使用不含历史结果的小型确定性项目：`run-existing` 考自主运行与确认；
-`repair-failing` 用两轮对话考断言失败的诊断、业务修复和复验；`repair-errored` 用两轮对话
-考执行错误的诊断、配置修复和复验。题面只表达真实用户需求，具体操作由隐藏判分观察。
+这组使用不含历史结果的小型确定性项目：`add-regression` 从“suite 全绿但线上有 bug”开始，
+要求先写回归跑红、再修实现跑绿；`repair-failing` 把业务实现错误与过期 eval 混在同一次运行，
+要求逐条判断责任层；`repair-errored` 只让依赖 compliance 的两个 case 出错，要求判断 blast
+radius 后只修共享配置。题面只表达真实用户需求，具体过程由宿主行为证据与隐藏判分观察。
 
 ## 快速开始
 
@@ -82,10 +83,10 @@ pnpm exec niceeval show @<locator> --execution
 pnpm exec niceeval show @<locator> --diff
 ```
 
-Harness 题不会因为 agent 读取 `.niceeval` 原始记录就预先判错；判分关注结论是否正确、
-是否理解状态语义，以及是否由 agent 自己运行、诊断和确认。开放式回复直接交给每一轮的
-LLM judge，不用正则或 `show` JSON parser 猜语义；evaluator 也不会代替 agent 重跑
-experiment。
+Harness 题不会因为 agent 读取 `.niceeval` 原始记录就预先判错。每一轮把 agent 原始回复与
+宿主侧 `t.o11y.shellCommands` 的真实命令证据一起交给 LLM judge，不用命令正则或 `show`
+JSON parser；文件范围、目标配置和业务行为由精确快照与 agent 离场后的隐藏 probe 判断。
+evaluator 不会代替 agent 重跑 experiment。
 
 ## 候选版本与实验矩阵
 
@@ -103,7 +104,8 @@ experiment。
 
 Harness 实验族也有三格：`harness/v0.9.0`、`harness/v0.12.0` 与
 `harness/canary`。它们运行相同的三道无历史快照反馈闭环题；差异只在镜像内预装的候选
-NiceEval 与随包文档版本，不承担跨 reader 的历史 report 兼容测试。
+NiceEval 与随包文档版本，不承担跨 reader 的历史 report 兼容测试。每道题固定跑 3 次，完整
+矩阵共 27 个 coding-agent attempt；只想检查计划时始终先用 `--dry`。
 
 ## 安装评估如何计分
 
@@ -128,7 +130,7 @@ sparse checkout 排除与接入无关的大型文档和资源目录。agent 写�
 
 ## fixture 与边界
 
-绿色、确定性 failed 和确定性 errored 各有自己的 `fixtures/harness/<case>/repo/`。它们共享
+覆盖缺口、双层 failed 和局部 errored 各有自己的 `fixtures/harness/<case>/repo/`。它们共享
 候选镜像基建，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果，也不在 attempt 内
 安装候选依赖或运行 `niceeval init`。
 

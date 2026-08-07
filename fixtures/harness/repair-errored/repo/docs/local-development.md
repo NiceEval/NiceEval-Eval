@@ -1,4 +1,5 @@
 # Local development
 
-The deterministic local policy backend uses the `memory://policy` endpoint. Production deployments
-replace it with the service URL supplied by the environment.
+The deterministic local policy backend uses the `memory://policy` endpoint. Refund and warranty
+answers also pass through the local compliance service at `memory://compliance`. Production
+deployments replace both values with service URLs supplied by the environment.

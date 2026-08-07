@@ -1,19 +1,28 @@
-# 修复必失败实验
+# 分层修复 failed
 
 ## 题面
 
-第一轮只请 agent 调查 `local` experiment 为什么失败；第二轮再让它修好并确认。不泄露
-故障位置、调试命令或允许修改的文件。
+第一轮只让 agent 调查 `local` 的两条失败并判断各自责任层；第二轮才要求分别修好并全量确认。
+不在题面泄露失败位置、NiceEval 命令或允许修改的路径。
 
-## 希望测试的内容
+## 起始状态
 
-- 是否自行运行并确认失败，而不是猜测原因；
-- 是否从运行结果找到 locator 并下钻直接证据；
-- 是否识别两个独立失败都来自 `src/policies.ts`；
-- 是否只修业务实现，不篡改 agent、eval、experiment、断言或配置来制造绿色；
-- 是否局部重跑并确认最终结果。
+同一个 `3 passed / 2 failed / 0 errored` 里故意混入两类真实问题：
 
-本题自己的 `fixtures/harness/repair-failing/repo/` 直接把 refund 写成 14 days、warranty 写成
-90-day，起始即形成 `3 passed / 2 failed / 0 errored`；不依赖中央 fixture 或 evaluator 注入。
-两轮回复的诊断与复验内容直接交给各自 turn 的 LLM judge；evaluator 不解析 `show` 或 record。
-机械断言只负责“第一轮未改文件”、业务文件确实被修复及最终值恢复。
+- refund：文档与 eval 都要求 30 days，业务实现错误返回 14 days，应该修实现；
+- warranty：文档与业务实现都是 1-year，eval 却还期待 90 days，应该修过期 eval。
+
+因此“把两个失败都改业务”或“把两个断言都放宽”都不是正确答案。修完后还必须理解被测源码
+不进入 0.12+ fingerprint，不能让旧 refund failure 被静默携入。
+
+## 判分深度
+
+- LLM judge 同时读取回复与宿主侧真实 shell 命令，验证 agent 实际运行、用 locator/show 下钻、
+  正确汇报计数，并完成两条不同的因果归属；不使用命令正则或结果 parser；
+- 第一轮最终 diff 必须为空；
+- 第二轮只允许修改 `src/policies.ts` 与 `evals/policy/warranty.eval.ts`，其它文件逐字节快照；
+- warranty eval 必须恢复明确的 1-year 断言，不能只删掉失败条件；
+- 后置隐藏 probe 用未出现在五道 eval 里的同义提问检查五项业务行为，防止只改可见字面量；
+- 最终回复与命令证据必须共同证明 fresh full rerun 得到 `5 / 0 / 0`。
+
+项目来自本题自己的 `fixtures/harness/repair-failing/repo/`，不携带 `.niceeval`。
