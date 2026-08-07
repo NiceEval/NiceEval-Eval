@@ -37,7 +37,7 @@ Node、pnpm、Docker/Compose、精确候选 NiceEval、依赖和 `niceeval init`
 回复支持。
 
 其它原生断言只验证各自擅长的事实：`includes` 检查明确源码值，`equals` 检查结构化配置，
-`runCommand` + `commandSucceeded` 运行隐藏 black-box probe，`succeeded` 检查 turn 正常结束。
+`runCommand` + `commandSucceeded` 运行隐藏 black-box 行为测试，`succeeded` 检查 turn 正常结束。
 不维护全仓文件清单或逐字节防作弊 allowlist。Evaluator 不替 agent 运行或重跑内层 experiment，
 也不从 CLI/record 解析 verdict。0.12+ 与 0.9.x 的 rerun/carry 契约由候选版本感知的 judge rubric
 分别判断。

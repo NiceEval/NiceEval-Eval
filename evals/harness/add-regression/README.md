@@ -17,7 +17,7 @@
 - 第一轮机械要求恰好新增一条会被 `local` 选中的 eval，且业务实现暂时不变；
 - 另一个 judge 直接审新 eval 的语义，排除恒真、skip 或弱断言；
 - 第二轮要求新 eval 原样保留，并验证业务实现确实发生变化；
-- agent 离场后才执行隐藏 black-box probe，覆盖履约前、履约中与已出库三种提问；
+- agent 离场后才执行隐藏 black-box 行为测试，覆盖履约前、履约中与已出库三种提问；
 - 0.12+ 必须处理业务源码不进 fingerprint 的 carry 语义并做 fresh full rerun；0.9.x 按其自身
   CLI 契约重新完整运行，不要求不存在的 flag。
 

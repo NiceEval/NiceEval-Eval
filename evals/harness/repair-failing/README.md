@@ -22,7 +22,7 @@
 - 第一轮最终 diff 必须为空；
 - 第二轮直接检查 `src/policies.ts` 与 `evals/policy/warranty.eval.ts` 的目标修复；
 - warranty eval 必须恢复明确的 1-year 断言，不能只删掉失败条件；
-- 后置隐藏 probe 用未出现在五道 eval 里的同义提问检查五项业务行为，防止只改可见字面量；
+- 后置隐藏行为测试用未出现在五道 eval 里的同义提问检查五项业务行为，防止只改可见字面量；
 - 最终回复与真实工具输出必须共同证明 fresh full rerun 得到 `5 / 0 / 0`。
 
 项目来自本题自己的 `fixtures/harness/repair-failing/repo/`，不携带 `.niceeval`。
