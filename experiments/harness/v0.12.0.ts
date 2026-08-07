@@ -3,11 +3,11 @@ import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
 import { sandboxWith } from "../../lib/experiment-runtime.ts";
 
-/** 当前 Harness 工作流：运行、结果下钻与失败修复。 */
+/** 三道无历史记录的 Harness 工作流：运行、修复 failed、修复 errored。 */
 const NICEEVAL_VERSION = await ensureCandidate("0.12.0");
 
 export default defineExperiment({
-  description: "niceeval@0.12.0：Harness 运行与反馈闭环",
+  description: "niceeval@0.12.0：三道 Harness 运行与反馈闭环",
   agent: codexAgent(),
   model: "gpt-5.6-luna",
   flags: { candidateVersion: NICEEVAL_VERSION },

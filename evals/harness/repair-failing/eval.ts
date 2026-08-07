@@ -2,35 +2,44 @@ import { defineEval } from "niceeval";
 import { commandSucceeded, includes } from "niceeval/expect";
 import { assertPagesInCandidate } from "../../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../../lib/routing.ts";
-import {
-  EXP_COMMAND_RE,
-  SHOW_LOCATOR_RE,
-  prepareCurrentProject,
-  runInnerExperiment,
-} from "../share/fixture.ts";
+
+const EXP_COMMAND_RE = /niceeval\s+exp\s+local\b/;
+const SHOW_LOCATOR_RE = /niceeval\s+show\s+@[A-Za-z0-9]+\b/;
 
 const EXPECTED_PAGES =
   /docs-site\/zh\/(tutorials\/(agent-feedback-loop|viewing-results)|troubleshooting\/debugging)\.mdx/;
 
 export default defineEval({
-  description: "首次运行必失败：用 locator 调试，只修被测代码并自迭代到全绿",
-  tags: ["harness", "harness-v0.12.0", "repair"],
+  description: "两轮诊断断言失败，只修业务实现并重跑到通过",
+  tags: ["harness", "harness-v0.12.0", "repair", "failed", "multi-turn"],
   timeoutMs: 20 * 60 * 1000,
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);
-    await prepareCurrentProject(t, new URL("./repo/", import.meta.url), version);
+    await t.sandbox.uploadDirectory(new URL("./repo/", import.meta.url));
+    const materialize = await t.sandbox.runShell(
+      "find . -type f -name '*.fixture' -exec sh -c 'for source_file do mv \"$source_file\" \"${source_file%.fixture}\"; done' sh {} +",
+    );
+    if (materialize.exitCode !== 0) throw new Error(materialize.stderr || materialize.stdout);
+    const install = await t.sandbox.runCommand("pnpm", ["add", "-D", `niceeval@${version}`]);
+    if (install.exitCode !== 0) throw new Error(install.stderr || install.stdout);
+    const init = await t.sandbox.runCommand("pnpm", ["exec", "niceeval", "init"]);
+    if (init.exitCode !== 0) throw new Error(init.stderr || init.stdout);
 
-    const red = await runInnerExperiment(t, true);
-    if (red.exitCode !== 1) {
-      throw new Error(
-        `预置实验没有按设计失败（预期 exit 1，实际 ${red.exitCode}）：\n${red.stderr || red.stdout}`,
-      );
-    }
+    const diagnosis = await t.send("先看看 local experiment 为什么失败，暂时别改。");
+    diagnosis.succeeded();
+    const repair = await t.send("把它修好，再确认一下。");
 
-    const turn = await t.send("local experiment 挂了，修好它。");
-
-    const green = await runInnerExperiment(t, true);
+    const green = await t.sandbox.runCommand("pnpm", [
+      "--silent",
+      "exec",
+      "niceeval",
+      "exp",
+      "local",
+      "--rerun",
+      "all",
+      "--json",
+    ]);
     await t.group("修复结果", async () => {
       t.check(green, commandSucceeded());
       t.sandbox.fileChanged("src/policy.ts");
@@ -38,7 +47,7 @@ export default defineEval({
     });
 
     await t.group("调试路径", async () => {
-      t.calledTool("shell", { input: { command: EXP_COMMAND_RE } });
+      t.calledTool("shell", { input: { command: EXP_COMMAND_RE } }).atLeast(2);
       t.calledTool("shell", { input: { command: SHOW_LOCATOR_RE } });
     });
 
@@ -49,6 +58,6 @@ export default defineEval({
     });
 
     t.check(await t.sandbox.readText("src/policy.ts"), includes("30 days"));
-    turn.succeeded();
+    repair.succeeded();
   },
 });

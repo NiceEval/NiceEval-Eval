@@ -1,19 +1,17 @@
-# 过期实验概览
+# 候选题：缓存、stale 与局部重跑
 
-## 项目
+状态：未来设计稿，不参与 eval discovery。
 
-`repo/` 是一个真实的 coding-agent memory 评测项目切片，包含多个 compare experiment、11 条评估
-用例及其历史运行。当前视图由多轮执行合并而成，因此既有“结果时间落后于输入”的过期警告，也有
-“当前结果没有覆盖历史上出现过的全部 eval”的覆盖警告。
+## 为什么值得保留
 
-仓库内的历史结果只读；沙箱准备阶段安装 NiceEval 0.9.1 reader，并运行
-`niceeval init` 把 agent 路由到该版本的随包文档。
+MemoryBench 与 terminal-bench 都出现过大量 `new`、accept 后仍 stale、以及只应补跑少量
+errored eval 的真实问题。这比单纯读取状态更能体现 Harness 使用能力。
 
-## 希望测试的内容
+## 重做方向
 
-- agent 是否先从 `niceeval show` 首屏识别所有被标记的 experiment；
-- 是否区分过期原因，而不是把低通过率误称为“过期”；
-- 是否抄出 CLI 给出的精确重跑命令，但不真的执行；
-- 是否保持仓库只读，并使用当前安装版本所表达的状态语义。
+- 起始仓库不携带 `.niceeval`，由第一轮当场跑出基线；
+- evaluator 在两轮之间改变一个会影响部分 fingerprint 的输入；
+- 第二轮用户只问“为什么这么多 new？”或“把该补跑的处理好”；
+- 隐藏判分检查 agent 是否区分 carried、missing、errored 与身份变化，并避免全量机械重跑。
 
-这题选作 overview 入口；它不考单 attempt 细节，后续题会逐层下钻。
+等 plan/cache/report 契约稳定后再实现。

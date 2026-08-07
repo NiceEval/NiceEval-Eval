@@ -1,17 +1,16 @@
-# 还原 agent 的实际方案
+# 候选题：还原 agent 的实际方案
 
-## 项目
+状态：未来设计稿，不参与 eval discovery。
 
-`repo/` 与“定位失败断言”使用事实一致但物理独立的真实项目快照。题面直接给 locator，避免把
-“能不能找到 attempt”重复计分；需要的信息只在该 attempt 的执行事件流中。
+## 为什么值得保留
 
-目标执行里既有具体缓存 API，也有一次补丁上下文不匹配后的机械重试。机械重试不等于设计方案改变。
+用户经常需要知道 agent 实际采用了什么方案，以及多次命令究竟是机械重试还是设计改变。
+这是真实 Harness 能力，但当前实现依赖旧 `.niceeval` execution 快照，report/execution reader
+仍在变化，因此先不运行。
 
-## 希望测试的内容
+## 重做方向
 
-- agent 是否自主发现并调用 `niceeval show @<locator> --execution`；
-- 是否从工具输出还原实际使用的两个缓存相关 API；
-- 是否区分“命令重试”与“换了一套实现方案”；
-- 是否保持 repo 只读；若选择读取底层记录，能否仍正确理解 execution 的事件语义。
-
-这题专门覆盖 execution 层，不重复奖励 locator discovery。
+- 起始仓库不携带 `.niceeval`；
+- 先让 agent 运行一个确定性 experiment，当场生成带工具事件的 attempt；
+- 第二轮只问“它刚才实际是怎么做的？”；
+- 隐藏判分检查 agent 是否自主找到 locator、读取 execution，并正确区分重试与方案变化。

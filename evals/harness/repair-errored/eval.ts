@@ -1,18 +1,17 @@
 import { defineEval } from "niceeval";
-import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
+import { commandSucceeded, includes, satisfies } from "niceeval/expect";
 import { assertPagesInCandidate } from "../../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../../lib/routing.ts";
 
 const EXP_COMMAND_RE = /niceeval\s+exp\s+local\b/;
-const SHOW_COMMAND_RE = /niceeval\s+show\b/;
-
+const SHOW_LOCATOR_RE = /niceeval\s+show\s+@[A-Za-z0-9]+\b/;
 const EXPECTED_PAGES =
-  /docs-site\/zh\/tutorials\/(agent-feedback-loop|viewing-results|write-experiment)\.mdx/;
+  /docs-site\/zh\/(tutorials\/agent-feedback-loop|troubleshooting\/debugging)\.mdx/;
 
 export default defineEval({
-  description: "自行运行并确认一个确定性绿色 experiment",
-  tags: ["harness", "harness-v0.12.0", "run"],
-  timeoutMs: 15 * 60 * 1000,
+  description: "先诊断执行错误，再修正配置并重跑到通过",
+  tags: ["harness", "harness-v0.12.0", "repair", "errored", "multi-turn"],
+  timeoutMs: 20 * 60 * 1000,
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);
@@ -26,9 +25,18 @@ export default defineEval({
     const init = await t.sandbox.runCommand("pnpm", ["exec", "niceeval", "init"]);
     if (init.exitCode !== 0) throw new Error(init.stderr || init.stdout);
 
-    const turn = await t.send("帮我跑一下 local experiment，看看结果。");
+    const diagnosis = await t.send("先看看 local experiment 为什么跑不起来，暂时别改。");
+    diagnosis.succeeded();
+    t.check(
+      diagnosis.message,
+      satisfies(
+        (value) => /errored|ECONNREFUSED|连接|endpoint|policy\.invalid/i.test(String(value)),
+        "第一轮说明实际执行错误",
+      ),
+    );
 
-    const confirmation = await t.sandbox.runCommand("pnpm", [
+    const repair = await t.send("把它修好，再确认一下。");
+    const green = await t.sandbox.runCommand("pnpm", [
       "--silent",
       "exec",
       "niceeval",
@@ -38,17 +46,17 @@ export default defineEval({
       "all",
       "--json",
     ]);
-    await t.group("实验结果", async () => {
-      t.check(confirmation, commandSucceeded());
-      t.check(
-        t.reply,
-        satisfies((v) => /passed|通过/i.test(String(v)), "回复明确说明最终实验通过"),
-      );
+
+    await t.group("修复结果", async () => {
+      t.check(green, commandSucceeded());
+      t.check(await t.sandbox.readText("config/policy.json"), includes("memory://policy"));
+      t.sandbox.fileChanged("config/policy.json");
+      t.sandbox.notInDiff(/^(?:agents|evals|experiments|src)\//);
     });
 
     await t.group("反馈闭环", async () => {
-      t.calledTool("shell", { input: { command: EXP_COMMAND_RE } });
-      t.calledTool("shell", { input: { command: SHOW_COMMAND_RE } });
+      t.calledTool("shell", { input: { command: EXP_COMMAND_RE } }).atLeast(2);
+      t.calledTool("shell", { input: { command: SHOW_LOCATOR_RE } });
     });
 
     await t.group("文档路由", async () => {
@@ -57,7 +65,6 @@ export default defineEval({
       t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).atLeast(1);
     });
 
-    t.check(t.sandbox.diff.isEmpty(), isTrue("没有修改已经可运行的项目"));
-    turn.succeeded();
+    repair.succeeded();
   },
 });
