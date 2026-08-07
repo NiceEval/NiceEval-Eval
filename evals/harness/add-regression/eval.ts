@@ -1,6 +1,5 @@
 import { defineScoreEval } from "niceeval";
 import { commandSucceeded, isTrue } from "niceeval/expect";
-import { turnEvidence } from "../support.ts";
 
 const EXISTING_EVALS = [
   "evals/policy/exchange.eval.ts",
@@ -9,8 +8,6 @@ const EXISTING_EVALS = [
   "evals/policy/shipping.eval.ts",
   "evals/policy/warranty.eval.ts",
 ] as const;
-
-const SOURCE_FILES = ["src/policies.ts", "src/policy.ts"] as const;
 
 export default defineScoreEval({
   description: "给绿色 experiment 补一条真实回归，先复现再修实现并全量复验",
@@ -24,23 +21,24 @@ export default defineScoreEval({
       ".",
     );
 
-    const version = String(t.flags.candidateVersion);
-    const sourceBefore = await Promise.all(SOURCE_FILES.map((file) => t.sandbox.readText(file)));
-
-    const reproductionCommandStart = t.o11y.shellCommands.length;
     const reproduction = await t.send(
       "客户报告：订单已经进入履约或出库后，policy agent 仍说可以取消。先把这个问题补成一条新的回归 eval，并在完整 local experiment 里实际跑出失败；暂时不要修业务实现。",
     );
-    const reproductionCommands = t.o11y.shellCommands.slice(reproductionCommandStart);
 
+    reproduction.calledTool("shell", { status: "completed" }).points(1).gate();
     reproduction.judge.autoevals
       .closedQA(
-        "输入是一份宿主侧证据 JSON，包含本轮助手原始回复和本轮真实 shell 命令。必须同时满足：命令证据显示助手确实运行了非 dry-run 的 local experiment，并针对新失败查看了 NiceEval 结果或 attempt 证据，而不是只读源码后猜测；回复准确说明原有 5 道题没有覆盖该问题、新增后共 6 道且结果为 5 passed、1 failed、0 errored；准确指出失败复现的是已经开始履约或出库的订单仍得到可取消答复；明确表示本轮只新增回归 eval、尚未修业务实现。命令失败码 1 可以是预期的 eval failed，不应据此判定没有运行。缺任一项判 N。",
-        {
-          on: turnEvidence(version, reproduction.message, reproductionCommands),
-        },
+        "输入是本轮标准工具调用 JSON。必须能从真实调用的入参、输出和状态确认：助手运行了非 dry-run 的完整 local experiment；运行结果是 6 个 eval、5 passed、1 failed、0 errored；随后使用 NiceEval 的结果查看能力下钻了新增失败，而不是只读源码猜测。local 因预期中的 eval failed 返回失败状态不应判 N。缺任一项判 N。",
+        { on: JSON.stringify(reproduction.toolCalls) },
       )
-      .points(4)
+      .points(3)
+      .gate();
+    reproduction.judge.autoevals
+      .closedQA(
+        "只判断助手回复。必须准确说明：原有 5 道题没有覆盖该取消边界；新增后得到 5 passed、1 failed、0 errored；失败复现的是已经开始履约或出库的订单仍得到可取消答复；本轮只新增回归 eval、尚未修业务实现。缺任一项判 N。",
+        { on: reproduction.message },
+      )
+      .points(3)
       .gate();
     reproduction.succeeded().points(1).gate();
 
@@ -79,49 +77,34 @@ export default defineScoreEval({
       .gate();
     t.sandbox.fileChanged(newEvalPath).points(1);
 
-    const sourceAfterReproduction = await Promise.all(
-      SOURCE_FILES.map((file) => t.sandbox.readText(file)),
-    );
-    t.check(
-      sourceAfterReproduction.every((content, index) => content === sourceBefore[index]),
-      isTrue("复现轮尚未修业务实现"),
-    )
-      .points(2)
-      .gate();
-
+    const version = String(t.flags.candidateVersion);
     const fullRerunRule = version.startsWith("0.9.")
       ? "候选是 0.9.x：修复后重新执行完整 local experiment 即可，不要求使用该版本没有的 rerun flag。"
-      : "候选是 0.12+：业务源码不进入 eval fingerprint，命令证据必须体现强制全量重新执行（通常是 --rerun all，或语义等价的清理后全量运行）；裸跑后携入旧结果不算复验。";
-    const repairCommandStart = t.o11y.shellCommands.length;
+      : "候选是 0.12+：业务源码不进入 eval fingerprint，工具调用证据必须体现强制全量重新执行（通常是 --rerun all，或语义等价的清理后全量运行）；裸跑后携入旧结果不算复验。";
     const repair = await t.send("现在修业务实现，保留这条回归 eval，再全量确认一次。");
-    const repairCommands = t.o11y.shellCommands.slice(repairCommandStart);
 
+    repair.calledTool("shell", { status: "completed" }).points(1).gate();
     repair.judge.autoevals
       .closedQA(
-        `输入是一份宿主侧证据 JSON，包含候选版本、本轮助手原始回复和本轮真实 shell 命令。必须同时满足：助手修的是业务实现而不是削弱或删除回归 eval；命令证据显示修改后真实执行了完整 local experiment 且最终命令成功；准确汇报最终共 6 个 eval，6 passed、0 failed、0 errored；说明已覆盖“履约前可以取消、履约开始或出库后不可取消”的边界。${fullRerunRule} 缺任一项判 N。`,
-        {
-          on: turnEvidence(version, repair.message, repairCommands),
-        },
+        `输入是本轮标准工具调用 JSON。必须能从真实调用的入参、输出和状态确认：修改后执行了完整 local experiment，并实际得到 6 passed、0 failed、0 errored。${fullRerunRule} 缺任一项判 N。`,
+        { on: JSON.stringify(repair.toolCalls) },
       )
-      .points(4)
+      .points(3)
+      .gate();
+    repair.judge.autoevals
+      .closedQA(
+        "只判断助手回复。必须准确说明修的是业务实现而不是削弱或删除回归 eval；最终共 6 个 eval，6 passed、0 failed、0 errored；并说明已经覆盖“履约前可以取消、履约开始或出库后不可取消”的边界。缺任一项判 N。",
+        { on: repair.message },
+      )
+      .points(3)
       .gate();
 
-    const sourceAfterRepair = await Promise.all(
-      SOURCE_FILES.map((file) => t.sandbox.readText(file)),
-    );
     t.check(
       (await t.sandbox.readText(newEvalPath)) === newEvalSource,
       isTrue("修复轮原样保留新增的回归 eval"),
     )
       .points(2)
       .gate();
-    t.check(
-      sourceAfterRepair.some((content, index) => content !== sourceBefore[index]),
-      isTrue("业务实现发生了实际修改"),
-    )
-      .points(1)
-      .gate();
-
     const probe = await t.sandbox.runCommand("node", [
       "--input-type=module",
       "-e",

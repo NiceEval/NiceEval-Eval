@@ -14,12 +14,12 @@ failed/errored 分类。
 
 ## 判分深度
 
-- LLM judge 同时读取回复与宿主侧真实 shell 命令，验证实际运行、attempt 下钻、计数、受影响
+- LLM judge 同时读取回复与本轮 `turn.toolCalls`（含真实输出），验证实际运行、attempt 下钻、计数、受影响
   case、ECONNREFUSED 证据和共享配置根因；不使用命令正则或结果 parser；
 - 第一轮最终 diff 必须为空；
 - 第二轮直接检查 `config/policy.json` 是否恢复成精确目标配置；
 - 配置最终必须精确恢复 `memory://policy` 与 `memory://compliance` 两个端点；
 - 0.12+ 不能只自动重试两个 errored、携入三个 passed，必须实际做一次 full rerun；
-- 最终回复与真实命令证据共同确认 `5 / 0 / 0`。
+- 最终回复与真实工具输出共同确认 `5 / 0 / 0`。
 
 项目来自本题自己的 `fixtures/harness/repair-errored/repo/`，不携带 `.niceeval`。

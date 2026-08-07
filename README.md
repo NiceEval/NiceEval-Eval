@@ -83,10 +83,10 @@ pnpm exec niceeval show @<locator> --execution
 pnpm exec niceeval show @<locator> --diff
 ```
 
-Harness 题不会因为 agent 读取 `.niceeval` 原始记录就预先判错。每一轮把 agent 原始回复与
-宿主侧 `t.o11y.shellCommands` 的真实命令证据一起交给 LLM judge，不用命令正则或 `show`
-JSON parser；目标产物、配置和业务行为由直接断言与 agent 离场后的隐藏 probe 判断。
-evaluator 不会代替 agent 重跑 experiment。
+Harness 题不会因为 agent 读取 `.niceeval` 原始记录就预先判错。每轮是否真正用了 shell 由
+`turn.calledTool("shell")` 断言；真实工具输出与 agent 回复分别交给 LLM judge 做语义判断，不用
+命令正则或 `show` JSON parser；目标产物、结构化配置和业务行为分别使用文件断言、`equals` 与
+`runCommand` 隐藏 probe。evaluator 不会代替 agent 重跑 experiment。
 
 ## 候选版本与实验矩阵
 

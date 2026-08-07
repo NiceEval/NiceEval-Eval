@@ -30,16 +30,17 @@ Node、pnpm、Docker/Compose、精确候选 NiceEval、依赖和 `niceeval init`
 
 ## 判分边界
 
-开放式回复不靠正则、结构化 `niceeval show` 或 record parser。每轮开始前记录宿主侧
-`t.o11y.shellCommands` 游标，结束后把“该轮原始回复 + 该轮真实命令及退出状态”作为一份 JSON
-材料交给 LLM-as-judge。命令摘要位于宿主，sandbox 内的 agent 无法伪造；judge 可以语义判断
-各种合法命令形态，而不需要维护命令正则。状态计数、failed/errored 分类、locator 下钻、因果
-归属与复验陈述必须同时得到回复和过程证据支持。
+开放式回复不靠正则、结构化 `niceeval show` 或 record parser。原生断言按事实分工：每轮是否
+使用 shell 由 `turn.calledTool("shell")` 判断；该轮 `turn.toolCalls` 中真实 CLI 输出的语义、以及
+`turn.message` 中诊断和复验结论的语义，分别交给 LLM-as-judge。turn 天然限定本轮，不需要累计
+游标。状态计数、failed/errored 分类、locator 下钻、因果归属与复验陈述必须同时得到工具输出和
+回复支持。
 
-机器断言只验证任务直接产物与行为：新增回归 eval、目标业务值或配置，以及 agent 离场后运行的
-隐藏 black-box probe；不维护全仓文件清单或逐字节防作弊 allowlist。Evaluator 不替 agent 运行
-或重跑内层 experiment，也不从 CLI/record 解析 verdict。0.12+ 与 0.9.x 的 rerun/carry 契约由
-候选版本感知的 judge rubric 分别判断。
+其它原生断言只验证各自擅长的事实：`includes` 检查明确源码值，`equals` 检查结构化配置，
+`runCommand` + `commandSucceeded` 运行隐藏 black-box probe，`succeeded` 检查 turn 正常结束。
+不维护全仓文件清单或逐字节防作弊 allowlist。Evaluator 不替 agent 运行或重跑内层 experiment，
+也不从 CLI/record 解析 verdict。0.12+ 与 0.9.x 的 rerun/carry 契约由候选版本感知的 judge rubric
+分别判断。
 
 三题改用 `defineScoreEval`：核心闭环仍是 gate；诊断、回归质量、范围纪律、隐藏行为与完整复验
 分别记分，因此除了最终成败，还能看出文档在哪一步开始失效。

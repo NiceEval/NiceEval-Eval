@@ -11,8 +11,8 @@
 
 ## 判分深度
 
-- 宿主侧 `t.o11y.shellCommands` 记录 agent 真正执行的命令，agent 无法在 sandbox 内伪造；
-- LLM judge 同时阅读本轮原始回复与本轮结构化命令证据，判断是否真实运行、下钻和准确汇报，
+- `turn.toolCalls` 直接提供本轮工具名、入参、输出和状态，无需从累计摘要切游标；
+- LLM judge 同时阅读本轮原始回复与结构化工具证据，判断是否真实运行、下钻和准确汇报，
   不使用命令正则，也不解析 NiceEval CLI 或 record；
 - 第一轮机械要求恰好新增一条会被 `local` 选中的 eval，且业务实现暂时不变；
 - 另一个 judge 直接审新 eval 的语义，排除恒真、skip 或弱断言；
