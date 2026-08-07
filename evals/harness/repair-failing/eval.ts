@@ -1,14 +1,5 @@
 import { defineEval } from "niceeval";
 import { excludes, includes, isTrue } from "niceeval/expect";
-import { assertCandidateHasAnyPage } from "../../../lib/candidate.ts";
-
-const EXPECTED_PAGES = [
-  "docs-site/zh/how-to/agent-feedback-loop.mdx",
-  "docs-site/zh/how-to/viewing-results.mdx",
-  "docs-site/zh/tutorials/agent-feedback-loop.mdx",
-  "docs-site/zh/tutorials/viewing-results.mdx",
-  "docs-site/zh/troubleshooting/debugging.mdx",
-] as const;
 
 const REFUND_CORRECT = "Customers may request a refund within 30 days of purchase.";
 const REFUND_BROKEN = "Customers may request a refund within 14 days of purchase.";
@@ -20,10 +11,10 @@ export default defineEval({
   tags: ["harness", "repair", "failed", "multi-turn"],
   timeoutMs: 20 * 60 * 1000,
   async test(t) {
-    assertCandidateHasAnyPage(EXPECTED_PAGES, t.flags.candidateVersion as string);
-
+    // 候选镜像只带共享依赖；把本题自己的起始 repo 铺进当前 attempt 的 workspace 根目录。
     await t.sandbox.uploadDirectory(
       new URL("../../../fixtures/harness/repair-failing/repo/", import.meta.url),
+      ".",
     );
     const startingSource = await t.sandbox.readText("src/policies.ts");
     if (!startingSource.includes(REFUND_BROKEN) || !startingSource.includes(WARRANTY_BROKEN)) {

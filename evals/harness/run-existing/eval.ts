@@ -1,24 +1,15 @@
 import { defineEval } from "niceeval";
 import { isTrue } from "niceeval/expect";
-import { assertCandidateHasAnyPage } from "../../../lib/candidate.ts";
-
-const EXPECTED_PAGES = [
-  "docs-site/zh/how-to/agent-feedback-loop.mdx",
-  "docs-site/zh/how-to/viewing-results.mdx",
-  "docs-site/zh/how-to/write-experiment.mdx",
-  "docs-site/zh/tutorials/agent-feedback-loop.mdx",
-  "docs-site/zh/tutorials/viewing-results.mdx",
-  "docs-site/zh/tutorials/write-experiment.mdx",
-] as const;
 
 export default defineEval({
   description: "自行运行并准确汇报一个包含五道题的绿色 experiment",
   tags: ["harness", "run"],
   timeoutMs: 15 * 60 * 1000,
   async test(t) {
-    assertCandidateHasAnyPage(EXPECTED_PAGES, t.flags.candidateVersion as string);
+    // 候选镜像只带共享依赖；把本题自己的起始 repo 铺进当前 attempt 的 workspace 根目录。
     await t.sandbox.uploadDirectory(
       new URL("../../../fixtures/harness/run-existing/repo/", import.meta.url),
+      ".",
     );
 
     const result = await t.send("帮我跑一下 local experiment，看看结果。");

@@ -37,8 +37,8 @@ repo 里，不靠中央 canonical fixture 加 evaluator overlay。Attempt 启动
 目标层、关键配置/业务值是否恢复，以及绿色项目是否保持零 diff。Evaluator 不代替 agent
 运行或重跑内层 experiment，也不解析任何 CLI 文本来猜 verdict。
 
-候选随包文档页用 manifest 中的精确路径做加载期防腐检查，不再把页面路径和 shell 命令编码
-成一组正则。是否能借助这些文档完成任务，最终由上述行为与产出共同体现。
+Harness 不预设 agent 必须读取哪一篇随包页面，也不维护页面路径白名单。候选版本、随包索引和
+初始化产物由候选物化与镜像构建负责校验；文档是否真正有效，由上述行为与产出体现。
 
 ## 运行成本
 
