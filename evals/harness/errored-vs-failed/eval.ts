@@ -18,12 +18,7 @@ export default defineEval({
     assertPagesInCandidate(EXPECTED_PAGES, version);
     await prepareHarnessRepo(t, new URL("./repo/", import.meta.url));
 
-    const turn = await t.send(
-      `这个项目已经用 niceeval 跑过评估，历史结果都在 .niceeval 里。\n\n` +
-        `请回答：哪些 experiment 出现了 errored，哪些是整组 errored？一共有多少个 errored attempt？` +
-        `它们和 failed 有什么区别，直接原因分别是什么？\n\n` +
-        `只查信息，不要修改文件，不要重新运行实验，也不要直接读取 .niceeval 原始 JSON。`,
-    );
+    const turn = await t.send("这次评估怎么挂了？");
 
     await t.group("答案", async () => {
       t.check(t.reply, includes("turn-failed"));

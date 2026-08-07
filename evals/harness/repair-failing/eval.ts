@@ -4,7 +4,6 @@ import { assertPagesInCandidate } from "../../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../../lib/routing.ts";
 import {
   EXP_COMMAND_RE,
-  RAW_RESULT_RE,
   SHOW_LOCATOR_RE,
   prepareCurrentProject,
   runInnerExperiment,
@@ -29,12 +28,7 @@ export default defineEval({
       );
     }
 
-    const turn = await t.send(
-      `这个仓库的 local experiment 有一个确定性回归，首次运行必然失败。先读 ` +
-        `node_modules/niceeval/INDEX.md 与反馈闭环/调试文档；用 --rerun all 复现，从输出 locator ` +
-        `执行 niceeval show @<locator> 下钻证据。只能修 src/policy.ts，不许改 agents、evals、` +
-        `experiments 或断言；持续局部重跑直到全绿，最后再 show 核对。不要直接读 .niceeval JSON。`,
-    );
+    const turn = await t.send("local experiment 挂了，修好它。");
 
     const green = await runInnerExperiment(t, true);
     await t.group("修复结果", async () => {
@@ -46,7 +40,6 @@ export default defineEval({
     await t.group("调试路径", async () => {
       t.calledTool("shell", { input: { command: EXP_COMMAND_RE } });
       t.calledTool("shell", { input: { command: SHOW_LOCATOR_RE } });
-      t.notCalledTool("shell", { input: { command: RAW_RESULT_RE } });
     });
 
     await t.group("文档路由", async () => {

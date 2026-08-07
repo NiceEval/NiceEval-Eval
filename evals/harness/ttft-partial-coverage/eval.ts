@@ -20,12 +20,7 @@ export default defineEval({
     assertPagesInCandidate(EXPECTED_PAGES, version);
     await prepareHarnessRepo(t, new URL("./repo/", import.meta.url));
 
-    const turn = await t.send(
-      `这个项目已经用 niceeval 跑过评估，历史结果都在 .niceeval 里。\n\n` +
-        `请回答：数据里能不能看到每次模型调用的首 token 延迟？如果能，哪些 experiment 有这个数据，` +
-        `哪些没有？不要把只覆盖部分 experiment 的指标外推成全局结论。\n\n` +
-        `只查信息，不要修改文件，不要重新运行实验，也不要直接读取 .niceeval 原始 JSON。`,
-    );
+    const turn = await t.send("这些 experiment 的首 token 延迟怎么样？");
 
     t.check(t.reply, includes("claude-dp-v4"));
     t.check(t.reply, includes("bub"));

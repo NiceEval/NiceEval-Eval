@@ -19,12 +19,7 @@ export default defineEval({
     assertPagesInCandidate(EXPECTED_PAGES, version);
     await prepareHarnessRepo(t, new URL("./repo/", import.meta.url));
 
-    const turn = await t.send(
-      `这个项目已经用 niceeval 跑过评估，历史结果都在 .niceeval 里。\n\n` +
-        `请回答：每个 experiment 的 sandbox 峰值内存占用和 CPU 占用率分别是多少？` +
-        `如果现有记录不能回答，请明确说明证据边界。\n\n` +
-        `只查信息，不要修改文件，不要重新运行实验，也不要直接读取 .niceeval 原始 JSON。`,
-    );
+    const turn = await t.send("各个 experiment 跑的时候用了多少内存和 CPU？");
 
     t.check(
       t.reply,

@@ -17,11 +17,7 @@ export default defineEval({
     assertPagesInCandidate(EXPECTED_PAGES, version);
     await prepareHarnessRepo(t, new URL("./repo/", import.meta.url));
 
-    const turn = await t.send(
-      `这个项目已经用 niceeval 跑过评估，历史结果都在 .niceeval 里。\n\n` +
-        `请回答：${MISSING_EXP} 这组的通过率是多少？如果这组不存在，请明确说明，不要按其它命名规律补全。\n\n` +
-        `只查信息，不要修改文件，不要重新运行实验，也不要直接读取 .niceeval 原始 JSON。`,
-    );
+    const turn = await t.send(`${MISSING_EXP} 这组表现怎么样？`);
 
     t.check(
       t.reply,

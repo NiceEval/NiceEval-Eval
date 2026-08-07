@@ -19,12 +19,7 @@ export default defineEval({
     assertPagesInCandidate(EXPECTED_PAGES, version);
     await prepareHarnessRepo(t, new URL("./repo/", import.meta.url));
 
-    const turn = await t.send(
-      `这个项目已经用 niceeval 跑过评估，历史结果都在 .niceeval 里。\n\n` +
-        `请回答：compare 组里哪个方案在成本和通过率上综合最优？给出 experiment id、通过率、` +
-        `总成本，并说明你如何处理各组覆盖题数不同的问题。\n\n` +
-        `只查信息，不要修改文件，不要重新运行实验，也不要直接读取 .niceeval 原始 JSON。`,
-    );
+    const turn = await t.send("compare 这些方案里哪个最划算？");
 
     await t.group("答案", async () => {
       t.check(t.reply, includes("compare/bub-gpt-5.6-luna--agents-md"));

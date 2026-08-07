@@ -3,7 +3,7 @@ import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
 import { EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
 
-/** 当前 Harness 工作流：运行、结果下钻、失败修复与 0.9.1 → 0.12.0 迁移。 */
+/** 当前 Harness 工作流：运行、结果下钻与失败修复。 */
 const NICEEVAL_VERSION = await ensureCandidate("0.12.0");
 
 export default defineExperiment({

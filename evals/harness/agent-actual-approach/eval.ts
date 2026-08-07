@@ -4,8 +4,6 @@ import { assertPagesInCandidate } from "../../../lib/candidate.ts";
 import { assertReadOnlyHarness, prepareHarnessRepo } from "../../../lib/harness-repo.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../../lib/routing.ts";
 
-const EVAL_ID = "memory/agent-029-use-cache-directive";
-const EXP_ID = "compare/codex-gpt-5.6-luna--agents-md";
 const LOCATOR = "@1csayr61";
 const EXPECTED_PAGES =
   /docs-site\/zh\/(?:how-to|tutorials)\/viewing-results\.mdx|docs-site\/zh\/troubleshooting\/debugging\.mdx/;
@@ -19,12 +17,7 @@ export default defineEval({
     assertPagesInCandidate(EXPECTED_PAGES, version);
     await prepareHarnessRepo(t, new URL("./repo/", import.meta.url));
 
-    const turn = await t.send(
-      `这个项目已经用 niceeval 跑过评估，历史结果都在 .niceeval 里。\n\n` +
-        `${EVAL_ID} 在 ${EXP_ID} 下失败，那次 attempt 的 locator 是 ${LOCATOR}。` +
-        `请回答：agent 实际用什么 API 实现缓存？它中途换过几次方案？\n\n` +
-        `只查信息，不要修改文件，不要重新运行实验，也不要直接读取 .niceeval 原始 JSON。`,
-    );
+    const turn = await t.send(`帮我看看 ${LOCATOR} 里 agent 实际是怎么实现缓存的。`);
 
     t.check(t.reply, includes("unstable_cache"));
     t.check(t.reply, includes("revalidateTag"));

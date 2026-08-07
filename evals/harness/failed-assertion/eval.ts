@@ -20,12 +20,7 @@ export default defineEval({
     assertPagesInCandidate(EXPECTED_PAGES, version);
     await prepareHarnessRepo(t, new URL("./repo/", import.meta.url));
 
-    const turn = await t.send(
-      `这个项目已经用 niceeval 跑过评估，历史结果都在 .niceeval 里。\n\n` +
-        `请回答：${EVAL_ID} 这条 eval 在 ${EXP_ID} 下失败了。它失败在哪条断言上？` +
-        `给出那次 attempt 的 locator。\n\n` +
-        `只查信息，不要修改文件，不要重新运行实验，也不要直接读取 .niceeval 原始 JSON。`,
-    );
+    const turn = await t.send(`看看 ${EVAL_ID} 在 ${EXP_ID} 里为什么失败了。`);
 
     t.check(t.reply, includes(LOCATOR));
     t.check(t.reply, includes("use cache"));

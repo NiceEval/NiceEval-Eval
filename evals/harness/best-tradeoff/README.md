@@ -9,7 +9,7 @@
 
 ## 希望测试的内容
 
-- agent 是否使用 `niceeval show` 比较 experiment，而不是直接解析记录 JSON；
+- agent 是否自主选择适合的结果视图，并正确比较 experiment；
 - 是否先排除只覆盖少量 eval 的 100% 结果，避免把不可比样本放进排名；
 - 是否同时报告 experiment id、通过率和总成本；
 - 是否能说明自己的权衡口径，而不是只挑最高通过率或最低成本。

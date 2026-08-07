@@ -9,9 +9,9 @@
 
 ## 希望测试的内容
 
-- agent 是否调用 `niceeval show @<locator> --execution`；
+- agent 是否自主发现并调用 `niceeval show @<locator> --execution`；
 - 是否从工具输出还原实际使用的两个缓存相关 API；
 - 是否区分“命令重试”与“换了一套实现方案”；
-- 是否保持 repo 只读并拒绝直接翻原始事件 JSON。
+- 是否保持 repo 只读；若选择读取底层记录，能否仍正确理解 execution 的事件语义。
 
 这题专门覆盖 execution 层，不重复奖励 locator discovery。

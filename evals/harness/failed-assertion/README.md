@@ -13,6 +13,6 @@ attempt 隐藏在多轮历史执行中；首屏通过率不足以回答失败在
 - agent 是否先用 eval / experiment scope 收窄结果，再取得 locator；
 - 是否继续执行 `niceeval show @<locator>` 阅读断言详情；
 - 是否准确报告失败断言和 locator；
-- 是否没有绕到 `.niceeval/**/*.json`，也没有为了“复现”而重跑实验。
+- 是否没有为了回答历史事实而无谓重跑实验或修改仓库。
 
 这题只考 locate；执行轨迹的解释留给 `agent-actual-approach`。

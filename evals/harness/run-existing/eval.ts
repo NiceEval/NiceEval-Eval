@@ -4,7 +4,6 @@ import { assertPagesInCandidate } from "../../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../../lib/routing.ts";
 import {
   EXP_COMMAND_RE,
-  RAW_RESULT_RE,
   SHOW_COMMAND_RE,
   prepareCurrentProject,
   runInnerExperiment,
@@ -22,11 +21,7 @@ export default defineEval({
     assertPagesInCandidate(EXPECTED_PAGES, version);
     await prepareCurrentProject(t, new URL("./repo/", import.meta.url), version);
 
-    const turn = await t.send(
-      `这个仓库已经接入 niceeval@${version}。先读 node_modules/niceeval/INDEX.md 和任务需要的随包文档，` +
-        `运行 local experiment，再用 niceeval show 核对结果。请汇报最终 verdict、通过/失败/错误数量；` +
-        `不要修改项目，也不要直接读取 .niceeval 里的原始 JSON。`,
-    );
+    const turn = await t.send("帮我跑一下 local experiment，看看结果。");
 
     const confirmation = await runInnerExperiment(t, true);
     await t.group("实验结果", async () => {
@@ -40,7 +35,6 @@ export default defineEval({
     await t.group("反馈闭环", async () => {
       t.calledTool("shell", { input: { command: EXP_COMMAND_RE } });
       t.calledTool("shell", { input: { command: SHOW_COMMAND_RE } });
-      t.notCalledTool("shell", { input: { command: RAW_RESULT_RE } });
     });
 
     await t.group("文档路由", async () => {

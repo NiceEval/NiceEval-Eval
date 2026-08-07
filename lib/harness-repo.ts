@@ -9,9 +9,6 @@
 import type { BaseAssertionHandle, BaseTestContext } from "niceeval";
 import { isTrue } from "niceeval/expect";
 
-/** 禁止绕开公共 CLI 直接读取 .niceeval 内部 JSON。 */
-export const RAW_RESULT_RE = /\.niceeval\/[\w./-]*\.json/;
-
 /** 诊断题只读历史结果，不能真的启动实验。 */
 export const EXP_COMMAND_RE =
   /(?:^|(?:&&|\|\||;|\|)\s*|(?:^|\s)(?:\/bin\/)?(?:ba|z)?sh\s+-lc\s+["'])(?:(?:pnpm\s+(?:--silent\s+)?exec|npx(?:\s+--yes)?)\s+|(?:\.\/)?node_modules\/\.bin\/)?niceeval\s+exp\b/m;
@@ -69,7 +66,6 @@ export async function uploadHarnessRepo<H extends BaseAssertionHandle>(
 
 /** 所有 harness 题共有的只读边界；具体答案和 CLI 下钻路径仍由每题自己断言。 */
 export function assertReadOnlyHarness<H extends BaseAssertionHandle>(t: BaseTestContext<H>): void {
-  t.notCalledTool("shell", { input: { command: RAW_RESULT_RE } });
   t.notCalledTool("shell", { input: { command: EXP_COMMAND_RE } });
   t.check(t.sandbox.diff.isEmpty(), isTrue("没有修改起始仓库"));
 }

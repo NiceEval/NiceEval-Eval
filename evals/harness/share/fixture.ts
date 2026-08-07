@@ -5,8 +5,6 @@ export const EXP_COMMAND_RE =
   /(?:(?:pnpm(?:\s+--silent)?\s+exec|npx(?:\s+--no-install)?)\s+niceeval|(?:\.\/)?node_modules\/\.bin\/niceeval)\s+exp\s+local\b/;
 export const SHOW_COMMAND_RE = /niceeval\s+show\b/;
 export const SHOW_LOCATOR_RE = /niceeval\s+show\s+@[A-Za-z0-9]+\b/;
-export const RAW_RESULT_RE = /\.niceeval\/[\w./-]*\.json/;
-
 async function requireCommand(result: CommandResult, label: string): Promise<void> {
   if (result.exitCode === 0) return;
   throw new Error(`${label}失败（exit ${result.exitCode}）：\n${result.stderr || result.stdout}`);
