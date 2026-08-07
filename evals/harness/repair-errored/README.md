@@ -19,4 +19,5 @@ assertion `failed`。项目文档记录了本地 backend 的正确配置。
 - 是否在第二轮延续上下文，修改 `config/policy.json`；
 - 是否局部重跑并确认最终通过。
 
-隐藏判分会独立复跑、检查最终配置、diff 范围以及 agent 实际执行过的 NiceEval 命令。
+隐藏判分只用 `show` 读取 agent 留下的最终结果，并检查最终配置、diff 范围以及 agent 实际
+执行过的 NiceEval 命令；它不会人工复跑。

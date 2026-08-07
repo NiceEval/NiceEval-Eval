@@ -9,6 +9,30 @@ const SHOW_COMMAND_RE = /niceeval\s+show\b/;
 const EXPECTED_PAGES =
   /docs-site\/zh\/tutorials\/(agent-feedback-loop|viewing-results|write-experiment)\.mdx/;
 
+function showReportsPassed(value: unknown): boolean {
+  try {
+    const report = JSON.parse(String(value)) as {
+      format?: string;
+      data?: {
+        summary?: {
+          attempts?: number;
+          attemptVerdicts?: { passed?: number; failed?: number; errored?: number };
+        };
+      };
+    };
+    const summary = report.data?.summary;
+    return (
+      report.format === "niceeval.show" &&
+      summary?.attempts === 1 &&
+      summary.attemptVerdicts?.passed === 1 &&
+      summary.attemptVerdicts.failed === 0 &&
+      summary.attemptVerdicts.errored === 0
+    );
+  } catch {
+    return false;
+  }
+}
+
 export default defineEval({
   description: "自行运行并确认一个确定性绿色 experiment",
   tags: ["harness", "harness-v0.12.0", "run"],
@@ -28,18 +52,22 @@ export default defineEval({
 
     const turn = await t.send("帮我跑一下 local experiment，看看结果。");
 
+    // 只读 agent 留下的结果；evaluator 不代替 agent 再运行一次 experiment。
     const confirmation = await t.sandbox.runCommand("pnpm", [
       "--silent",
       "exec",
       "niceeval",
-      "exp",
+      "show",
+      "--exp",
       "local",
-      "--rerun",
-      "all",
       "--json",
     ]);
     await t.group("实验结果", async () => {
       t.check(confirmation, commandSucceeded());
+      t.check(
+        confirmation.stdout,
+        satisfies(showReportsPassed, "agent 产生的 local 最终结果为 passed"),
+      );
       t.check(
         t.reply,
         satisfies((v) => /passed|通过/i.test(String(v)), "回复明确说明最终实验通过"),

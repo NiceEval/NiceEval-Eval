@@ -12,5 +12,5 @@
 - 是否正确判断最终 verdict，而不是只看 shell 退出码；
 - 是否保持这个本来就正常的项目不变。
 
-`repo/` 是不携带 `.niceeval` 的确定性绿色项目；隐藏判分会独立复跑、检查 agent 的工具
-行为与最终 diff。
+`repo/` 是不携带 `.niceeval` 的确定性绿色项目。隐藏判分只用 `show` 读取 agent 留下的最终
+结果，并检查 agent 的工具行为与最终 diff；它不会代替 agent 运行 experiment。

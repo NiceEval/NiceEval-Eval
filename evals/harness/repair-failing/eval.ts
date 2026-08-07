@@ -1,5 +1,5 @@
 import { defineEval } from "niceeval";
-import { commandSucceeded, includes } from "niceeval/expect";
+import { commandSucceeded, includes, satisfies } from "niceeval/expect";
 import { assertPagesInCandidate } from "../../../lib/candidate.ts";
 import { INDEX_RE, ONLINE_DOCS_RE } from "../../../lib/routing.ts";
 
@@ -8,6 +8,30 @@ const SHOW_LOCATOR_RE = /niceeval\s+show\s+@[A-Za-z0-9]+\b/;
 
 const EXPECTED_PAGES =
   /docs-site\/zh\/(tutorials\/(agent-feedback-loop|viewing-results)|troubleshooting\/debugging)\.mdx/;
+
+function showReportsPassed(value: unknown): boolean {
+  try {
+    const report = JSON.parse(String(value)) as {
+      format?: string;
+      data?: {
+        summary?: {
+          attempts?: number;
+          attemptVerdicts?: { passed?: number; failed?: number; errored?: number };
+        };
+      };
+    };
+    const summary = report.data?.summary;
+    return (
+      report.format === "niceeval.show" &&
+      summary?.attempts === 1 &&
+      summary.attemptVerdicts?.passed === 1 &&
+      summary.attemptVerdicts.failed === 0 &&
+      summary.attemptVerdicts.errored === 0
+    );
+  } catch {
+    return false;
+  }
+}
 
 export default defineEval({
   description: "两轮诊断断言失败，只修业务实现并重跑到通过",
@@ -30,18 +54,19 @@ export default defineEval({
     diagnosis.succeeded();
     const repair = await t.send("把它修好，再确认一下。");
 
+    // 只读 agent 留下的结果；evaluator 不代替 agent 再运行一次 experiment。
     const green = await t.sandbox.runCommand("pnpm", [
       "--silent",
       "exec",
       "niceeval",
-      "exp",
+      "show",
+      "--exp",
       "local",
-      "--rerun",
-      "all",
       "--json",
     ]);
     await t.group("修复结果", async () => {
       t.check(green, commandSucceeded());
+      t.check(green.stdout, satisfies(showReportsPassed, "agent 修复后的 local 结果为 passed"));
       t.sandbox.fileChanged("src/policy.ts");
       t.sandbox.notInDiff(/^(?:agents|evals|experiments)\/|^(?:niceeval\.config\.ts|package\.json)$/);
     });

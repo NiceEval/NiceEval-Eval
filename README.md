@@ -81,7 +81,8 @@ pnpm exec niceeval show @<locator> --diff
 ```
 
 Harness 题不会因为 agent 读取 `.niceeval` 原始记录就预先判错；判分关注结论是否正确、
-是否理解状态语义，以及是否完成独立复验。
+是否理解状态语义，以及是否由 agent 自己运行、诊断和确认。evaluator 只用 `show` 读取最终
+结果，不会代替 agent 重跑 experiment。
 
 ## 候选版本与实验矩阵
 

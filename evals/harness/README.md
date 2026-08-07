@@ -48,11 +48,12 @@ TypeScript 文件以 `*.fixture` 结尾，只是为了避开宿主 discovery；�
 - agent 确实自己运行过 `niceeval exp local`；
 - 结论不是只从 shell 退出码猜出；
 - 需要诊断时实际下钻过 attempt locator；
-- 修复题至少经历“失败运行 → 修改 → 重跑”，最终结果由 evaluator 独立复验；
+- 修复题至少经历“失败运行 → 修改 → 重跑”，evaluator 只用 `show` 读取 agent 留下的最终结果；
 - 不通过修改 eval、断言或 experiment 制造绿色；
 - 文档来自当前候选随包 `INDEX.md`，不退回在线 main 文档。
 
-读取 `.niceeval` 原始文件不预先判错，但也不会替代正确的状态语义和最终复验。
+读取 `.niceeval` 原始文件不预先判错，但也不会替代正确的状态语义和最终确认。evaluator
+不会替 agent 运行或重跑 experiment。
 
 ## 未来候选
 
