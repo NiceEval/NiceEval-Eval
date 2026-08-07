@@ -1,6 +1,6 @@
 import { defineExperiment } from "niceeval";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { agentUnderTest, sandboxWith } from "../shared.ts";
+import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../shared.ts";
 
 /**
  * npm latest（0.12.0），install 组当前基线格。与 canary、v0.11.0 使用同一个 model、
@@ -16,4 +16,5 @@ export default defineExperiment({
   sandbox: sandboxWith("python"),
   evals: ["install/"],
   attempts: 1,
+  maxConcurrency: EVAL_MAX_CONCURRENCY,
 });

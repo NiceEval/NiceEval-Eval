@@ -1,9 +1,9 @@
 /**
  * 只对本仓库自己的代码做类型检查。
  *
- * niceeval 把 TS 源码一起发布，而三个 sandbox provider 的 SDK 是按需安装的可选 peer
- * 依赖——本仓库只用 e2b，不装 dockerode 与 @vercel/sandbox。tsc 会顺着 niceeval 的源码
- * 去解析这些用不到的分支并报错。这些错误与本仓库的代码质量无关，滤掉。
+ * niceeval 把 TS 源码一起发布，而 sandbox provider 的 SDK 是按需安装的可选 peer。
+ * 本仓库运行时只用 Docker，已安装 dockerode；没有安装 E2B / Vercel SDK。tsc 仍会顺着
+ * niceeval 的源码解析其它可选 provider 分支，这些 node_modules 内错误不属于本仓库，滤掉。
  *
  * 用的是与 evals/install/share/eval-install.ts 里同一条规则：只认 node_modules 之外的错误行。
  * 沙箱里评 agent 写的代码时也这么判——一套标准，不搞双重口径。

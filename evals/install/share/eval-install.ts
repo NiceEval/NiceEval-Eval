@@ -28,7 +28,7 @@
  * 交互层各写各的，评估安装仍走同一份。
  *
  * 两者与 evalExperiment（见 ./eval-experiment.ts）被 install 下多条接入路径 eval 共用；
- * 不放顶层 lib/ 是因为它不服务 debug 这类非接入路径评估。locateInstallRoot 也住在这里——
+ * 不放顶层 lib/ 是因为它不服务 harness 这类非接入路径评估。locateInstallRoot 也住在这里——
  * 「装在了哪」天然是安装检查的一部分，evalExperiment / evalAdapter / fixture / agent-archive
  * 都从这里取用。
  */

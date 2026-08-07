@@ -1,6 +1,6 @@
 import { defineExperiment } from "niceeval";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { agentUnderTest, sandboxWith } from "../shared.ts";
+import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../shared.ts";
 
 /**
  * 金丝雀组：main 的最新快照，走 canary 预发布通道。
@@ -25,4 +25,5 @@ export default defineExperiment({
   sandbox: sandboxWith("python"),
   evals: ["install/"],
   attempts: 1,
+  maxConcurrency: EVAL_MAX_CONCURRENCY,
 });

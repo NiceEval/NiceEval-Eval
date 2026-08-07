@@ -16,11 +16,22 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 | `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher |
 | `advance/` | 高级安装评估 | 遇到复杂运行环境和第三方 agent 时，能否选择合适的接入层与 sandbox | Express coding-agent Sandbox、Letta、OpenHands、Skyvern |
 | `experiment/` | 实验评估 | 已经接入后，agent 能否运行、读结果、调试、自迭代，以及跨版本迁移 | 原样跑通、必失败后修复、0.9.1 → 0.12.0 长程迁移 |
-| `debug/` | 历史诊断评估 | 面对已落盘的真实结果，agent 能否只通过 CLI 找到指定证据 | 有/无 `niceeval init` 指引的对照组 |
+| `harness/` | Harness 诊断评估 | 面对自包含的真实结果项目，agent 能否只通过 CLI 比较、定位、下钻并守住证据边界 | 8 个 folder-local 用例 × 有/无 `niceeval init` 指引 |
 
 `install/` 和 `advance/` 都属于“把 NiceEval 装进去”，区别是前者覆盖常见真实项目，
 后者专门保留复杂 provider、sandbox 与框架集成路径。`experiment/` 不再重复考安装产物质量，
 而是考 NiceEval 已存在时的反馈闭环。
+
+## harness/ 的 folder-local 题包
+
+`harness/` 不再从中央 debug fixture 出题。每条用例都是
+`evals/harness/<id>/{eval.ts,README.md,repo/}`：题面、中文设计说明和 agent 的完整起始仓库共址，
+删除其它题后仍能单独运行。当前 8 题覆盖过期概览、成本/通过率权衡、失败断言定位、执行轨迹、
+errored/failed 语义、TTFT 部分覆盖，以及两种“数据不存在”边界。完整设计见
+[`evals/harness/README.md`](evals/harness/README.md)。
+
+每个 `repo/` 独立携带同一份真实历史项目快照。README 只供 harness 维护者阅读，不上传给 agent；
+repo 内的 `*.ts.fixture` 会在 agent 开始前恢复为原始 `.ts`，避免内层项目被宿主 discovery 误收。
 
 ## experiment/ 的三个确定性场景
 
@@ -70,6 +81,7 @@ pnpm --silent exec niceeval exp experiment/v0.12.0 --dry --json
 pnpm --silent exec niceeval exp install/v0.12.0 --dry --json
 pnpm --silent exec niceeval exp advance/v0.12.0-node --dry --json
 pnpm --silent exec niceeval exp advance/v0.12.0-python --dry --json
+pnpm --silent exec niceeval exp harness --dry --json
 ```
 
 明确决定花费后再运行实验：
@@ -77,7 +89,7 @@ pnpm --silent exec niceeval exp advance/v0.12.0-python --dry --json
 ```sh
 pnpm run experiment-eval
 pnpm run install-eval
-pnpm run debug-eval
+pnpm run harness-eval
 ```
 
 结果诊断只走 CLI：
@@ -107,9 +119,9 @@ pnpm exec niceeval show @<locator> --diff
 高级安装与操作实验目前以 `0.12.0` 为迁移基线，分别拆成 Node、Python sandbox 和
 确定性的 Node 工作流，避免所有题共用一个不适合的环境。
 
-`debug/` 是例外：它读取 NiceEval 0.4.6 产出的 schema 8 历史快照，reader 固定为最后验证过
-兼容的 0.9.1。新版本的主动失败与修复由 `experiment/repair-failing` 覆盖，避免把“旧 schema
-兼容性”混进“agent 会不会调试”的对照变量。
+`harness/` 是例外：每个 folder-local 起始 repo 都读取 NiceEval 0.4.6 产出的 schema 8 历史快照，
+reader 固定为最后验证过兼容的 0.9.1。新版本的主动失败与修复由
+`experiment/repair-failing` 覆盖，避免把“旧 schema 兼容性”混进“agent 会不会诊断”的对照变量。
 
 ## 安装评估如何计分
 
@@ -137,8 +149,7 @@ sparse checkout 排除与接入无关的大型文档和资源目录。agent 写�
 - `fixtures/projects/experiment-ready`：0.12.0 绿色项目。
 - `fixtures/projects/experiment-failing`：0.12.0 确定性红色项目。
 - `fixtures/projects/migration-0.9`：可在 0.9.1 运行的旧 API 项目。
-- `fixtures/results/`：历史 debug 结果与人工核对题库，详情见
-  [`fixtures/results/README.md`](fixtures/results/README.md)。
+- `evals/harness/*/repo/`：每题自己的历史结果起始仓库；没有中央题库或共享结果 fixture。
 
 仓库不验证 NiceEval 核心实现本身；核心 API、CLI 或报告问题应在相邻 `NiceEval/` 修复。
 这里也不自动跑全量或付费实验：更换候选、作废结果或批量重跑前必须先确认成本。

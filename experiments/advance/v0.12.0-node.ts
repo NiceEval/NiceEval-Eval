@@ -1,6 +1,6 @@
 import { defineExperiment } from "niceeval";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { agentUnderTest, sandboxWith } from "../shared.ts";
+import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../shared.ts";
 
 const NICEEVAL_VERSION = await ensureCandidate("0.12.0");
 
@@ -12,4 +12,5 @@ export default defineExperiment({
   sandbox: sandboxWith("node"),
   evals: ["advance/express-coding-agent"],
   attempts: 1,
+  maxConcurrency: EVAL_MAX_CONCURRENCY,
 });

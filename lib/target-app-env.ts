@@ -2,8 +2,8 @@
  * 目标应用（DB-GPT / GPT Researcher）运行时环境。
  *
  * 这两条接入路径的被测宿主都是真实 Python 项目，Python 工具链（python3 / pip / venv /
- * build-essential / sqlite3 / uv）已经烘焙进专用 e2b template（见 scripts/build-e2b-python-template.ts
- * 与 experiments/shared.ts 的 Python profile），Python 实验显式选择那个 template。
+ * build-essential / sqlite3 / uv）已经烘焙进统一 DinD Docker 镜像（见 sandbox/Dockerfile
+ * 与 experiments/shared.ts），Python 实验只额外执行本文件的凭证准备钩子。
  * 这个钩子不再装系统依赖，只做每次 attempt
  * 都要重新写的动态内容——目标应用自己要连的 LLM 凭证。装 niceeval 三件套这件事跟
  * 「目标应用能不能被 agent 实际启动起来」是两层问题：前者由 assertNiceevalInstalled gate，
@@ -29,7 +29,7 @@
  *   warning，SQL 生成本身不受影响，端到端验证过是好的（含反幻觉分支）。三个目标里资源最重
  *   （`uv sync` 是唯一装出 300MB+ 依赖的），其余两个都轻。
  * - `scripts/examples/load_examples.sh` 需要 `sqlite3` CLI（不是 python 自带的 sqlite3 模块），
- *   已经烘焙进 python template。
+ *   已经烘焙进统一 Docker 镜像。
  *
  * FinRobot（原第四条接入路径）已移除：它的财务数据源打的是 FMP 已下线的 legacy 端点，
  * 上游停摆了近一年没修，不是这个钩子能解决的问题——见 README 里的说明。

@@ -1,6 +1,6 @@
 import { defineExperiment } from "niceeval";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { agentUnderTest, sandboxWith } from "../shared.ts";
+import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../shared.ts";
 
 /**
  * 上一代发布版（0.11.0），保留为 0.12.0 的迁移对照格。同一个 model、同一批 eval，
@@ -21,4 +21,5 @@ export default defineExperiment({
   sandbox: sandboxWith("python"),
   evals: ["install/"],
   attempts: 1,
+  maxConcurrency: EVAL_MAX_CONCURRENCY,
 });
