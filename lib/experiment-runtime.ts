@@ -1,12 +1,11 @@
 /**
- * 各实验共用的 Docker-in-Docker sandbox 与 agent 装配。
+ * 各实验共用的 Docker-in-Docker sandbox 装配。
  *
  * 单个评估容器同时承载 coding agent 和内层 dockerd；agent 以 node 身份执行，但能通过
  * 同容器 Unix socket 使用 docker / docker compose。privileged 只允许落到显式 rootless
  * 外层 daemon，NiceEval 在 create 前 fail-closed 验证。
  */
 
-import { codexAgent } from "niceeval/adapter";
 import { dockerSandbox } from "niceeval/sandbox";
 import type { SandboxHook } from "niceeval/sandbox";
 import { provisionTargetAppEnv } from "./target-app-env.ts";
@@ -16,9 +15,6 @@ const MIB = 1024 ** 2;
 
 /** 16 核 / 32 GiB 宿主的首个实测档位；通过 4 路 task-shaped smoke 后才能继续上调。 */
 export const EVAL_MAX_CONCURRENCY = 4;
-
-/** 被测 coding agent。模型写在各实验的 model 字段，不写在这里。 */
-export const agentUnderTest = codexAgent();
 
 function assertRuntime(): SandboxHook {
   return async (sandbox, ctx) => {

@@ -1,6 +1,7 @@
 import { defineExperiment } from "niceeval";
+import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
+import { EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
 
 /**
  * 金丝雀组：main 的最新快照，走 canary 预发布通道。
@@ -19,7 +20,7 @@ const NICEEVAL_VERSION = await ensureCandidate("canary");
 
 export default defineExperiment({
   description: `niceeval@${NICEEVAL_VERSION}（main 快照，自动安装）`,
-  agent: agentUnderTest,
+  agent: codexAgent(),
   model: "gpt-5.6-luna",
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("python"),

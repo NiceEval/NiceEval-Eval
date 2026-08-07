@@ -1,6 +1,7 @@
 import { defineExperiment } from "niceeval";
+import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
+import { EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
 
 /**
  * 历史结果诊断基线。fixture 来自 NiceEval 0.4.6 的 schema 8，0.9.1 是最后验证过
@@ -10,7 +11,7 @@ const NICEEVAL_VERSION = await ensureCandidate("0.9.1");
 
 export default defineExperiment({
   description: "niceeval@0.9.1：历史结果 Harness 诊断",
-  agent: agentUnderTest,
+  agent: codexAgent(),
   model: "gpt-5.4",
   flags: { agentRules: true, candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith(),

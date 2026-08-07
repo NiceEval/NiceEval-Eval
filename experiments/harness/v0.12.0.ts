@@ -1,13 +1,14 @@
 import { defineExperiment } from "niceeval";
+import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
+import { EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
 
 /** 当前 Harness 工作流：运行、结果下钻、失败修复与 0.9.1 → 0.12.0 迁移。 */
 const NICEEVAL_VERSION = await ensureCandidate("0.12.0");
 
 export default defineExperiment({
   description: "niceeval@0.12.0：Harness 运行与反馈闭环",
-  agent: agentUnderTest,
+  agent: codexAgent(),
   model: "gpt-5.6-luna",
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("node"),

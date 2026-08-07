@@ -24,7 +24,7 @@ pnpm install
 pnpm run typecheck
 ```
 
-The final diagnostic is: `lib/experiment-runtime.ts(10,10): error TS2724: niceeval/sandbox has no exported member named dockerSandbox`.
+The final diagnostic is: `lib/experiment-runtime.ts(9,10): error TS2724: niceeval/sandbox has no exported member named dockerSandbox`.
 
 ## Context
 
