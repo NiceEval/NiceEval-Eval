@@ -9,7 +9,6 @@
     "install-eval": "niceeval exp install",
     "canary": "niceeval exp install/canary",
     "harness-eval": "niceeval exp harness",
-    "experiment-eval": "niceeval exp experiment",
     "show": "niceeval show",
     "view": "niceeval view"
   },

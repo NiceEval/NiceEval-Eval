@@ -42,7 +42,7 @@ NiceEval 会递归发现外层 `evals/` 下的 `eval.ts` / `*.eval.ts`，TypeScr
 2. 不直接读取 `.niceeval/**/*.json`；
 3. 不运行 `niceeval exp`；
 4. 不修改起始仓库；
-5. 文档实验组继续测 `niceeval init` 托管指针是否把 agent 路由到随包文档。
+5. 运行 `niceeval init`，测试托管指针是否把 agent 路由到该 reader 版本的随包文档。
 
 ## 数据身份与运行成本
 
@@ -50,6 +50,6 @@ NiceEval 会递归发现外层 `evals/` 下的 `eval.ts` / `*.eval.ts`，TypeScr
 NiceEval 0.9.1 reader 验证。选择同一快照是为了让题间事实一致；复制到每题则是为了让资产边界、
 fingerprint 和维护责任都落在题内。
 
-两格 experiment（有 / 无 agent rules）各运行 8 题，共 16 个付费 coding-agent attempt。
+当前 `harness/v0.9.1` 一格 experiment 运行 8 题，共 8 个付费 coding-agent attempt。
 日常验证只运行 `pnpm run typecheck`、`niceeval list` 和 `niceeval exp harness --dry`；没有用户明确批准时，
 不要启动整套真实实验。

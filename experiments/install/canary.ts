@@ -18,12 +18,12 @@ import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../shared.ts"
 const NICEEVAL_VERSION = await ensureCandidate("canary");
 
 export default defineExperiment({
-  description: `niceeval@${NICEEVAL_VERSION}（main 快照，金丝雀对比组）`,
+  description: `niceeval@${NICEEVAL_VERSION}（main 快照，安装与反馈闭环）`,
   agent: agentUnderTest,
   model: "gpt-5.6-luna",
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("python"),
-  evals: ["install/"],
+  evals: ["install/", "advance/", "experiment/"],
   attempts: 1,
   maxConcurrency: EVAL_MAX_CONCURRENCY,
 });
