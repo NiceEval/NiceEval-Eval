@@ -1,26 +1,26 @@
 import { defineEval } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
-import { assertPagesInCandidate } from "../../lib/candidate.ts";
-import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+import { assertPagesInCandidate } from "../../../lib/candidate.ts";
+import { INDEX_RE, ONLINE_DOCS_RE } from "../../../lib/routing.ts";
 import {
   EXP_COMMAND_RE,
   RAW_RESULT_RE,
-  READY_FIXTURE,
   SHOW_COMMAND_RE,
   prepareCurrentProject,
   runInnerExperiment,
-} from "./share/fixture.ts";
+} from "../share/fixture.ts";
 
 const EXPECTED_PAGES =
   /docs-site\/zh\/tutorials\/(agent-feedback-loop|viewing-results|write-experiment)\.mdx/;
 
 export default defineEval({
   description: "运行一个已接入的确定性实验，用 show 核对并准确汇报结果",
+  tags: ["harness", "harness-v0.12.0", "run"],
   timeoutMs: 15 * 60 * 1000,
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);
-    await prepareCurrentProject(t, READY_FIXTURE, version);
+    await prepareCurrentProject(t, new URL("./repo/", import.meta.url), version);
 
     const turn = await t.send(
       `这个仓库已经接入 niceeval@${version}。先读 node_modules/niceeval/INDEX.md 和任务需要的随包文档，` +

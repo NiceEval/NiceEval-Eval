@@ -9,7 +9,7 @@
 import { codexAgent } from "niceeval/adapter";
 import { dockerSandbox } from "niceeval/sandbox";
 import type { SandboxHook } from "niceeval/sandbox";
-import { provisionTargetAppEnv } from "../lib/target-app-env.ts";
+import { provisionTargetAppEnv } from "./target-app-env.ts";
 
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;

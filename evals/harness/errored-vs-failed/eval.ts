@@ -12,7 +12,7 @@ const LOCATOR_RE = /niceeval\s+show\s+@[a-z0-9]{6,}/;
 
 export default defineEval({
   description: "[status] 区分 errored 与 failed，并定位基础设施错误的直接原因",
-  tags: ["harness", "status", "locate"],
+  tags: ["harness", "harness-v0.9.1", "status", "locate"],
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);

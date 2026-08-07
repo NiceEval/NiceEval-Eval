@@ -1,10 +1,9 @@
 import { defineExperiment } from "niceeval";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../shared.ts";
+import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
 
 /**
- * 上一代发布版（0.11.0）的安装路径对照格。只跑从零接入题；
- * experiment/ 中的已接入 fixture 是 0.12 API 基线，不混入旧版对照。
+ * 上一代发布版（0.11.0）的安装路径对照格。
  *
  * 取代了原来的 v0.9.1 那格（已删）：那代文档在 0.10.x 的搬家（how-to/ 并入 tutorials/）之前，
  * INIT.md 也还没有「非 JS 宿主另建 eval 工作区 + `"type": "module"` + 装成 devDependency」

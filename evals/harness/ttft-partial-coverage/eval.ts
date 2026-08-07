@@ -14,7 +14,7 @@ const DETAIL_RE = /niceeval\s+show\b[^\n]*(?:--execution|--timing)/;
 
 export default defineEval({
   description: "[observability] 识别 TTFT 只覆盖部分 experiment，而不是补全缺失数据",
-  tags: ["harness", "observability", "boundary"],
+  tags: ["harness", "harness-v0.9.1", "observability", "boundary"],
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);

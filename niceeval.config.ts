@@ -9,7 +9,7 @@ import { loadRepoEnv } from "./lib/env.ts";
  */
 
 // 这是本仓库任何 niceeval CLI 调用都会先加载的入口文件，所以在这里把仓库根 .env 灌进
-// process.env——CODEX_API_KEY 既是被测 codexAgent() 的鉴权（见 experiments/shared.ts），
+// process.env——CODEX_API_KEY 既是被测 codexAgent() 的鉴权（见 lib/experiment-runtime.ts），
 // 也是下面 judge.apiKeyEnv 指的那个变量，必须在两边真正用到之前就位。
 loadRepoEnv();
 

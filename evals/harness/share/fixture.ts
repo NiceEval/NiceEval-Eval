@@ -1,10 +1,5 @@
 import type { BaseAssertionHandle, BaseTestContext, CommandResult } from "niceeval";
-
-// uploadDirectory 的本地路径按真正的 .eval.ts 所在目录（evals/experiment/）解析，
-// 不是按这个 share helper 所在目录解析。
-export const READY_FIXTURE = "../../fixtures/projects/experiment-ready";
-export const FAILING_FIXTURE = "../../fixtures/projects/experiment-failing";
-export const LEGACY_FIXTURE = "../../fixtures/projects/migration-0.9";
+import { uploadHarnessRepo } from "../../../lib/harness-repo.ts";
 
 export const EXP_COMMAND_RE =
   /(?:(?:pnpm(?:\s+--silent)?\s+exec|npx(?:\s+--no-install)?)\s+niceeval|(?:\.\/)?node_modules\/\.bin\/niceeval)\s+exp\s+local\b/;
@@ -20,10 +15,10 @@ async function requireCommand(result: CommandResult, label: string): Promise<voi
 /** 上传确定性内层项目，装指定候选并刷新托管指引；这些步骤发生在 agent 第一轮之前。 */
 export async function prepareCurrentProject<H extends BaseAssertionHandle>(
   t: BaseTestContext<H>,
-  fixture: string,
+  repo: URL,
   version: string,
 ): Promise<void> {
-  await t.sandbox.uploadDirectory(fixture);
+  await uploadHarnessRepo(t, repo);
   await requireCommand(
     await t.sandbox.runCommand("pnpm", ["add", "-D", `niceeval@${version}`]),
     `安装 niceeval@${version}`,
@@ -32,8 +27,11 @@ export async function prepareCurrentProject<H extends BaseAssertionHandle>(
 }
 
 /** 旧项目保留 0.9.1 依赖与旧托管块，升级动作全部留给被测 agent。 */
-export async function prepareLegacyProject<H extends BaseAssertionHandle>(t: BaseTestContext<H>): Promise<void> {
-  await t.sandbox.uploadDirectory(LEGACY_FIXTURE);
+export async function prepareLegacyProject<H extends BaseAssertionHandle>(
+  t: BaseTestContext<H>,
+  repo: URL,
+): Promise<void> {
+  await uploadHarnessRepo(t, repo);
   await requireCommand(await t.sandbox.runCommand("pnpm", ["install"]), "安装 legacy fixture");
   await requireCommand(await t.sandbox.runCommand("pnpm", ["exec", "niceeval", "init"]), "legacy niceeval init");
 }

@@ -1,6 +1,6 @@
 import { defineExperiment } from "niceeval";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../shared.ts";
+import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
 
 /**
  * 金丝雀组：main 的最新快照，走 canary 预发布通道。
@@ -18,12 +18,12 @@ import { agentUnderTest, EVAL_MAX_CONCURRENCY, sandboxWith } from "../shared.ts"
 const NICEEVAL_VERSION = await ensureCandidate("canary");
 
 export default defineExperiment({
-  description: `niceeval@${NICEEVAL_VERSION}（main 快照，安装与反馈闭环）`,
+  description: `niceeval@${NICEEVAL_VERSION}（main 快照，自动安装）`,
   agent: agentUnderTest,
   model: "gpt-5.6-luna",
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("python"),
-  evals: ["install/", "advance/", "experiment/"],
+  evals: ["install/", "advance/"],
   attempts: 1,
   maxConcurrency: EVAL_MAX_CONCURRENCY,
 });

@@ -13,7 +13,7 @@ const EXPECTED_PAGES =
 
 export default defineEval({
   description: "[overview] 找出结论过期的 experiment，并给出应执行的重跑命令",
-  tags: ["harness", "overview"],
+  tags: ["harness", "harness-v0.9.1", "overview"],
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);

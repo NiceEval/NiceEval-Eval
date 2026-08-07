@@ -1,25 +1,26 @@
 import { defineEval } from "niceeval";
 import { commandSucceeded, equals, satisfies } from "niceeval/expect";
-import { assertPagesInCandidate } from "../../lib/candidate.ts";
-import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+import { assertPagesInCandidate } from "../../../lib/candidate.ts";
+import { INDEX_RE, ONLINE_DOCS_RE } from "../../../lib/routing.ts";
 import {
   EXP_COMMAND_RE,
   RAW_RESULT_RE,
   SHOW_COMMAND_RE,
   prepareLegacyProject,
   runInnerExperiment,
-} from "./share/fixture.ts";
+} from "../share/fixture.ts";
 
 const EXPECTED_PAGES =
   /docs-site\/zh\/(tutorials\/(agent-feedback-loop|write-experiment)|reference\/define-agent)\.mdx/;
 
 export default defineEval({
   description: "把可运行的 niceeval 0.9.1 项目长程迁移到当前候选，并跑完实验",
+  tags: ["harness", "harness-v0.12.0", "migration"],
   timeoutMs: 25 * 60 * 1000,
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);
-    await prepareLegacyProject(t);
+    await prepareLegacyProject(t, new URL("./repo/", import.meta.url));
 
     const turn = await t.send(
       `这是一个可运行但仍固定在 niceeval@0.9.1 的旧项目。把它完整迁移到 niceeval@${version}：` +

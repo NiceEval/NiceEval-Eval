@@ -3,7 +3,7 @@
  *
  * 这两条接入路径的被测宿主都是真实 Python 项目，Python 工具链（python3 / pip / venv /
  * build-essential / sqlite3 / uv）已经烘焙进统一 DinD Docker 镜像（见 sandbox/Dockerfile
- * 与 experiments/shared.ts），Python 实验只额外执行本文件的凭证准备钩子。
+ * 与 lib/experiment-runtime.ts），Python 实验只额外执行本文件的凭证准备钩子。
  * 这个钩子不再装系统依赖，只做每次 attempt
  * 都要重新写的动态内容——目标应用自己要连的 LLM 凭证。装 niceeval 三件套这件事跟
  * 「目标应用能不能被 agent 实际启动起来」是两层问题：前者由 assertNiceevalInstalled gate，
@@ -51,7 +51,7 @@ export const TARGET_APP_ENV_PATH = "/opt/fixture-secrets/target-app.env";
 /**
  * 环境钩子：把目标应用要用的 LLM 凭证写成一份沙箱内可读的 env 文件。两条接入路径共用——
  * 给哪些变量是「这次实验的环境」这一层的事，跟具体读哪个宿主仓库无关，所以挂在 sandbox
- * spec 上（见 experiments/shared.ts 的 `.setup()` 链）。Python 工具链不在这里装，见上面
+ * spec 上（见 lib/experiment-runtime.ts 的 `.setup()` 链）。Python 工具链不在这里装，见上面
  * 文件头注释。
  */
 export function provisionTargetAppEnv(): SandboxHook {

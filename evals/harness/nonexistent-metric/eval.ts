@@ -13,7 +13,7 @@ const EXPECTED_PAGES =
 
 export default defineEval({
   description: "[boundary] 结果未采集资源指标时，应明确说查不到而不是编造数字",
-  tags: ["harness", "boundary"],
+  tags: ["harness", "harness-v0.9.1", "boundary"],
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);

@@ -1,26 +1,26 @@
 import { defineEval } from "niceeval";
 import { commandSucceeded, includes } from "niceeval/expect";
-import { assertPagesInCandidate } from "../../lib/candidate.ts";
-import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
+import { assertPagesInCandidate } from "../../../lib/candidate.ts";
+import { INDEX_RE, ONLINE_DOCS_RE } from "../../../lib/routing.ts";
 import {
   EXP_COMMAND_RE,
-  FAILING_FIXTURE,
   RAW_RESULT_RE,
   SHOW_LOCATOR_RE,
   prepareCurrentProject,
   runInnerExperiment,
-} from "./share/fixture.ts";
+} from "../share/fixture.ts";
 
 const EXPECTED_PAGES =
   /docs-site\/zh\/(tutorials\/(agent-feedback-loop|viewing-results)|troubleshooting\/debugging)\.mdx/;
 
 export default defineEval({
   description: "首次运行必失败：用 locator 调试，只修被测代码并自迭代到全绿",
+  tags: ["harness", "harness-v0.12.0", "repair"],
   timeoutMs: 20 * 60 * 1000,
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);
-    await prepareCurrentProject(t, FAILING_FIXTURE, version);
+    await prepareCurrentProject(t, new URL("./repo/", import.meta.url), version);
 
     const red = await runInnerExperiment(t, true);
     if (red.exitCode !== 1) {

@@ -2,7 +2,8 @@
  * harness 题的共用执行机械：上传 folder-local 起始仓库、恢复被宿主 discovery 屏蔽的
  * TypeScript 文件、安装历史结果对应的 reader，并按 experiment flag 决定是否注入 agent rules。
  *
- * 题目、答案与 repo 资产仍全部归各自的 evals/harness/<id>/；这里不保存题库，也不决定判分。
+ * 题目、答案与 repo 资产仍全部归各自的 evals/harness/<id>/；
+ * 这里不保存题库，也不决定判分。
  */
 
 import type { BaseAssertionHandle, BaseTestContext } from "niceeval";
@@ -32,17 +33,7 @@ export async function prepareHarnessRepo<H extends BaseAssertionHandle>(
 ): Promise<void> {
   const version = t.flags.candidateVersion as string;
 
-  await t.sandbox.uploadDirectory(repo);
-
-  const materialize = await t.sandbox.runShell(
-    "find . -type f \\( -name '*.ts.fixture' -o -name '*.tsx.fixture' \\) " +
-      "-exec sh -c 'for source_file do mv \"$source_file\" \"${source_file%.fixture}\"; done' sh {} +",
-  );
-  if (materialize.exitCode !== 0) {
-    throw new Error(
-      `起始仓库的 TypeScript 文件恢复失败：\n${materialize.stderr || materialize.stdout}`,
-    );
-  }
+  await uploadHarnessRepo(t, repo);
 
   const install = await t.sandbox.runCommand("pnpm", ["add", "-D", `niceeval@${version}`]);
   if (install.exitCode !== 0) {
@@ -54,6 +45,25 @@ export async function prepareHarnessRepo<H extends BaseAssertionHandle>(
     if (init.exitCode !== 0) {
       throw new Error(`niceeval init 失败，实验组自变量没有建立：\n${init.stderr || init.stdout}`);
     }
+  }
+}
+
+/** 上传 folder-local repo，并恢复为避免宿主 discovery 而加上的 `.fixture` 后缀。 */
+export async function uploadHarnessRepo<H extends BaseAssertionHandle>(
+  t: BaseTestContext<H>,
+  repo: URL,
+): Promise<void> {
+
+  await t.sandbox.uploadDirectory(repo);
+
+  const materialize = await t.sandbox.runShell(
+    "find . -type f \\( -name '*.ts.fixture' -o -name '*.tsx.fixture' \\) " +
+      "-exec sh -c 'for source_file do mv \"$source_file\" \"${source_file%.fixture}\"; done' sh {} +",
+  );
+  if (materialize.exitCode !== 0) {
+    throw new Error(
+      `起始仓库的 TypeScript 文件恢复失败：\n${materialize.stderr || materialize.stdout}`,
+    );
   }
 }
 

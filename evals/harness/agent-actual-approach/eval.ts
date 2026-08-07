@@ -13,7 +13,7 @@ const EXECUTION_RE = new RegExp(`niceeval\\s+show\\s+${LOCATOR}\\b[^\\n]*--execu
 
 export default defineEval({
   description: "[execution] 从执行事件流还原 agent 的实际实现方案与重试次数",
-  tags: ["harness", "execution"],
+  tags: ["harness", "harness-v0.9.1", "execution"],
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);

@@ -11,7 +11,7 @@ const LOOKUP_RE = new RegExp(`niceeval\\s+show\\b[^\\n]*${MISSING_EXP}`);
 
 export default defineEval({
   description: "[boundary] experiment 名称看似符合规律但不存在时，应拒绝补全通过率",
-  tags: ["harness", "boundary"],
+  tags: ["harness", "harness-v0.9.1", "boundary"],
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);

@@ -14,7 +14,7 @@ const LOCATOR_RE = new RegExp(`niceeval\\s+show\\s+${LOCATOR}`);
 
 export default defineEval({
   description: "[locate] 从 eval 与 experiment 定位失败断言及 attempt locator",
-  tags: ["harness", "locate"],
+  tags: ["harness", "harness-v0.9.1", "locate"],
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);

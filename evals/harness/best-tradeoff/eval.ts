@@ -13,7 +13,7 @@ const EXPECTED_PAGES =
 
 export default defineEval({
   description: "[compare] 排除覆盖不完整的实验后，比较通过率与成本的综合权衡",
-  tags: ["harness", "compare"],
+  tags: ["harness", "harness-v0.9.1", "compare"],
   async test(t) {
     const version = t.flags.candidateVersion as string;
     assertPagesInCandidate(EXPECTED_PAGES, version);
