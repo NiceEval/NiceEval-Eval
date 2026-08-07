@@ -6,7 +6,8 @@ export const READY_FIXTURE = "../../fixtures/projects/experiment-ready";
 export const FAILING_FIXTURE = "../../fixtures/projects/experiment-failing";
 export const LEGACY_FIXTURE = "../../fixtures/projects/migration-0.9";
 
-export const EXP_COMMAND_RE = /(?:pnpm(?:\s+--silent)?\s+exec|npx(?:\s+--no-install)?)\s+niceeval\s+exp\s+local\b/;
+export const EXP_COMMAND_RE =
+  /(?:(?:pnpm(?:\s+--silent)?\s+exec|npx(?:\s+--no-install)?)\s+niceeval|(?:\.\/)?node_modules\/\.bin\/niceeval)\s+exp\s+local\b/;
 export const SHOW_COMMAND_RE = /niceeval\s+show\b/;
 export const SHOW_LOCATOR_RE = /niceeval\s+show\s+@[A-Za-z0-9]+\b/;
 export const RAW_RESULT_RE = /\.niceeval\/[\w./-]*\.json/;

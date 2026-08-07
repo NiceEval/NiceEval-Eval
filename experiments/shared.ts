@@ -1,84 +1,93 @@
 /**
- * 各实验共用的 sandbox 与 agent 装配。
+ * 各实验共用的 Docker-in-Docker sandbox 与 agent 装配。
  *
- * 实验之间应该只差一个变量——差别越少，分数差能归因到的东西越明确。
- * 这里只钉死 agent 装配与 sandbox 基线；attempts/maxConcurrency 之类的运行档位
- * 各实验自己写，不再共用一个常量。
+ * 单个评估容器同时承载 coding agent 和内层 dockerd；agent 以 node 身份执行，但能通过
+ * 同容器 Unix socket 使用 docker / docker compose。privileged 只允许落到显式 rootless
+ * 外层 daemon，NiceEval 在 create 前 fail-closed 验证。
  */
 
 import { codexAgent } from "niceeval/adapter";
-import { e2bSandbox } from "niceeval/sandbox";
+import { dockerSandbox } from "niceeval/sandbox";
 import type { SandboxHook } from "niceeval/sandbox";
 import { provisionTargetAppEnv } from "../lib/target-app-env.ts";
 
-/**
- * 默认 template：niceeval 官方发布的 codex template（correctroads-default-team/niceeval-codex）
- * 实测跑的是 Node v20.9.0，不是 assertNodeMajor 要求的 v24——装 niceeval 的链路要跑
- * pnpm / npx / tsc，版本漂移会变成一类跟文档无关的失败噪声。这个 template 在它之上加了
- * Node 24（见 scripts/build-e2b-node24-template.ts），本仓库所有 eval 的共同基线。
- *
- * 重新烘焙后把这个字符串换成新 tag；同时更新 build-e2b-python-template.ts 里的 BASE_TEMPLATE，
- * 否则 Python 组会从旧 tag 继续派生。
- */
-const NICEEVAL_EVAL_CODEX_NODE24_E2B_TEMPLATE = "niceeval-eval-codex-node24:2026-07-20";
+const GIB = 1024 ** 3;
+const MIB = 1024 ** 2;
 
-/**
- * Python 项目用的 template：从上面那个 Node 24 template 派生（不是直接从原始
- * codex template），烘焙了 DB-GPT / GPT Researcher 与 Python 高级安装题要用的工具链
- * （见 scripts/build-e2b-python-template.ts）。新版 NiceEval 不再提供 eval `environment` /
- * provider `environments` profile；实验必须显式选择整格使用的 template，所以 Python 与
- * Node 题分别放在不同 experiment 里。
- *
- * 重新烘焙后把这个字符串换成新 tag，不用改调用方。
- */
-const NICEEVAL_EVAL_PYTHON_E2B_TEMPLATE = "niceeval-eval-python:2026-07-20";
+/** 16 核 / 32 GiB 宿主的首个实测档位；通过 4 路 task-shaped smoke 后才能继续上调。 */
+export const EVAL_MAX_CONCURRENCY = 4;
 
 /** 被测 coding agent。模型写在各实验的 model 字段，不写在这里。 */
 export const agentUnderTest = codexAgent();
 
-/**
- * docker 下 runtime 能在创建时钉死（选 `node:24-slim` 镜像），e2b 不能——
- * `E2BSandboxSpec.runtime` 只作记录，Node 版本由 template 决定。换成 e2b 后
- * 这条钉子就没了结构性保证，只能在 setup 阶段现查现断言：查到的版本不对，
- * 就在这里响，而不是让它在后面变成一类跟文档无关的失败噪声（诊断成本比这条
- * 检查本身贵得多）。
- */
-function assertNodeMajor(major: number): SandboxHook {
+function assertRuntime(): SandboxHook {
   return async (sandbox, ctx) => {
-    const result = await sandbox.runCommand("node", ["-v"]);
-    const match = /^v(\d+)\./.exec(result.stdout.trim());
-    const found = match ? Number(match[1]) : undefined;
-    if (found !== major) {
-      throw new Error(
-        `sandbox 里的 Node 版本不是 v${major}.x（实测 ${result.stdout.trim() || "<empty>"}，` +
-          `exit ${result.exitCode}）：这个 e2b template 没有烘焙预期的 Node 版本，或 PATH 上` +
-          `不是它。装 niceeval 的链路要跑 pnpm / npx / tsc，版本漂移会被误判成文档没起作用。`,
-      );
+    const [node, user, docker, compose] = await Promise.all([
+      sandbox.runCommand("node", ["-v"]),
+      sandbox.runCommand("id", ["-u"]),
+      sandbox.runCommand("docker", ["info", "--format", "{{.ServerVersion}}"]),
+      sandbox.runCommand("docker", ["compose", "version", "--short"]),
+    ]);
+    const major = /^v(\d+)\./.exec(node.stdout.trim())?.[1];
+    if (node.exitCode !== 0 || major !== "24") {
+      throw new Error(`sandbox Node 必须是 v24.x，实测 ${node.stdout.trim() || node.stderr.trim() || "无输出"}`);
     }
-    ctx.progress({ message: `Node 版本核对通过：${result.stdout.trim()}` });
+    if (user.exitCode !== 0 || user.stdout.trim() !== "1000") {
+      throw new Error(`受管命令必须以 node(uid 1000) 执行，实测 ${user.stdout.trim() || user.stderr.trim()}`);
+    }
+    if (docker.exitCode !== 0 || docker.stdout.trim() === "") {
+      throw new Error(`同容器 inner dockerd 不可用：${docker.stderr.trim() || "docker info 无输出"}`);
+    }
+    if (compose.exitCode !== 0 || compose.stdout.trim() === "") {
+      throw new Error(`docker compose 不可用：${compose.stderr.trim() || "compose version 无输出"}`);
+    }
+    ctx.progress({
+      message: `DinD 基线通过：Node ${node.stdout.trim()} · Docker ${docker.stdout.trim()} · Compose ${compose.stdout.trim()}`,
+    });
   };
 }
 
 /**
- * sandbox 基线：e2b + 本仓库自己烘焙的 Node 24 template（已带 codex CLI，attempt 里不用
- * 再装一遍）。apt/root 能力（provisionTargetAppEnv 要用）来自这个 template 的官方 codex
- * 基线，Node 版本由这层烘焙保证——即便如此仍然实测验证，见 assertNodeMajor：版本不对会在
- * setup 阶段就响，不会静默漂移成后面一类查不出根因的失败。
- *
- * 不带候选版本参数：安装前引导文档不再由 harness 投放进沙箱，eval 直接让 agent 读
- * `candidateInitDocUrl(version)`（见 lib/candidate.ts）。这份 sandbox 基线因此对候选版本
- * 无感——版本只活在 experiment 的 `flags.candidateVersion` 与 eval 的 `t.send()` 里，
- * 不用再在两处（sandbox 装配 + flags）之间手动保持同步。
- *
- * `profile` 由实验文件显式选择。不要在一格实验里混跑 Node 与 Python template；需要同一候选
- * 覆盖两类题时写两格，只让 `evals` 选择范围与 template 配对变化。
+ * rootfs 只读；所有需要写入的位置都落到有大小上限的 tmpfs。memoryBytes 同时禁止额外 swap，
+ * 因而单 attempt 无法靠 writable layer 或 inner image 把共享外层 data-root 写满。
+ * 带 tmpfs 的 provider 能力是 DestroyOnly，NiceEval 会拒绝 --keep-sandbox。
  */
 export function sandboxWith(profile: "node" | "python" = "node") {
-  const base = e2bSandbox({
-    template:
-      profile === "python"
-        ? NICEEVAL_EVAL_PYTHON_E2B_TEMPLATE
-        : NICEEVAL_EVAL_CODEX_NODE24_E2B_TEMPLATE,
-  }).setup(assertNodeMajor(24));
+  const base = dockerSandbox({
+    source: {
+      type: "dockerfile",
+      context: new URL("../sandbox/", import.meta.url),
+    },
+    profile: "default",
+    user: "node",
+    privileged: "rootless",
+    readiness: {
+      command: ["docker", "info"],
+      user: "node",
+      timeoutMs: 30_000,
+      intervalMs: 250,
+    },
+    resources: {
+      cpus: 4,
+      memoryBytes: 6 * GIB,
+      pidsLimit: 2048,
+      readOnlyRootfs: true,
+      tmpfs: {
+        "/var/lib/docker": { sizeBytes: 3 * GIB, mode: 0o711, uid: 0, gid: 0, executable: true },
+        "/home/sandbox/workspace": {
+          sizeBytes: 2 * GIB,
+          mode: 0o755,
+          uid: 1000,
+          gid: 1000,
+          executable: true,
+        },
+        "/home/node": { sizeBytes: 512 * MIB, mode: 0o700, uid: 1000, gid: 1000, executable: true },
+        "/tmp": { sizeBytes: 1024 * MIB, mode: 0o1777, uid: 0, gid: 0 },
+        "/run": { sizeBytes: 128 * MIB, mode: 0o755, uid: 0, gid: 0 },
+        "/root": { sizeBytes: 64 * MIB, mode: 0o700, uid: 0, gid: 0 },
+        "/opt/fixture-secrets": { sizeBytes: 16 * MIB, mode: 0o700, uid: 1000, gid: 1000 },
+      },
+    },
+  }).setup(assertRuntime());
   return profile === "python" ? base.setup(provisionTargetAppEnv()) : base;
 }
