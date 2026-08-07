@@ -12,5 +12,7 @@
 - 是否正确判断最终 verdict，而不是只看 shell 退出码；
 - 是否保持这个本来就正常的项目不变。
 
-`repo/` 是不携带 `.niceeval` 的确定性绿色项目。隐藏判分只用 `show` 读取 agent 留下的最终
-结果，并检查 agent 的工具行为与最终 diff；它不会代替 agent 运行 experiment。
+项目来自本题自己的 `fixtures/harness/run-existing/repo/`，不携带 `.niceeval`，包含五道确定性
+政策 eval。回复语义直接由本轮 LLM judge 判断：必须交代 `5 passed / 0 failed / 0 errored`，
+并说明结论来自实际结果核对；evaluator 不运行 `show`、不解析 CLI 输出。最终 diff 仍机械
+要求为空。

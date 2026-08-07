@@ -1,0 +1,13 @@
+{
+  "name": "niceeval-harness-runtime",
+  "private": true,
+  "type": "module",
+  "packageManager": "pnpm@11.12.0",
+  "scripts": {
+    "eval": "niceeval exp local"
+  },
+  "devDependencies": {
+    "tsx": "^4.23.1",
+    "typescript": "^7.0.2"
+  }
+}

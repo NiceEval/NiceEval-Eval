@@ -9,6 +9,16 @@ log=/tmp/niceeval-inner-dockerd.log
 cp -a /opt/niceeval-node-home/. /home/node/
 chown -R node:node /home/node
 
+# 候选镜像才有这棵 root-only 项目基建。容器启动时复制 package/lock/候选版 AGENTS 等；
+# node_modules 是指向镜像只读依赖树的 symlink。case repo 随后由 eval 上传，不发生安装或联网。
+fixture_project=/opt/niceeval-harness/project
+workspace=/home/sandbox/workspace
+if [ -d "$fixture_project" ]; then
+  mkdir -p "$workspace"
+  cp -a "$fixture_project/." "$workspace/"
+  chown -R node:node "$workspace"
+fi
+
 rm -f "$socket" "$pidfile"
 dockerd \
   --host="unix://$socket" \

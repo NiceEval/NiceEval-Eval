@@ -1,0 +1,5 @@
+# sandbox/Dockerfile 以仓库根为 context，但构建只应看到 runtime recipe。case repo 在 attempt
+# setup 时单独上传，不进入镜像 build key；用白名单避免隐藏判分、凭据或无关改动进入 context。
+**
+!sandbox/
+!sandbox/**

@@ -179,3 +179,24 @@ export function assertPagesInCandidate(pages: RegExp, version: string): void {
       `而是页面全被改名/搬走了。给题库落点补上这个候选那一代的路径，再跑。`,
   );
 }
+
+/**
+ * `assertPagesInCandidate` 的精确路径版本。
+ *
+ * Harness 题知道自己接受哪些随包页面，不需要把路径先编码成正则再拿正则同时承担
+ * 「候选里存在」和「agent 是否读过」两种职责。这里直接比较 manifest 里的规范化相对路径，
+ * 至少存在一条就通过；旧版本页面改名时，把那一代的完整路径加进数组即可。
+ */
+export function assertCandidateHasAnyPage(pages: readonly string[], version: string): void {
+  if (!hasBundledDocs(version)) return;
+
+  const available = readCandidateManifest(version).pages;
+  if (pages.some((page) => available.includes(page))) return;
+
+  throw new Error(
+    `题库的合格落点没有一条存在于候选 niceeval@${version}，路由层会静默读零：\n` +
+      pages.map((page) => `  ${page}`).join("\n") +
+      `\n\n这个候选带了 ${available.length - 1} 页随包文档，说明不是「这个版本没有文档」，` +
+      `而是页面全被改名/搬走了。给题库落点补上这个候选那一代的精确路径，再跑。`,
+  );
+}
