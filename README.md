@@ -59,6 +59,10 @@ pnpm run typecheck
 pnpm exec niceeval list
 ```
 
+当前 Harness 已直接采用下一版 matcher-based `eventOrder` 目标契约；在 NiceEval 补齐该 API 前，
+`pnpm run typecheck` 会有意报告这些 matcher object 与旧字符串签名不兼容。`niceeval list` 与 dry plan
+仍可用于检查发现和矩阵。
+
 只生成计划、不启动付费 agent：
 
 ```sh
@@ -83,10 +87,11 @@ pnpm exec niceeval show @<locator> --execution
 pnpm exec niceeval show @<locator> --diff
 ```
 
-Harness 题不会因为 agent 读取 `.niceeval` 原始记录就预先判错。每轮是否真正用了 shell 由
-`turn.calledTool("shell")` 断言；真实工具输出与 agent 回复分别交给 LLM judge 做语义判断，不用
-命令正则或 `show` JSON parser；目标产物、结构化配置和业务行为分别使用文件断言、`equals` 与
-`runCommand` 隐藏行为测试。evaluator 不会代替 agent 重跑 experiment。
+Harness 题不会因为 agent 读取 `.niceeval` 原始记录就预先判错。`calledTool` 分别确认
+`niceeval exp local` / `niceeval show`，目标 `eventOrder` matcher 表达二者与最终回复的顺序；
+workflow、execution、response 三个 LLM judge 分别判断调用语义、真实 CLI 输出和回复结论，不用
+`show` JSON parser。目标产物、结构化配置和业务行为分别使用文件断言、`equals` 与 `runCommand`
+隐藏行为测试。evaluator 不会代替 agent 重跑 experiment。
 
 ## 候选版本与实验矩阵
 

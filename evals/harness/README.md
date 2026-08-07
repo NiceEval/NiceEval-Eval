@@ -30,11 +30,15 @@ Node、pnpm、Docker/Compose、精确候选 NiceEval、依赖和 `niceeval init`
 
 ## 判分边界
 
-开放式回复不靠正则、结构化 `niceeval show` 或 record parser。原生断言按事实分工：每轮是否
-使用 shell 由 `turn.calledTool("shell")` 判断；该轮 `turn.toolCalls` 中真实 CLI 输出的语义、以及
-`turn.message` 中诊断和复验结论的语义，分别交给 LLM-as-judge。turn 天然限定本轮，不需要累计
-游标。状态计数、failed/errored 分类、locator 下钻、因果归属与复验陈述必须同时得到工具输出和
-回复支持。
+开放式回复不靠结构化 `niceeval show` 或 record parser。原生断言按事实分工：`calledTool` 用窄
+命令锚点分别确认本轮调过 `niceeval exp local` 与 `niceeval show`；`eventOrder` 的目标契约用带
+数据的 event group matcher 表达 `exp → show → assistant message`。LLM judge 再拆成三个独立
+维度：workflow judge 判断真实调用的语义顺序，execution judge 判断 CLI 输出的计数与分类，
+response judge 判断诊断和复验结论。turn 天然限定本轮，不需要累计游标。
+
+当前随包 NiceEval 的 `eventOrder` 仍只接受事件类型字符串，尚不接受上述 tool/message matcher；
+Harness 有意直接写目标 API，让类型检查明确暴露框架缺口。在 NiceEval 补齐 matcher 及运行时匹配
+前，Harness 的 `eventOrder` 断言不能执行，这不是用类型断言掩盖的兼容分支。
 
 其它原生断言只验证各自擅长的事实：`includes` 检查明确源码值，`equals` 检查结构化配置，
 `runCommand` + `commandSucceeded` 运行隐藏 black-box 行为测试，`succeeded` 检查 turn 正常结束。
@@ -52,5 +56,5 @@ Harness 不预设 agent 必须读取哪一篇随包页面，也不维护页面�
 
 每个版本选中 3 道题，每题运行 3 次，避免把 coding agent 的单次随机性误判成候选文档差异；
 因此完整 `niceeval exp harness` 是 3 版本 × 3 题 × 3 次，共 27 个付费 coding-agent attempt，
-且每次包含多个 judge 评分点。日常验证只运行 typecheck、`niceeval list` 和各版本的 `--dry`；
-没有用户明确批准时不启动真实模型运行。
+且每次包含多个 judge 评分点。日常验证运行 `niceeval list` 和各版本的 `--dry`；typecheck 在
+matcher-based `eventOrder` 落地前会有意暴露该目标 API 缺口。没有用户明确批准时不启动真实模型运行。

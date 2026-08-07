@@ -3,6 +3,8 @@ import { commandSucceeded, excludes, includes, isTrue } from "niceeval/expect";
 
 const EXPECTED_REFUND_ANSWER = "Customers may request a refund within 30 days of purchase.";
 const INITIAL_REFUND_ANSWER = "Customers may request a refund within 14 days of purchase.";
+const NICEEVAL_LOCAL_COMMAND = /\bniceeval(?:@\S+)?\s+(?:--\s+)?exp\s+local\b/i;
+const NICEEVAL_SHOW_COMMAND = /\bniceeval(?:@\S+)?\s+(?:--\s+)?show\b/i;
 
 export default defineScoreEval({
   description: "从同一批 failed 中区分业务实现错误与过期 eval，并按正确层修复后全量复验",
@@ -18,10 +20,35 @@ export default defineScoreEval({
 
     const turn1 = await t.send("先调查 local experiment 的失败，判断每一处到底该改哪一层；暂时别改。");
 
-    turn1.calledTool("shell", { status: "completed" }).points(1).gate();
+    turn1.calledTool("shell", { input: { command: NICEEVAL_LOCAL_COMMAND } }).points(1).gate();
+    turn1
+      .calledTool("shell", {
+        input: { command: NICEEVAL_SHOW_COMMAND },
+        status: "completed",
+      })
+      .points(1)
+      .gate();
+    // TODO(niceeval): 等待 eventOrder 支持带数据的 event group matcher。
+    turn1.eventOrder([
+      { type: "tool", name: "shell", input: { command: NICEEVAL_LOCAL_COMMAND } },
+      {
+        type: "tool",
+        name: "shell",
+        input: { command: NICEEVAL_SHOW_COMMAND },
+        status: "completed",
+      },
+      { type: "message", role: "assistant" },
+    ]).points(1).gate();
     turn1.judge.autoevals
       .closedQA(
-        "输入是本轮标准工具调用 JSON。必须能从真实调用的入参、输出和状态确认：助手运行了非 dry-run 的 local experiment；实际结果为 5 个 eval、3 passed、2 failed、0 errored，失败是 policy/refund 与 policy/warranty；随后使用 NiceEval 的结果查看能力下钻了失败证据。local 因 eval failed 返回失败状态不应判 N。缺任一项判 N。",
+        "只判断本轮有序工具调用。必须确认助手以可分别观察的工具调用先运行非 dry-run 的完整 niceeval exp local，后使用 niceeval show 或带 locator 的等价 NiceEval 查看命令下钻失败；只读源码、只跑 dry-run、把两步藏进同一个 shell 调用或没有下钻都判 N。",
+        { on: JSON.stringify(turn1.toolCalls) },
+      )
+      .points(2)
+      .gate();
+    turn1.judge.autoevals
+      .closedQA(
+        "只判断本轮 NiceEval 工具输出。必须由真实输出支持：完整 local 共 5 个 eval，3 passed、2 failed、0 errored；失败是 policy/refund 与 policy/warranty；下钻证据分别显示 refund 的 14 days 对 30 days、warranty 的 1-year 对 90 days 不一致。local 因 eval failed 返回失败状态不应判 N。缺任一项判 N。",
         { on: JSON.stringify(turn1.toolCalls) },
       )
       .points(3)
@@ -44,10 +71,33 @@ export default defineScoreEval({
       : "候选是 0.12+：业务源码不进入 eval fingerprint，工具调用证据必须体现强制全量重新执行（通常是 --rerun all，或语义等价的清理后全量运行）；只让 warranty 因 eval 指纹变化重跑、同时携入旧 refund failure，不算完成。";
     const turn2 = await t.send("按你判断的责任层分别修好，再全量确认。");
 
-    turn2.calledTool("shell", { status: "completed" }).points(1).gate();
+    turn2
+      .calledTool("shell", {
+        input: { command: NICEEVAL_LOCAL_COMMAND },
+        status: "completed",
+      })
+      .points(1)
+      .gate();
+    // TODO(niceeval): 等待 eventOrder 支持带数据的 event group matcher。
+    turn2.eventOrder([
+      {
+        type: "tool",
+        name: "shell",
+        input: { command: NICEEVAL_LOCAL_COMMAND },
+        status: "completed",
+      },
+      { type: "message", role: "assistant" },
+    ]).points(1).gate();
     turn2.judge.autoevals
       .closedQA(
-        `输入是本轮标准工具调用 JSON。必须能从真实调用的入参、输出和状态确认：修改后执行了完整 local experiment，并实际得到 5 passed、0 failed、0 errored。${fullRerunRule} 缺任一项判 N。`,
+        `只判断本轮有序工具调用。必须确认助手先分别修改 refund 业务实现与 warranty eval，随后运行完整 niceeval exp local。${fullRerunRule} 缺任一项判 N。`,
+        { on: JSON.stringify(turn2.toolCalls) },
+      )
+      .points(2)
+      .gate();
+    turn2.judge.autoevals
+      .closedQA(
+        "只判断本轮 NiceEval 工具输出。必须由真实输出支持最终 5 passed、0 failed、0 errored。缺任一项判 N。",
         { on: JSON.stringify(turn2.toolCalls) },
       )
       .points(3)

@@ -11,9 +11,10 @@
 
 ## 判分深度
 
-- `turn.toolCalls` 直接提供本轮工具名、入参、输出和状态，无需从累计摘要切游标；
-- LLM judge 同时阅读本轮原始回复与结构化工具证据，判断是否真实运行、下钻和准确汇报，
-  不使用命令正则，也不解析 NiceEval CLI 或 record；
+- `calledTool` 分别确认调过 `niceeval exp local` 与 `niceeval show`，目标 `eventOrder` matcher
+  表达运行、下钻、最终回复的顺序；
+- workflow、execution、response 三个 LLM judge 分别判断真实调用语义、CLI 输出和回复结论，
+  不解析 NiceEval CLI 或 record；
 - 第一轮机械要求恰好新增一条会被 `local` 选中的 eval，且业务实现暂时不变；
 - 另一个 judge 直接审新 eval 的语义，排除恒真、skip 或弱断言；
 - 第二轮要求新 eval 原样保留，并验证业务实现确实发生变化；

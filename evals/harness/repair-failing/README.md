@@ -17,8 +17,8 @@
 
 ## 判分深度
 
-- LLM judge 同时读取回复与本轮 `turn.toolCalls`（含真实输出），验证 agent 实际运行、用 locator/show 下钻、
-  正确汇报计数，并完成两条不同的因果归属；不使用命令正则或结果 parser；
+- `calledTool` 与目标 `eventOrder` matcher 检查 `exp → show → 回复`，workflow、execution、response
+  三个 LLM judge 分别判断调用顺序、真实输出计数和两条不同的因果归属；不使用结果 parser；
 - 第一轮最终 diff 必须为空；
 - 第二轮直接检查 `src/policies.ts` 与 `evals/policy/warranty.eval.ts` 的目标修复；
 - warranty eval 必须恢复明确的 1-year 断言，不能只删掉失败条件；

@@ -14,8 +14,8 @@ failed/errored 分类。
 
 ## 判分深度
 
-- LLM judge 同时读取回复与本轮 `turn.toolCalls`（含真实输出），验证实际运行、attempt 下钻、计数、受影响
-  case、ECONNREFUSED 证据和共享配置根因；不使用命令正则或结果 parser；
+- `calledTool` 与目标 `eventOrder` matcher 检查 `exp → show → 回复`，workflow、execution、response
+  三个 LLM judge 分别判断调用顺序、真实输出计数、ECONNREFUSED 证据和共享配置根因；不使用结果 parser；
 - 第一轮最终 diff 必须为空；
 - 第二轮直接检查 `config/policy.json` 是否恢复成精确目标配置；
 - 配置最终必须精确恢复 `memory://policy` 与 `memory://compliance` 两个端点；
