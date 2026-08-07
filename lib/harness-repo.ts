@@ -13,11 +13,11 @@ export const RAW_RESULT_RE = /\.niceeval\/[\w./-]*\.json/;
 
 /** 诊断题只读历史结果，不能真的启动实验。 */
 export const EXP_COMMAND_RE =
-  /(?:^|(?:&&|\|\||;|\|)\s*)(?:(?:pnpm\s+(?:--silent\s+)?exec|npx(?:\s+--yes)?)\s+|(?:\.\/)?node_modules\/\.bin\/)?niceeval\s+exp\b/m;
+  /(?:^|(?:&&|\|\||;|\|)\s*|(?:^|\s)(?:\/bin\/)?(?:ba|z)?sh\s+-lc\s+["'])(?:(?:pnpm\s+(?:--silent\s+)?exec|npx(?:\s+--yes)?)\s+|(?:\.\/)?node_modules\/\.bin\/)?niceeval\s+exp\b/m;
 
 /** 至少使用过一次结果查询入口。 */
 export const SHOW_COMMAND_RE =
-  /(?:^|(?:&&|\|\||;|\|)\s*)(?:(?:pnpm\s+(?:--silent\s+)?exec|npx(?:\s+--yes)?)\s+|(?:\.\/)?node_modules\/\.bin\/)?niceeval\s+show\b/m;
+  /(?:^|(?:&&|\|\||;|\|)\s*|(?:^|\s)(?:\/bin\/)?(?:ba|z)?sh\s+-lc\s+["'])(?:(?:pnpm\s+(?:--silent\s+)?exec|npx(?:\s+--yes)?)\s+|(?:\.\/)?node_modules\/\.bin\/)?niceeval\s+show\b/m;
 
 /**
  * 把用例自己的 repo/ 物化为 agent 看到的完整仓库。
