@@ -56,11 +56,11 @@ TypeScript 文件以 `*.fixture` 结尾，只是为了避开宿主 discovery；�
 
 ## 未来候选
 
-以下目录只保留 README，不参与 discovery，也不携带 repo：
+未来设计已移到 `evals/roadmap/harness/`，只保留 Markdown，不参与 discovery，也不携带 repo：
 
-- `agent-actual-approach`：运行后从 execution 还原实际方案；
-- `best-tradeoff`：当场生成多组结果后做公平比较；
-- `stale-experiments`：当场生成基线，再制造局部 fingerprint 变化，评缓存与局部重跑。
+- `agent-actual-approach.md`：运行后从 execution 还原实际方案；
+- `best-tradeoff.md`：当场生成多组结果后做公平比较；
+- `stale-experiments.md`：当场生成基线，再制造局部 fingerprint 变化，评缓存与局部重跑。
 
 等 execution/report、比较视图和 plan/cache 契约稳定后，再按“不签入历史 `.niceeval`”的原则实现。
 

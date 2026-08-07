@@ -19,6 +19,6 @@ export default defineExperiment({
   model: "gpt-5.6-luna",
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("python"),
-  evals: ["install/", "advance/"],
+  evals: ["install/", "roadmap/"],
   attempts: 1,
 });
