@@ -1,7 +1,7 @@
 import { defineExperiment } from "niceeval";
 import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
+import { sandboxWith } from "../../lib/experiment-runtime.ts";
 
 /**
  * npm latest（0.12.0）的安装基线：覆盖普通项目与复杂宿主的从零接入。
@@ -16,5 +16,4 @@ export default defineExperiment({
   sandbox: sandboxWith("python"),
   evals: ["install/", "advance/"],
   attempts: 1,
-  maxConcurrency: EVAL_MAX_CONCURRENCY,
 });

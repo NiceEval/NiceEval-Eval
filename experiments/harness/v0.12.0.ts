@@ -1,7 +1,7 @@
 import { defineExperiment } from "niceeval";
 import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
+import { sandboxWith } from "../../lib/experiment-runtime.ts";
 
 /** 当前 Harness 工作流：运行、结果下钻与失败修复。 */
 const NICEEVAL_VERSION = await ensureCandidate("0.12.0");
@@ -14,5 +14,4 @@ export default defineExperiment({
   sandbox: sandboxWith("node"),
   evals: (evalDef) => evalDef.tags.includes("harness-v0.12.0"),
   attempts: 1,
-  maxConcurrency: EVAL_MAX_CONCURRENCY,
 });

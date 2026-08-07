@@ -13,9 +13,6 @@ import { provisionTargetAppEnv } from "./target-app-env.ts";
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
 
-/** 16 核 / 32 GiB 宿主的首个实测档位；通过 4 路 task-shaped smoke 后才能继续上调。 */
-export const EVAL_MAX_CONCURRENCY = 4;
-
 function assertRuntime(): SandboxHook {
   return async (sandbox, ctx) => {
     const [node, user, docker, compose] = await Promise.all([

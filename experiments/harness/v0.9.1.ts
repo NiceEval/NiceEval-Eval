@@ -1,7 +1,7 @@
 import { defineExperiment } from "niceeval";
 import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { EVAL_MAX_CONCURRENCY, sandboxWith } from "../../lib/experiment-runtime.ts";
+import { sandboxWith } from "../../lib/experiment-runtime.ts";
 
 /**
  * 历史结果诊断基线。fixture 来自 NiceEval 0.4.6 的 schema 8，0.9.1 是最后验证过
@@ -17,5 +17,4 @@ export default defineExperiment({
   sandbox: sandboxWith(),
   evals: (evalDef) => evalDef.tags.includes("harness-v0.9.1"),
   attempts: 1,
-  maxConcurrency: EVAL_MAX_CONCURRENCY,
 });
