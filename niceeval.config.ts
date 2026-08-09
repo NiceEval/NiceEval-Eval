@@ -15,12 +15,9 @@ loadRepoEnv();
 
 export default defineConfig({
   judge: {
-    // 产出质量层用 judge 打分。裁判模型本该与被测模型分离，不让同一个模型给自己打分——
-    // 但 gpt-5.4-mini 在 x1api.top 这把 key 下 404（这个网关这组账号不认这个模型名），
-    // 换成这把 key 下已确认可用的 gpt-5.6-luna。install 实验族
-    // 被测 agent 也用的是 gpt-5.6-luna，这组 judge 因此不再跟被测模型分离——如果产出质量层
-    // 的分数看着不对劲，先怀疑这个，而不是文档效果本身。
-    model: "gpt-5.6-luna",
+    // 全仓产出质量统一交给 Sol 裁判。被测 Agent 由各 Experiment 单独选择；Harness 当前使用
+    // Terra，install 实验仍可使用 Luna，裁判不再与被测模型混用。
+    model: "gpt-5.6-sol",
     // 复用被测 codexAgent() 那把 CODEX_API_KEY/网关，不单独开一份 judge 凭证。
     // baseUrl 必须显式给：judge 的解析链曾经在省略时按 NICEEVAL_JUDGE_BASE → CODEX_BASE_URL →
     // OPENAI_BASE_URL 找，2026-07-25 起收敛成「只认 config 里的 judge.baseUrl，省略即官方端点」

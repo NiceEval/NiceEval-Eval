@@ -91,6 +91,25 @@ function assertRuntime(candidateVersion?: string): SandboxHook {
 }
 
 /**
+ * 当前 NiceEval DinD provider 接管容器启动命令；候选镜像不能再依赖自身 ENTRYPOINT 做
+ * attempt 级初始化。这里在 daemon readiness 之后恢复用户 home、物化预装项目，并把两枚
+ * 固定 runtime 归档导入 provider 暴露的默认 Unix socket。
+ */
+function prepareHarnessCandidate(candidateVersion?: string): SandboxHook {
+  return async (sandbox, ctx) => {
+    if (candidateVersion === undefined) return;
+    ctx.progress({ message: `物化 Harness 候选运行时：niceeval@${candidateVersion}` });
+    const prepared = await sandbox.runCommand("niceeval-harness-prepare", [], { user: "root", stream: true });
+    if (prepared.exitCode !== 0) {
+      throw new Error(
+        `Harness 候选运行时物化失败（niceeval@${candidateVersion}）：` +
+          `${prepared.stderr.trim() || prepared.stdout.trim() || `exit ${prepared.exitCode}`}`,
+      );
+    }
+  };
+}
+
+/**
  * rootfs 只读；所有需要写入的位置都落到有大小上限的 tmpfs。memoryBytes 同时禁止额外 swap，
  * 因而单 attempt 无法靠 writable layer 或 inner image 把共享外层 data-root 写满。
  * 带 tmpfs 的 provider 能力是 DestroyOnly，NiceEval 会拒绝 --keep-sandbox。
@@ -110,11 +129,9 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
         }
       : { target: "candidate" }),
     user: "node",
-    dockerAccess: {
-      mode: "dind",
-      isolation: "managed-rootless",
-      profile: "default",
-    },
+    dockerAccess: harnessCandidate
+      ? { mode: "dind", isolation: "raw-privileged" }
+      : { mode: "dind", isolation: "managed-rootless", profile: "default" },
     resources: {
       cpus: 4,
       memoryBytes: harnessCandidate ? 8 * GIB : 6 * GIB,
@@ -147,6 +164,6 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
       user: "node",
       timeoutMs: 30_000,
     },
-  }).setup(assertRuntime(candidateVersion));
+  }).setup(prepareHarnessCandidate(candidateVersion)).setup(assertRuntime(candidateVersion));
   return profile === "python" ? base.setup(provisionTargetAppEnv()) : base;
 }

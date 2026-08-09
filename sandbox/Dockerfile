@@ -35,18 +35,17 @@ RUN apt-get update \
   && usermod --append --groups docker node \
   && cp -a /home/node /opt/niceeval-node-home
 
-COPY sandbox/niceeval-dind-entrypoint.sh /usr/local/bin/niceeval-dind-entrypoint
 COPY sandbox/niceeval-harness-build.sh /usr/local/bin/niceeval-harness-build
+COPY sandbox/niceeval-harness-prepare.sh /usr/local/bin/niceeval-harness-prepare
 COPY sandbox/niceeval-runtime-import.sh /usr/local/bin/niceeval-runtime-import
 
-RUN chmod 0755 /usr/local/bin/niceeval-dind-entrypoint /usr/local/bin/niceeval-harness-build \
+RUN chmod 0755 /usr/local/bin/niceeval-harness-build /usr/local/bin/niceeval-harness-prepare \
   /usr/local/bin/niceeval-runtime-import
 
-ENV DOCKER_HOST=unix:///run/niceeval-docker/docker.sock
-
-# NiceEval 会覆盖 Cmd 为自己的 TTL/log supervisor；ENTRYPOINT 先把同容器 dockerd 启好，
-# 再 exec 回 NiceEval 的 Cmd。受管命令由 factory 的 user: "node" 单独控制。
-ENTRYPOINT ["/usr/local/bin/niceeval-dind-entrypoint"]
+# NiceEval 的 DinD provider 会覆盖 Entrypoint/Cmd 为自己的 TTL/log supervisor，并通过默认
+# /var/run/docker.sock 暴露同容器 daemon；不要设置 DOCKER_HOST/DOCKER_CONTEXT，避免
+# 把 Agent 的裸 docker 命令导向另一套 endpoint。受管命令仍由 factory 的 user: "node"
+# 单独控制。
 
 # -------------------------------------------------------------------------------------
 # 离线 inner runtime 的两枚固定 digest 物化源。内层被测项目（terminal-bench/regex-log）

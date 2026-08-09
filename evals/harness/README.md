@@ -101,6 +101,7 @@ Harness 直接使用 Fact API：Fact producer 先创建事实，再用 `t.assert
 每个版本选中 2 道题，每题运行 3 次，避免把 coding agent 的单次随机性误判成候选文档差异；
 因此完整 `niceeval exp harness` 是 3 版本 × 2 题 × 3 次，共 **18 个付费 coding-agent
 attempt**，且每次包含多个 judge 评分点。实现落地后必须运行 `niceeval list` 和各版本的 `--dry`
-验证；缺少已注册的 Docker execution profile 时，物理规划应在创建 sandbox 或发起付费调用前
-失败，不能静默降级到 privileged runtime。
+验证。本机尚未部署 managed-rootless execution profile；用户明确授权本 Harness 的 candidate
+runtime 使用 `raw-privileged` DinD 完成真实验收。该授权只适用于传入 candidate version 的 Harness，
+不改变 install / roadmap eval 的 managed-rootless 边界。
 没有用户明确批准时不启动真实模型运行。
