@@ -110,21 +110,42 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
         }
       : { target: "candidate" }),
     user: "node",
-    privileged: "rootless",
+    dockerAccess: {
+      mode: "dind",
+      isolation: "managed-rootless",
+      profile: "default",
+    },
     resources: {
       cpus: 4,
       memoryBytes: harnessCandidate ? 8 * GIB : 6 * GIB,
       pidsLimit: 2048,
       readOnlyRootfs: true,
       tmpfs: {
-        "/var/lib/docker": { sizeBytes: harnessCandidate ? 6 * GIB : 3 * GIB, mode: 0o711, uid: 0, gid: 0 },
-        "/home/sandbox/workspace": { sizeBytes: 2 * GIB, mode: 0o755, uid: 1000, gid: 1000 },
+        "/var/lib/docker": {
+          sizeBytes: harnessCandidate ? 6 * GIB : 3 * GIB,
+          mode: 0o711,
+          uid: 0,
+          gid: 0,
+          executable: true,
+        },
+        "/home/sandbox/workspace": {
+          sizeBytes: 2 * GIB,
+          mode: 0o755,
+          uid: 1000,
+          gid: 1000,
+          executable: true,
+        },
         "/home/node": { sizeBytes: 512 * MIB, mode: 0o700, uid: 1000, gid: 1000 },
         "/tmp": { sizeBytes: 1024 * MIB, mode: 0o1777, uid: 0, gid: 0 },
         "/run": { sizeBytes: 128 * MIB, mode: 0o755, uid: 0, gid: 0 },
         "/root": { sizeBytes: 64 * MIB, mode: 0o700, uid: 0, gid: 0 },
         "/opt/fixture-secrets": { sizeBytes: 16 * MIB, mode: 0o700, uid: 1000, gid: 1000 },
       },
+    },
+    readiness: {
+      command: ["docker", "info"],
+      user: "node",
+      timeoutMs: 30_000,
     },
   }).setup(assertRuntime(candidateVersion));
   return profile === "python" ? base.setup(provisionTargetAppEnv()) : base;

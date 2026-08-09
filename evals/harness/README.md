@@ -73,32 +73,34 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
   `--eval` / 0.12+ 的 `--source`，以及 `--execution` 等公开证据视图。**禁止**以读取
   `.niceeval/` 落盘产物或 `evals/`、`agents/`
   源码代替取证；这不是能力加分项，而是题目边界。
-- 外层确定性断言是 **scope-first 的短 API**：`commandMatch(executable, { argsStart,
-  excludes, status? })` 本身就是匹配同一笔 logical tool occurrence 的 `ToolMatch`，只锚定本轮
-  `t.send()` 作用域内的窄事实（例如本轮调过 `niceeval exp local`、本轮调过
-  `niceeval show`）；executable 匹配标准 logical command，透明兼容 direct、`pnpm exec`、
-  `pnpm --silent exec` 与无 runner option 的 `npx`，不解析任何 `show` JSON，也不维护全仓
-  文件清单；
+- 外层确定性断言只保留当前 Observation / Sandbox 能诚实证明的 **Fact**：
+  `turn.notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`、`turn.succeeded()`，以及 A 的
+  精确 `changedPaths` / `fileChanged`、B 的 `noChanges`。当前 Codex / Claude CLI Adapter 看不到
+  内部 shell argv，故不把 `commandMatch()` 或 `toolOrder()` 当作硬 gate；不能把 opaque shell
+  伪装成已经观察到的 CLI 子序列。
 - `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))` 命中观察到的禁区路径
-  （`.niceeval`、`evals`、`agents`）会让 gate 失败；它复用工具负存在性，只是行为证据，
+  （`.niceeval`、`evals`、`agents`）会让对应 Fact 判定用途失败；它复用工具负存在性，只是行为证据，
   不是 OS 级文件审计；没有命中的文件系统操作不在判分范围内；
-- Judge 使用现有 `turn.judge.autoevals.closedQA()`，并通过 `{ on }` 显式传入本轮完整
-  `toolCalls + message`，逐维判断调用语义、CLI 输出计数与归因/复验结论。这里的
+- Judge 继续使用现有 `turn.judge.autoevals.closedQA()`，并通过 `{ on }` 显式传入本轮完整
+  `toolCalls + message`。既有完整 Turn rubric 负责运行 → show → 动态 locator → 下钻 → 最终回复的
+  有序语义，以及 CLI 输出计数、归因与复验结论；不增加 Judge 次数或分数。这里的
   `JSON.stringify()` 只是把公开 Turn 材料传给只接受 string 的现有入口，不匹配 `show` JSON
   形状，也不替 agent 重跑 experiment。
 - canned agent 只用于稳定复现判分路径，不构成对真实模型智力的任何结论。
 
 ## 类型检查状态
 
-Harness 直接写下一版 target assertion API（scope-first 的短断言面）。在 NiceEval 补齐
-`commandMatch()`、`referencesAnyPath()`、无 name `toolMatch({ input })` 与对应 scoped assertion 签名前，`pnpm run typecheck` 和加载
-Harness eval 都会明确失败。这是文档面、评估面与实现面的已知依赖，不得用旧 JSON shape、
-正则 matcher、类型断言或本地 helper 把它静默掉。
+Harness 直接使用 Fact API：Fact producer 先创建事实，再用 `t.assert()`、`t.score()` 与
+`return t.finishScore()` 显式登记用途并收口。`niceeval list` 会实际加载这两道 eval；不得用旧
+`.points().gate()` Fact 链、旧 JSON shape、类型断言或本地 helper 掩盖签名错误。既有 Judge 链
+是隔离的 legacy bridge，不属于 Fact 作者面迁移范围。仓库其余 install / roadmap eval 尚未迁移，
+因此全仓 `pnpm run typecheck` 的遗留错误不能冒充 Harness 自身错误。
 
 ## 运行成本
 
 每个版本选中 2 道题，每题运行 3 次，避免把 coding agent 的单次随机性误判成候选文档差异；
 因此完整 `niceeval exp harness` 是 3 版本 × 2 题 × 3 次，共 **18 个付费 coding-agent
-attempt**，且每次包含多个 judge 评分点。target API 尚未落地时只做源码与文档 diff 检查；
-实现落地后再恢复 `niceeval list` 和各版本的 `--dry` 验证。
+attempt**，且每次包含多个 judge 评分点。实现落地后必须运行 `niceeval list` 和各版本的 `--dry`
+验证；缺少已注册的 Docker execution profile 时，物理规划应在创建 sandbox 或发起付费调用前
+失败，不能静默降级到 privileged runtime。
 没有用户明确批准时不启动真实模型运行。

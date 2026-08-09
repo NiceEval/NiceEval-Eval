@@ -17,7 +17,9 @@
 
 ## 判分重点
 
-- 强制观察到 `exp → show → exp → show`，并禁止直接把 `.niceeval`、`evals` 或 `agents` 作为工具输入读取；
+- 既有完整 Turn Judge 评估 `exp → show → 动态 locator → 下钻 → 修复/复验 → 最终回复` 的有序
+  语义；当前 CLI Adapter 看不到内部 shell argv，因此不把 `commandMatch` / `toolOrder` 当硬 gate；
+- 外层 Fact 禁止观察到把 `.niceeval`、`evals` 或 `agents` 作为工具输入读取，并要求 Turn 成功；
 - 0.12+ / canary 必须从公开 `niceeval show` 输出取得动态 locator，恰好接受三条仍有效的 terminal results，
   只真实重跑原先 errored 的 `terminal-bench/regex-log`；0.9.x 没有 locator accept，改完后必须完整重跑；
 - 外层只接受 `experiments/local.ts` 的目标 image 改动，并用公开结果证据核验根因、保留项和最终分布。

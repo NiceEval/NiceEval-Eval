@@ -14,7 +14,9 @@
 
 ## 判分重点
 
-- 强制观察到一次真实 `exp → show`，并禁止直接把 `.niceeval`、`evals` 或 `agents` 作为工具输入读取；
+- 既有完整 Turn Judge 评估真实 `exp → show → 动态 locator → 下钻 → 最终回复` 的有序语义；当前
+  CLI Adapter 看不到内部 shell argv，因此不把 `commandMatch` / `toolOrder` 当硬 gate；
+- 外层 Fact 禁止观察到把 `.niceeval`、`evals` 或 `agents` 作为工具输入读取，并要求 Turn 成功；
 - 对 `classifier-debug` 和 `log-summary` 都要求引用公开 `show` 的动态 locator 与输出，并明确排除互换归因；
 - 最终 workspace 必须无改动。
 
