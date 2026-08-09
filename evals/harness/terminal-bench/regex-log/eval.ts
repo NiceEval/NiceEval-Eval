@@ -19,19 +19,30 @@ export default defineScoreEval({
       turn.notCalledTool(
         toolMatch({ input: referencesAnyPath([".niceeval", "evals", "agents"]) }),
       ),
+      { key: "harness.regex-log.public-evidence.verdict" },
     );
-    t.assert(turn.succeeded());
+    t.assert(turn.succeeded(), { key: "harness.regex-log.turn-succeeded.verdict" });
 
     const changedOnlyConfig = t.sandbox.changedPaths(["experiments/local.ts"]);
-    t.assert(changedOnlyConfig);
-    t.score("修改范围", changedOnlyConfig, { max: 3 });
+    t.assert(changedOnlyConfig, {
+      key: "harness.regex-log.changed-only-config.verdict",
+    });
+    t.score("修改范围", changedOnlyConfig, {
+      key: "harness.regex-log.changed-only-config.score",
+      max: 3,
+    });
 
     const repairedRuntime = t.sandbox.fileChanged("experiments/local.ts", {
       before: includes("runtime:node"),
       after: includes("runtime:python"),
     });
-    t.assert(repairedRuntime);
-    t.score("runtime 配置修复", repairedRuntime, { max: 2 });
+    t.assert(repairedRuntime, {
+      key: "harness.regex-log.runtime-repaired.verdict",
+    });
+    t.score("runtime 配置修复", repairedRuntime, {
+      key: "harness.regex-log.runtime-repaired.score",
+      max: 2,
+    });
 
     turn.judge.autoevals.closedQA("【最终 current 结果】只依据本轮完整有序 Turn 的公开输出判断：Agent 必须先真实运行非 dry-run local experiment、经 show 诊断后才修复，并在修复后再次真实运行再用最后一次 niceeval show 核对 current leaderboard。该最后公开输出必须恰好是 terminal-bench/hello-world、terminal-bench/fix-permissions、terminal-bench/classifier-debug、terminal-bench/regex-log 四项，其中 3 passed、1 failed、0 errored；唯一 failed 是原本就合法的 terminal-bench/classifier-debug，不能用回复中的自报数字代替 CLI 证据，最终回复也必须在这次复验 show 之后说明结论。", {
       on: JSON.stringify({ toolCalls: turn.toolCalls, message: turn.message }),

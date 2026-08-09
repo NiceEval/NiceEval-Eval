@@ -1,6 +1,6 @@
 import { defineScoreEval } from "niceeval";
+import { referencesAnyPath, toolMatch } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
 import type { ClarifyFacts } from "./share/clarify-criteria.ts";
 import { evalAdapter, evalAdapterPractice, evalExecutionEvidence } from "./share/eval-adapter.ts";
@@ -126,18 +126,50 @@ export default defineScoreEval({
     // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在
     // input.command 里；miss 时断言的 received 会带同名 shell 调用的出入参,归因不用手搓。
     await t.group("评估是否正确加载文档", async () => {
-      // 本段是「计量，不 gate」（见文件头）：计分制里 .points() 的得分点不参与判定，
+      // 本段是「计量，不 gate」（见文件头）：计分制里 t.score 的得分点不参与判定，
       // 没挣到只是少挣分，不会让「文档没起作用」判负。五条接入路径这段写法一致。
-      t.calledTool("shell", { input: { command: INDEX_RE } }).points(1); // 以随包 INDEX.md 为路由入口
-      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).points(1); // 读到与宿主形态匹配的页面
-      t.calledTool("shell", { input: { command: TIER_PAGE_RE } }).points(1); // 澄清里要摆的三档只有这页讲
-      t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).points(1); // 没退回官网 / GitHub main
+      t.score(
+        "以随包 INDEX.md 为路由入口",
+        t.calledTool(toolMatch("shell", { input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) })),
+        { max: 1 },
+      );
+      t.score(
+        "读到与宿主形态匹配的页面",
+        t.calledTool(toolMatch("shell", {
+          input: referencesAnyPath([
+            "docs-site/zh/how-to/connect-your-agent.mdx",
+            "docs-site/zh/how-to/write-send.mdx",
+            "docs-site/zh/tutorials/connect-your-agent.mdx",
+            "docs-site/zh/tutorials/write-send.mdx",
+            "docs-site/zh/tutorials/quickstart.mdx",
+          ]),
+        })),
+        { max: 1 },
+      );
+      t.score(
+        "读到接入等级页",
+        t.calledTool(toolMatch("shell", { input: referencesAnyPath(["docs-site/zh/explanation/tier.mdx"]) })),
+        { max: 1 },
+      );
+      t.score(
+        "没退回官网 / GitHub main",
+        t.notCalledTool(toolMatch("shell", {
+          input: referencesAnyPath([
+            "niceeval.com/docs",
+            "github.com/CorrectRoadH/niceeval/blob/main",
+            "github.com/CorrectRoadH/niceeval/tree/main",
+            "github.com/CorrectRoadH/niceeval/raw/main",
+          ]),
+        })),
+        { max: 1 },
+      );
     });
 
     // 生命周期收尾：把 agent 写出的三件套 copy 到本地 .agent-output/（gitignore）供人工 review。
     // 沙箱马上就销毁，产物随之消失——趁现在抓一份。纯落盘，不影响 verdict。
     await saveAgentOutput(t, "db-gpt");
 
-    turn.succeeded();
+    t.assert(turn.succeeded());
+    return t.finishScore();
   },
 });

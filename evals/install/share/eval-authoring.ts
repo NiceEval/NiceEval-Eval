@@ -17,7 +17,7 @@
  * 3. 从零接入页的架构硬规则之二：「评估用例侧不代管被测进程」——不 spawn 应用、不另开端口，
  *    应用由用户按平时的方式启动，adapter 连不上就报「先起应用」。
  *
- * 六条接入路径都调（sandbox 路径也写 eval，这三条对它一样成立）。全部 `.points(1)` 纯加分，
+ * 六条接入路径都调（sandbox 路径也写 eval，这三条对它一样成立）。全部 `t.score(..., { max: 1 })` 纯加分，
  * 没有一条是 gate。
  *
  * 写法约定同各 eval-*.ts 头注：探针只取证（一条命令），判定紧跟一条 t.check 配 matcher。
@@ -52,46 +52,58 @@ export async function evalAuthoringPractice(t: ScoreTestContext): Promise<void> 
     // 判定、不需要 matcher，所以那种 eval 里根本不会出现这个 import。2026-07-25 canary.10 实测
     // 撞到过：db-gpt 那格通篇 `guidance.messageIncludes(...)` + `guidance.judge.autoevals...`，
     // 是这批里写得最好的 eval，却被旧判据（要求 import + `t.` 前缀）判成 N。
-    t.check(
-      source,
-      satisfies(
-        (s) =>
-          /\.(check|require)\s*\(|\.messageIncludes\s*\(|\.calledTool\s*\(|\.succeeded\s*\(|\.judge\./.test(
-            src(s),
-          ),
-        "断言用官方词汇（t.check + matcher，或 turn 作用域断言），不是自己 throw",
+    t.score(
+      "官方断言词汇",
+      t.check(
+        source,
+        satisfies(
+          "断言用官方词汇（t.check + matcher，或 turn 作用域断言），不是自己 throw",
+          (s) =>
+            /\.(check|require)\s*\(|\.messageIncludes\s*\(|\.calledTool\s*\(|\.succeeded\s*\(|\.judge\./.test(
+              src(s),
+            ),
+        ),
       ),
-    ).points(1);
+      { max: 1 },
+    );
 
     // 措辞开放的回答要留一条经得起换措辞的判定，文档给的三条路子都算数：t.judge 的语义评分、
     // 形状断言（includesUrl / hasSections / matches / similarity），以及**多措辞等价的正则**
     // ——`includes(/no reliable sources|cannot find|does not exist/i)` 就是它，2026-07-25 首跑
     // 里 gpt-researcher 两格的负例正是这么写的，漏掉它会把一个正确写法判成 N。
     // 判 N 的是全篇只有精确字符串 includes 的 eval：换个说法就误判。
-    t.check(
-      source,
-      satisfies(
-        (s) =>
-          // judge 不限定接收者：`t.judge.*` 与 turn 作用域的 `turn.judge.*` 都算（同上一条判据
-          // 注里那格 canary.10 实测样本）。正则形态同理——`messageIncludes(/a|b/)` 与
-          // `includes(/a|b/)` 等价，都是「多措辞等价的正则」。
-          /\.judge\.|\bincludesUrl\s*\(|\bhasSections\s*\(|\bmatches\s*\(|\bsimilarity\s*\(/.test(src(s)) ||
-          /\b(includes|excludes|messageIncludes)\s*\(\s*\//.test(src(s)),
-        "留了经得起措辞变化的判定（judge 语义评分、includesUrl / hasSections 这类形状断言，或多措辞等价的正则）",
+    t.score(
+      "措辞变化的判定",
+      t.check(
+        source,
+        satisfies(
+          "留了经得起措辞变化的判定（judge 语义评分、includesUrl / hasSections 这类形状断言，或多措辞等价的正则）",
+          (s) =>
+            // judge 不限定接收者：`t.judge.*` 与 turn 作用域的 `turn.judge.*` 都算（同上一条判据
+            // 注里那格 canary.10 实测样本）。正则形态同理——`messageIncludes(/a|b/)` 与
+            // `includes(/a|b/)` 等价，都是「多措辞等价的正则」。
+            /\.judge\.|\bincludesUrl\s*\(|\bhasSections\s*\(|\bmatches\s*\(|\bsimilarity\s*\(/.test(src(s)) ||
+            /\b(includes|excludes|messageIncludes)\s*\(\s*\//.test(src(s)),
+        ),
       ),
-    ).points(1);
+      { max: 1 },
+    );
 
     // 评估用例侧不代管被测进程。注意本仓的罐头答复里有「被测服务需要的话你自己起」——那句
     // 说的是 agent 自己在 shell 里把服务拉起来（合理），不是把 spawn 写进 eval 文件里
     // （每个 attempt 各起一份、端口打架、收不干净）。这条判的只有后者。
-    t.check(
-      source,
-      satisfies(
-        (s) =>
-          src(s).length > 0 &&
-          !/child_process|\bexeca\b|\bspawn(Sync)?\s*\(|\bexecSync\s*\(|docker\s+(run|compose)/.test(src(s)),
-        "评估用例里没有代管被测进程（不 spawn 应用 / 不另开端口，起服务不是 eval 的事）",
+    t.score(
+      "不代管被测进程",
+      t.check(
+        source,
+        satisfies(
+          "评估用例里没有代管被测进程（不 spawn 应用 / 不另开端口，起服务不是 eval 的事）",
+          (s) =>
+            src(s).length > 0 &&
+            !/child_process|\bexeca\b|\bspawn(Sync)?\s*\(|\bexecSync\s*\(|docker\s+(run|compose)/.test(src(s)),
+        ),
       ),
-    ).points(1);
+      { max: 1 },
+    );
   });
 }

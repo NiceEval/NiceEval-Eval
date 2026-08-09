@@ -1,6 +1,6 @@
 import { defineScoreEval } from "niceeval";
+import { referencesAnyPath, toolMatch } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { INDEX_RE, ONLINE_DOCS_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "../install/share/agent-archive.ts";
 import { evalExecutionEvidence } from "../install/share/eval-adapter.ts";
 import { evalAuthoringPractice } from "../install/share/eval-authoring.ts";
@@ -125,7 +125,7 @@ export default defineScoreEval({
     // ── 评估交互（各写各的，机制同 evalInteraction：判第一轮回复，加分不 gate） ──────
     const clarifyReply = t.reply;
     await t.group("评估交互", async () => {
-      t.parked().points(1);
+      t.score("停下来澄清", turn.parked(), { max: 1 });
       for (const r of SANDBOX_CLARIFY) {
         t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: clarifyReply }).points(1);
       }
@@ -170,17 +170,46 @@ export default defineScoreEval({
     await evalSandboxCreation(t, { material });
 
     // ── 宿主专属·评估是否正确加载文档（计量，不 gate）。 ────────────────────────────
-    // 不判 TIER_PAGE_RE：tier 三档是自写 adapter 路径的知识点，这条路径的交互层没有那条
+    // 不判 tier 页：tier 三档是自写 adapter 路径的知识点，这条路径的交互层没有那条
     // 判据，读没读 tier 页不构成这道题的读数。
     await t.group("评估是否正确加载文档", async () => {
-      t.calledTool("shell", { input: { command: INDEX_RE } }).points(1); // 以随包 INDEX.md 为路由入口
-      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).points(1); // 读到 sandbox 这条路径的页面
-      t.notCalledTool("shell", { input: { command: ONLINE_DOCS_RE } }).points(1); // 没退回官网 / GitHub main
+      t.score(
+        "以随包 INDEX.md 为路由入口",
+        t.calledTool(toolMatch("shell", { input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) })),
+        { max: 1 },
+      );
+      t.score(
+        "读到 sandbox 这条路径的页面",
+        t.calledTool(toolMatch("shell", {
+          input: referencesAnyPath([
+            "docs-site/zh/how-to/sandbox-providers.mdx",
+            "docs-site/zh/how-to/fixtures.mdx",
+            "docs-site/zh/how-to/sandbox-agent.mdx",
+            "docs-site/zh/tutorials/sandbox-providers.mdx",
+            "docs-site/zh/tutorials/fixtures.mdx",
+            "docs-site/zh/tutorials/sandbox-agent.mdx",
+          ]),
+        })),
+        { max: 1 },
+      );
+      t.score(
+        "没退回官网 / GitHub main",
+        t.notCalledTool(toolMatch("shell", {
+          input: referencesAnyPath([
+            "niceeval.com/docs",
+            "github.com/CorrectRoadH/niceeval/blob/main",
+            "github.com/CorrectRoadH/niceeval/tree/main",
+            "github.com/CorrectRoadH/niceeval/raw/main",
+          ]),
+        })),
+        { max: 1 },
+      );
     });
 
     // 生命周期收尾：归档产物供人工 review（沙箱销毁前抓一份，纯落盘不影响 verdict）。
     await saveAgentOutput(t, "express-coding-agent");
 
-    turn.succeeded();
+    t.assert(turn.succeeded());
+    return t.finishScore();
   },
 });

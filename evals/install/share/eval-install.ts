@@ -2,7 +2,7 @@
  * 评估安装（计分制 / 加分式）：一条题内叠加挣分，分从 0 往上累加、不声明满分。四段挣分：
  *
  * 1. 交互层（加分）——装机任务发出后，好的 agent 不闷头做，而是先停下来（park 在一个待
- *    输入请求上）把仓库里看不出的接入方案问清楚。`t.parked()` 判「停没停下来问」，四条
+ *    输入请求上）把仓库里看不出的接入方案问清楚。对应 Turn 的 `turn.parked()` Fact 判「停没停下来问」，四条
  *    closeQA 各判接口 / OTel / flag / Tier。两条常见 install 路径还把 INIT.md 当作
  *    create-eval 入口，叠加「首次评估定题」与「完成交接」两组判据。随后替用户给出一次罐头
  *    答复，用 `t.respond` 驱动下一轮把活干完——后面的取证才有东西可验。
@@ -15,7 +15,7 @@
  *    非 JS 宿主另建独立 eval 工作区且是 ESM。判据逐条来自 INIT.md 的 Step 1 / Step 2，
  *    跟第 2 段的区别是「能不能用」与「以后好不好维护」之别，所以是加分不是 gate。
  *
- * 写法约定：判定一律用官方断言词汇（parked / calledTool / matchers / judge），不发明领域
+ * 写法约定：判定一律用官方 Fact / Match / Judge 词汇，不发明领域
  * API；取证一律「一条命令或一个文件」——探针只取证不判定，判定是紧跟着的一条 t.check 配
  * matcher，没有解析层、没有扫落盘的循环。
  *
@@ -33,8 +33,8 @@
  * 都从这里取用。
  */
 
-import type { ScoreAssertionHandle, ScoreTestContext, TurnHandle } from "niceeval";
-import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
+import type { JsonValue, ScoreAssertionHandle, ScoreTestContext, TurnHandle } from "niceeval";
+import { commandSucceeded, isTrue, satisfies, toolMatch } from "niceeval/expect";
 import { readCandidateManifest } from "../../../lib/candidate.ts";
 import { buildClarifyRubrics, type ClarifyFacts } from "./clarify-criteria.ts";
 import {
@@ -166,7 +166,7 @@ export async function evalInteraction(
   await t.group("评估交互", async () => {
     // 真的停下来问了（park 在待输入请求上），而不是直接开做。
     // 交互层按文件头是「加分、不 gate」：得分点不参与判定，没停下来问只是少挣这些分，不判负。
-    t.parked().points(1);
+    t.score("首轮等待澄清", opts.turn.parked(), { max: 1 });
     // 问的内容与给的选择是否对：接口 / otel / flag（多 prompt）/ 三档接入等级，一条判据只判
     // 一个点、各挣 1 分。不合成一条 points(4)——closedQA 是二值打分器，四要件 AND 进一条会让
     // 「问了接口漏了 otel」和「什么都没问」拿一样的 0 分。事实由调用方按项目传入（见函数头注）。
@@ -281,40 +281,48 @@ export async function evalInstall(
 
   await t.group("评估安装", async () => {
     // 装成没装成是后面一切的前提：这几条是 gate（不给分），红了 verdict 直接 failed。
-    t.check(root !== null, isTrue("niceeval.config.ts 存在"));
-    t.check(
-      version,
-      satisfies(
-        (v) => v === candidate.version,
-        `依赖解析到候选包 niceeval@${candidate.version}（实际：${version || "未安装"}）`,
+    t.assert(t.check(root !== null, isTrue("niceeval.config.ts 存在")));
+    t.assert(
+      t.check(
+        version,
+        satisfies(
+          `依赖解析到候选包 niceeval@${candidate.version}（实际：${version || "未安装"}）`,
+          (v) => v === candidate.version,
+        ),
       ),
     );
-    t.check(managed.length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块"));
-    t.check(list, commandSucceeded());
-    t.check(
-      list.stdout,
-      satisfies(
-        (s) =>
-          (s as string).split("\n").some((l) => /\S/.test(l) && !/^(NAME|ID|—|-{3,})/.test(l.trim())),
-        "niceeval 能发现 agent 写出的 eval",
+    t.assert(t.check(managed.length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块")));
+    t.assert(t.check(list, commandSucceeded()));
+    t.assert(
+      t.check(
+        list.stdout,
+        satisfies(
+          "niceeval 能发现 agent 写出的 eval",
+          (s) =>
+            (s as string).split("\n").some((l) => /\S/.test(l) && !/^(NAME|ID|—|-{3,})/.test(l.trim())),
+        ),
       ),
     );
-    t.check(
-      dryPlan,
-      // satisfies() 的 predicate 参数类型固定是 unknown（见 niceeval/expect），这里收窄回
-      // ExpPlanDocument | null。
-      satisfies((v) => {
-        const p = v as ExpPlanDocument | null;
-        return p !== null && p.matrix.length > 0;
-      }, "exp --dry 能规划出至少一个 experiment"),
+    t.assert(
+      t.check(
+        dryPlan,
+        // satisfies() 的 predicate 参数类型固定是 unknown（见 niceeval/expect），这里收窄回
+        // ExpPlanDocument | null。
+        satisfies("exp --dry 能规划出至少一个 experiment", (v) => {
+          const p = v as ExpPlanDocument | null;
+          return p !== null && p.matrix.length > 0;
+        }),
+      ),
     );
     // 非 TS 宿主可以没有 tsconfig，这时不判——有 tsconfig 才要求 agent 自己的代码干净
     if (tsc) {
-      t.check(
-        tsc.stdout,
-        satisfies(
-          (s) => !/^(?!.*node_modules).*\(\d+,\d+\): error TS\d+:/m.test(s as string),
-          "agent 写的代码 typecheck 干净",
+      t.assert(
+        t.check(
+          tsc.stdout,
+          satisfies(
+            "agent 写的代码 typecheck 干净",
+            (s) => !/^(?!.*node_modules).*\(\d+,\d+\): error TS\d+:/m.test(s as string),
+          ),
         ),
       );
     }
@@ -329,18 +337,57 @@ export async function evalInstall(
     // codex 全程用 `npm exec niceeval -- exp baseline`（`--` 分隔符卡在包名与子命令之间），
     // `npx niceeval@<version> <cmd>` 也常见。旧正则 `niceeval\s+exp` 对不上这两种，把真跑过的
     // 分误杀成 0（2026-07-24 canary.7 取证）。
-    t.calledTool("shell", { input: { command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?init\b/ } }).points(1); // 托管指引该由 CLI 写入，不是手抄
+    t.score(
+      "运行 niceeval init",
+      t.calledTool(
+        toolMatch("shell", {
+          input: satisfies<JsonValue>("shell 命令运行 niceeval init", (input) => {
+            if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
+            const command = input.command;
+            return typeof command === "string" && /\bniceeval(?:@\S+)?\s+(?:--\s+)?init\b/.test(command);
+          }),
+        }),
+      ),
+      { max: 1 },
+    ); // 托管指引该由 CLI 写入，不是手抄
     // (?![\s\S]*--dry|[\s\S]*--help)：同一条命令里带 --dry / --help 的不算真跑。不要求带 --json
     // ——CLI 只有两种形态（人读文本 / --json），非 TTY 下人读文本本就自动降级为只追加流，
     // agent 直接跑默认形态完全合理，逼它加 --json 才算数会误伤。
-    t.calledTool("shell", { input: { command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?exp\b(?![\s\S]*--dry|[\s\S]*--help)/ } }).points(1);
-    t.calledTool("shell", { input: { command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?show\b/ } }).points(1);
+    t.score(
+      "实际运行 niceeval exp",
+      t.calledTool(
+        toolMatch("shell", {
+          input: satisfies<JsonValue>("shell 命令实际运行 niceeval exp", (input) => {
+            if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
+            const command = input.command;
+            return (
+              typeof command === "string" &&
+              /\bniceeval(?:@\S+)?\s+(?:--\s+)?exp\b(?![\s\S]*--dry|[\s\S]*--help)/.test(command)
+            );
+          }),
+        }),
+      ),
+      { max: 1 },
+    );
+    t.score(
+      "运行 niceeval show",
+      t.calledTool(
+        toolMatch("shell", {
+          input: satisfies<JsonValue>("shell 命令运行 niceeval show", (input) => {
+            if (typeof input !== "object" || input === null || Array.isArray(input)) return false;
+            const command = input.command;
+            return typeof command === "string" && /\bniceeval(?:@\S+)?\s+(?:--\s+)?show\b/.test(command);
+          }),
+        }),
+      ),
+      { max: 1 },
+    );
   });
 
   // ── 最佳实践（纯加分，每条 1 分）：装成了之后，装的姿势对不对。 ───────────────────
   // 判据逐条来自 INIT.md 的 Step 1 / Step 2（「装哪、装成什么依赖、托管指引谁写」），
   // 与上面的 gate 是两回事：gate 判「能不能用」，这里判「以后还好不好维护」。
-  // 全部 .points(1) 不 gate——姿势不讲究不影响这次跑通。
+  // 全部 `t.score(..., { max: 1 })` 不 gate——姿势不讲究不影响这次跑通。
   //
   // 注意这几条是**新版本才教得到的分**：0.9.x 那代的 INIT.md 还没有「非 JS 宿主另建工作区 +
   // type: module + 装成 devDependency」这几句（实测 tag v0.9.1 的 INIT.md 里搜不到）。
@@ -348,35 +395,51 @@ export async function evalInstall(
   await t.group("评估安装最佳实践", async () => {
     // niceeval 是开发期工具，进 devDependencies；混进 dependencies 会被被测系统的生产
     // 安装一起拉下去。INIT.md 的安装命令本身就是 `add -D niceeval`。
-    t.check(
-      pkg,
-      satisfies((v) => {
-        const m = v as InstallManifest | null;
-        return !!m?.devDependencies?.niceeval && !m?.dependencies?.niceeval;
-      }, "niceeval 装在 devDependencies 里（不是 dependencies）"),
-    ).points(1);
+    t.score(
+      "niceeval 位于 devDependencies",
+      t.check(
+        pkg,
+        satisfies("niceeval 装在 devDependencies 里（不是 dependencies）", (v) => {
+          const m = v as InstallManifest | null;
+          return !!m?.devDependencies?.niceeval && !m?.dependencies?.niceeval;
+        }),
+      ),
+      { max: 1 },
+    );
 
     // 托管指引由 `niceeval init` 写入：带 BEGIN/END 标记的托管区块，升级后重跑 init
     // 就能刷新。手抄一段同样的文字也能过上面那条 gate（它只 grep 关键字），但升级后不会更新。
-    t.check(
-      managedBlock.length > 0,
-      isTrue(`托管指引是 init 写入的托管区块（有 BEGIN:niceeval-agent-rules 标记，实际：${managedBlock || "无"}）`),
-    ).points(1);
+    t.score(
+      "init 托管指引区块",
+      t.check(
+        managedBlock.length > 0,
+        isTrue(`托管指引是 init 写入的托管区块（有 BEGIN:niceeval-agent-rules 标记，实际：${managedBlock || "无"}）`),
+      ),
+      { max: 1 },
+    );
 
     if (opts.standaloneWorkspace) {
       // 宿主不是 JS 项目：INIT.md 要求新建一个独立子目录装，不要装进宿主里已有的包——
       // 那些 package.json 与 lockfile 属于被测系统，混进去会连累它的工具链，也会把宿主
       // 自己的类型错误拉进 agent 的 typecheck。
-      t.check(
-        root !== null && root !== ".",
-        isTrue(`eval 工作区是新建的独立子目录（实际装在：${root ?? "未安装"}）`),
-      ).points(1);
+      t.score(
+        "独立 eval 工作区",
+        t.check(
+          root !== null && root !== ".",
+          isTrue(`eval 工作区是新建的独立子目录（实际装在：${root ?? "未安装"}）`),
+        ),
+        { max: 1 },
+      );
       // 新建的 package.json 要 `"type": "module"`：`npm init -y` 默认 CommonJS，
       // 那种形态下 config / eval 文件用不了顶层 await。
-      t.check(
-        pkg,
-        satisfies((v) => (v as InstallManifest | null)?.type === "module", 'eval 工作区的 package.json 是 ESM（"type": "module"）'),
-      ).points(1);
+      t.score(
+        "eval 工作区 ESM",
+        t.check(
+          pkg,
+          satisfies('eval 工作区的 package.json 是 ESM（"type": "module"）', (v) => (v as InstallManifest | null)?.type === "module"),
+        ),
+        { max: 1 },
+      );
     }
   });
 }
