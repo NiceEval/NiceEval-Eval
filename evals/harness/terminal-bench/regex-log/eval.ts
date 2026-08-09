@@ -13,7 +13,9 @@ export default defineScoreEval({
     );
 
     const candidateVersion = String(t.flags.candidateVersion);
-    const turn = await t.send("把评估跑通一下");
+    // 题面刻意不预告 error 或根因：测的就是 agent 能否把 errored
+    // 识别为“还没跑完”，自主修复基础设施后复验，同时保留已完成的合法 failed。
+    const turn = await t.send("把这次评估跑完，告诉我最终结果。");
 
     t.assert(
       turn.notCalledTool(

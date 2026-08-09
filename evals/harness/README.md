@@ -9,12 +9,16 @@ coding-agent attempt**。
 
 | 用例 | 用户交互 | 初始状态 | 主要能力 |
 | --- | --- | --- | --- |
-| `terminal-bench/regex-log` | 单轮：运行并归因后，只改 `experiments/local.ts` | 真实 TB task slice 首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 定位 experiment runtime 缺口、最小修改恢复、按候选版本差异复验 |
-| `terminal-bench/log-summary` | 单轮：只诊断不修改 | 真实 TB task slice 首跑 1 passed / 2 failed / 0 errored | 区分「agent 产出错误」与「eval 过紧」，给出正确因果归因 |
+| `terminal-bench/regex-log` | 单轮：把评估跑完并报告最终结果，题面不预告 error | 真实 TB task slice 首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 自主识别未完成的 errored、定位 experiment runtime 缺口、最小修改恢复、按候选版本差异复验 |
+| `terminal-bench/log-summary` | 单轮：运行并解释每个失败，未授权修改 | 真实 TB task slice 首跑 1 passed / 2 failed / 0 errored | 区分「agent 产出错误」与「eval 过紧」，给出正确因果归因 |
 
 ## 真实题意
 
 ### A · terminal-bench/regex-log
+
+用户只要求“把这次评估跑完”，题面刻意不预告 error、根因、修复文件或候选版本策略。
+这里测的正是 agent 能否识别 `errored` 表示评估尚未跑完，自主诊断并修复基础设施；
+已完成的合法 `failed` 则是应被如实保留的业务结论，不等于“没跑完”。
 
 候选 workspace 里的 inner project 从 `NiceEval/terminal-bench` 的已审核题包裁出四项：
 `hello-world`、`fix-permissions`、`classifier-debug` 和 `regex-log`。首跑 `niceeval exp local`
@@ -34,6 +38,9 @@ coding-agent attempt**。
 与「failed 的业务事实」分开，而不是让它把所有红灯都“修绿”。
 
 ### B · terminal-bench/log-summary
+
+用户只要求运行评估并解释每个失败，没有授权修改项目文件。这里测的是 agent
+能否把已完成的 `failed` 当作需要归因的结果，而不是必须被“修绿”的执行错误。
 
 inner project 首跑 **1 passed / 2 failed / 0 errored**。agent 的任务是逐道给出因果归因并
 如实交接，**不得修改任何 eval 或项目文件**：

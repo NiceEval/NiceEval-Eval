@@ -8,7 +8,6 @@
 - `classifier-debug`
 - `log-summary`
 
-为了让 Harness 离线、确定性地区分失败责任层，canned sandbox agent 对
-`classifier-debug` 写入错误选项 `B`；对 `log-summary` 则写入语义正确、TB 官方 CSV 判据可以
-接受的带引号内容。本项目中的 exact 字符串断言会错误拒绝后者。`log-summary.test.py` 是 TB
-官方判据的逐字节副本，用于固定这项语义事实。
+为了让 Harness 能在离线环境中确定性运行，项目使用 canned sandbox agent
+重放固定产出。`log-summary.test.py` 保留 Terminal-Bench 题包中的参考判据；请以
+NiceEval 的公开运行和诊断界面判断当前结果。
