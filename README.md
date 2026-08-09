@@ -21,32 +21,41 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 ## 评估用例分区
 
-`evals/` 按用户所处阶段分成三组：
+`evals/` 按用户所处阶段分成三组，全仓共 8 道可发现评估用例：
 
 | 目录 | 类型 | 回答的问题 | 当前场景 |
 | --- | --- | --- | --- |
-| `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher |
-| `roadmap/` | 扩展路线与未来设计 | 复杂第三方接入与暂缓实现的评估方向 | Express Sandbox、Letta、OpenHands、Skyvern，以及 3 个 Harness 设计稿 |
-| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和 fresh full rerun | 补回归、分层修复 failed、修复局部 errored |
+| `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher（2 道） |
+| `roadmap/` | 扩展路线与未来设计 | 复杂第三方接入与暂缓实现的评估方向 | Express Sandbox、Letta、OpenHands、Skyvern（4 道） |
+| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | terminal-bench/regex-log、terminal-bench/log-summary（2 道） |
 
 `roadmap/` 下的 `.eval.ts` 是已实现但较复杂的安装路线；`roadmap/harness/*.md` 只是未来
-设计。`harness/` 物理上只放当前三道可运行题。
+设计。`harness/` 物理上只放当前两道可运行题。
 
 ## harness/ 的共享基建与独立 repo
 
-三个候选版本各自形成预装 Node、pnpm、候选 NiceEval 与 init 产物的缓存镜像；三道题则分别
-维护 `fixtures/harness/<case>/repo/`。Attempt 只把所属小 repo 复制进已准备 workspace，不在
-镜像里共享业务 fixture，也不运行安装或 init。项目不携带 `.niceeval`，结果仍由被测 agent
-当场运行产生。完整设计见
+三个候选版本各自形成预装 Node、pnpm、候选 NiceEval、init 产物与**两枚离线 inner runtime
+归档**的缓存镜像；两道题则分别维护 `fixtures/harness/<case>/repo/`。Attempt 只把所属小
+repo 复制进已准备 workspace，不在镜像里共享业务 fixture，也不运行安装或 init。项目不携带
+`.niceeval`，结果仍由被测 agent 当场运行产生。完整设计见
 [`evals/harness/README.md`](evals/harness/README.md) 与
 [`fixtures/harness/README.md`](fixtures/harness/README.md)。
 
-## Harness 的三个确定性场景
+## Harness 的两个确定性场景
 
-这组使用不含历史结果的小型确定性项目：`add-regression` 从“suite 全绿但线上有 bug”开始，
-要求先写回归跑红、再修实现跑绿；`repair-failing` 把业务实现错误与过期 eval 混在同一次运行，
-要求逐条判断责任层；`repair-errored` 只让依赖 compliance 的两个 case 出错，要求判断 blast
-radius 后只修共享配置。题面只表达真实用户需求，具体过程由宿主行为证据与隐藏判分观察。
+这组使用不含历史结果、从真实 Terminal-Bench 题包裁出的确定性项目：
+
+- `terminal-bench/regex-log` 运行 `hello-world`、`fix-permissions`、`classifier-debug`
+  和 `regex-log`，首跑 2 passed / 1 合法 failed / 1 缺 Python errored：唯一修复是
+  把 `experiments/local.ts` 的 inner runtime 从 `runtime:node` 改成 `runtime:python`；
+  0.12.x / canary 只从公开 `niceeval show` 输出动态取得 locator，恰好 accept 三条仍有效的
+  terminal results，只真实重跑 errored 的 `regex-log`；0.9.x 没有 locator accept，修改后必须
+  真实完整重跑；终态同为 3/1/0。
+- `terminal-bench/log-summary` 运行 `hello-world`、`classifier-debug` 和 `log-summary`，首跑
+  1 passed / 2 failed / 0 errored：只诊断不修改——`classifier-debug` 是 agent 选错 B（正确为 A），
+  `log-summary` 是合法带引号 CSV 被 exact 字符串断言拒绝，两者都不得靠改断言擦红。
+
+题面只表达真实用户需求，具体过程由宿主行为证据与隐藏判分观察。
 
 ## 快速开始
 
@@ -59,9 +68,10 @@ pnpm run typecheck
 pnpm exec niceeval list
 ```
 
-当前 Harness 已直接采用下一版 matcher-based `eventOrder` 目标契约；在 NiceEval 补齐该 API 前，
-`pnpm run typecheck` 会有意报告这些 matcher object 与旧字符串签名不兼容。`niceeval list` 与 dry plan
-仍可用于检查发现和矩阵。
+当前 Harness 已直接采用下一版 target assertion API（scope-first 短断言面）；在 NiceEval
+补齐 `commandMatch()`、`referencesAnyPath()`、无 name `toolMatch({ input })` 与对应 scoped assertion 签名前，`pnpm run typecheck`
+和加载 Harness eval 都会明确失败。这是已知依赖，不得用旧 JSON shape、正则 matcher、
+类型断言或本地 helper 绕过。
 
 只生成计划、不启动付费 agent：
 
@@ -87,11 +97,19 @@ pnpm exec niceeval show @<locator> --execution
 pnpm exec niceeval show @<locator> --diff
 ```
 
-Harness 题不会因为 agent 读取 `.niceeval` 原始记录就预先判错。`calledTool` 分别确认
-`niceeval exp local` / `niceeval show`，目标 `eventOrder` matcher 表达二者与最终回复的顺序；
-workflow、execution、response 三个 LLM judge 分别判断调用语义、真实 CLI 输出和回复结论，不用
-`show` JSON parser。目标产物、结构化配置和业务行为分别使用文件断言、`equals` 与 `runCommand`
-隐藏行为测试。evaluator 不会代替 agent 重跑 experiment。
+Harness 题会把 observed tool input 中直接读取 `.niceeval`、`evals` 或 `agents` 的行为判为
+gate 失败，但这不是 OS 级文件审计。取证只承认公开 `niceeval show`：动态 `@<locator>`、
+前缀收窄、0.9.x 的 `--eval` / 0.12+ 的 `--source`，以及 `--execution` 证据视图。外层
+确定性断言是 scope-first 的窄锚点：`commandMatch(executable, { argsStart, excludes,
+status? })` 本身就是匹配同一笔 logical tool occurrence 的 `ToolMatch`（没有直接传
+`{ name, status }`、command tuple、嵌套 command selector 或 sequential 旧形态），只锚定本轮 `t.send()` 内调过 `niceeval exp local` /
+`niceeval show` 这类窄事实；其中 executable 是逻辑命令，direct、`pnpm exec`、
+`pnpm --silent exec` 与无 runner option 的 `npx` 由 Observation Protocol 统一投影，Eval
+不枚举 wrapper。禁区检查复用
+`notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`，不另造 scoped negative 方法。
+Judge 使用现有 `turn.judge.autoevals.closedQA()`，通过 `{ on }` 显式传入本轮
+`toolCalls + message`；材料的 JSON string 只是现有 string 入口的传输编码，不匹配
+`show` JSON，也不替 agent 重跑 experiment。canned agent 只用于稳定复现，不代表真实模型智力。
 
 ## 候选版本与实验矩阵
 
@@ -108,9 +126,10 @@ workflow、execution、response 三个 LLM judge 分别判断调用语义、真�
 安装实验统一使用带 Python 凭证准备的 DinD sandbox；它同时满足 Node 题的运行基线。
 
 Harness 实验族也有三格：`harness/v0.9.0`、`harness/v0.12.0` 与
-`harness/canary`。它们运行相同的三道无历史快照反馈闭环题；差异只在镜像内预装的候选
-NiceEval 与随包文档版本，不承担跨 reader 的历史 report 兼容测试。每道题固定跑 3 次，完整
-矩阵共 27 个 coding-agent attempt；只想检查计划时始终先用 `--dry`。
+`harness/canary`。它们运行相同的两道无历史快照反馈闭环题；差异只在镜像内预装的候选
+NiceEval、随包文档版本与 accept 契约（0.12+ 可 accept 缓存、0.9.x 全量重跑），不承担跨
+reader 的历史 report 兼容测试。每道题固定跑 3 次，完整矩阵共 **18 个 coding-agent
+attempt**；只想检查计划时始终先用 `--dry`。
 
 ## 安装评估如何计分
 
@@ -135,9 +154,14 @@ sparse checkout 排除与接入无关的大型文档和资源目录。agent 写�
 
 ## fixture 与边界
 
-覆盖缺口、双层 failed 和局部 errored 各有自己的 `fixtures/harness/<case>/repo/`。它们共享
-候选镜像基建，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果，也不在 attempt 内
-安装候选依赖或运行 `niceeval init`。
+`terminal-bench/regex-log` 与 `terminal-bench/log-summary` 各有自己的
+`fixtures/harness/<case>/repo/`。
+它们共享候选镜像基建，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果，也不在
+attempt 内安装候选依赖或运行 `niceeval init`。离线 inner runtime 的 node / python 变体
+在构建期从固定 digest 的物化 stage 打成归档（全程零包安装），entrypoint 先 `sha256sum -c`
+校验再本地 `docker import`，随后用 `--pull=never` 真实冒烟 node/git/python3；attempt 启动期
+的导入和冒烟不联网，`.invalid` 保留域与 `--pull=never` 保证缺镜像时立即失败。构建机首次
+物化固定 digest stage 时仍可能从 registry 拉取对应基础镜像。
 
 仓库不验证 NiceEval 核心实现本身；核心 API、CLI 或报告问题应在相邻 `NiceEval/` 修复。
 这里也不自动跑全量或付费实验：更换候选、作废结果或批量重跑前必须先确认成本。

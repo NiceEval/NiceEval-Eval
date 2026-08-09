@@ -1,4 +1,0 @@
-{
-  "endpoint": "memory://policy",
-  "complianceEndpoint": "http://compliance.invalid:8787"
-}

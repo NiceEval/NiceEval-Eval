@@ -1,0 +1,8 @@
+2025-01-15T10:00:00Z INFO application started
+2025-01-15T10:00:01Z INFO configuration loaded
+2025-01-15T10:00:02Z WARNING cache is cold
+2025-01-15T10:00:03Z ERROR database connection failed
+2025-01-15T10:00:04Z INFO retrying connection
+2025-01-15T10:00:05Z INFO database connected
+2025-01-15T10:00:06Z ERROR background job failed
+2025-01-15T10:00:07Z WARNING background job will retry

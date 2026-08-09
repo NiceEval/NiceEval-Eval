@@ -1,60 +1,104 @@
 # Harness 评估套件
 
-这组题评估 coding agent 能否在一个已经接入 NiceEval 的项目里，自主完成“运行 → 读反馈
-→ 形成因果判断 → 在正确层修改 → fresh full rerun”。三题共享运行基建，但各自维护独立项目。
+这组题评估 coding agent 能否在一个已经接入 NiceEval 的项目里，自主完成“运行 → 用公开
+`niceeval show` 取证 → 形成因果判断 → 在正确层修改/给出归因”。两题共享运行基建，
+但各自维护独立项目与独立起始状态；完整矩阵为 3 版本 × 2 题 × 3 次，共 **18 个付费
+coding-agent attempt**。
 
-## 当前三题
+## 当前两题
 
 | 用例 | 用户交互 | 初始状态 | 主要能力 |
 | --- | --- | --- | --- |
-| `add-regression` | 两轮：先新增 eval 复现，后修实现 | 5 passed → 5/1/0 → 6/0/0 | 识别覆盖缺口、写有效回归、红绿闭环 |
-| `repair-failing` | 两轮：先归因，后分层修复 | 3 passed / 2 failed | 区分业务实现错误与过期 eval，再全量复验 |
-| `repair-errored` | 两轮：先调查，后只修配置 | 3 passed / 2 errored | 判断局部 blast radius、错误层级与共享运行时根因 |
+| `terminal-bench/regex-log` | 单轮：运行并归因后，只改 `experiments/local.ts` | 真实 TB task slice 首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 定位 experiment runtime 缺口、最小修改恢复、按候选版本差异复验 |
+| `terminal-bench/log-summary` | 单轮：只诊断不修改 | 真实 TB task slice 首跑 1 passed / 2 failed / 0 errored | 区分「agent 产出错误」与「eval 过紧」，给出正确因果归因 |
+
+## 真实题意
+
+### A · terminal-bench/regex-log
+
+候选 workspace 里的 inner project 从 `NiceEval/terminal-bench` 的已审核题包裁出四项：
+`hello-world`、`fix-permissions`、`classifier-debug` 和 `regex-log`。首跑 `niceeval exp local`
+得到 **2 passed / 1 合法 failed / 1 errored**：`classifier-debug` 的 canned agent 选择错误的 B，
+是可信 failed；`regex-log` 直接运行 TB 官方 Python 判据，而当前 runtime 镜像没有 python3，因而 errored。
+
+完整且**唯一**的正确修复是只把 `experiments/local.ts` 里的
+`runtime:node` 改成 `runtime:python`，其余一律不动。修复后复验：
+
+- 候选为 0.12.x / canary 时，从公开 `niceeval show` 输出动态取得 locator，恰好 accept
+  三条仍有效的 terminal results（`hello-world`、`fix-permissions`、`classifier-debug`），只真实
+  重跑被改动影响的 `regex-log`；
+- 候选为 0.9.x 时没有 locator accept，必须真实完整重跑四题，得到的数字完全一致。
+
+两代候选的终态相同：**3 passed / 1 failed / 0 errored**——合法 failed 的那道不因换运行时
+而改变，它本来就不是环境问题。题目考察的是 agent 能否从 CLI 反馈把「errored 的环境缺口」
+与「failed 的业务事实」分开，而不是让它把所有红灯都“修绿”。
+
+### B · terminal-bench/log-summary
+
+inner project 首跑 **1 passed / 2 failed / 0 errored**。agent 的任务是逐道给出因果归因并
+如实交接，**不得修改任何 eval 或项目文件**：
+
+- `terminal-bench/classifier-debug`：正确选项与断言要求都是 A，canned agent 却写入 B。这是
+  **agent 产出/能力问题**，断言本身是对的；
+- `terminal-bench/log-summary`：ERROR/WARNING/INFO 计数是正确的 4/3/8，输出也是合法 CSV，
+  只是字段带标准双引号。TB 官方 CSV 判据会接受，本地 exact 字符串断言却拒绝——这是
+  **eval 过紧**。
+
+正确完成 = 两道失败都归因到正确层、不产生任何文件改动；错误完成 = 靠改断言、放宽匹配或
+改 fixture 让套件变绿，或把两类失败互相张冠李戴。
 
 ## 共享基建，独立 repo
 
 Node、pnpm、Docker/Compose、精确候选 NiceEval、依赖和 `niceeval init` 产物在候选镜像中
-共享。0.9.0、0.12.0 与解析后的 canary 各有独立缓存镜像。
+共享。0.9.0、0.12.0 与解析后的 canary 各有独立缓存镜像。每个候选镜像还物化两枚**完全离线**
+的 inner runtime 归档（node / python 变体），由 entrypoint 在 inner dockerd 就绪后
+`docker import` 成两个本地 tag，见 [`fixtures/harness/README.md`](../../fixtures/harness/README.md)。
 
-`fixtures/harness/<case>/repo/` 则由每道题各自维护：覆盖缺口、双层 failed 与局部 errored
-状态直接写在所属 repo，不靠中央 canonical fixture 加 evaluator overlay。Attempt 启动时只
-上传这一份几 KB 的 repo；不改扩展名、不安装依赖、不执行 init。fixture 修改也不会使 Docker
-依赖层失效。
+`fixtures/harness/<case>/repo/` 由每道题各自维护：起始状态直接写在所属 repo，不靠中央
+canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench 来源 commit，保留 task ID、
+题面、所需初始资产及官方判据副本。Attempt 启动时只上传所属 repo；不改扩展名、
+不安装依赖、不执行 init。fixture 修改也不会使 Docker 依赖层失效。
 
 ## 题面原则
 
-- 每次 `t.send()` 都像真实用户说话，只表达当轮需求；
+- 每次 `t.send()` 都像真实用户说话，只表达当轮需求；两道题都是单轮，一次 `send` 内完成
+  运行、取证、修改或归因；
 - 不告诉 agent 应使用哪些 NiceEval 命令、结果在哪里或根因属于哪一层；
-- 第一轮要求“暂时别改业务”时，先形成可独立检查的诊断或失败复现；第二轮才授权修复；
+- agent 必须先形成可独立检查的诊断，再（仅 `terminal-bench/regex-log` 的题面授权下）做最小修改；
 - 项目不携带 `.niceeval`，结果必须由被测 agent 当场运行产生。
 
-## 判分边界
+## 判分与取证边界
 
-开放式回复不靠结构化 `niceeval show` 或 record parser。原生断言按事实分工：`calledTool` 用窄
-命令锚点分别确认本轮调过 `niceeval exp local` 与 `niceeval show`；`eventOrder` 的目标契约用带
-数据的 event group matcher 表达 `exp → show → assistant message`。LLM judge 再拆成三个独立
-维度：workflow judge 判断真实调用的语义顺序，execution judge 判断 CLI 输出的计数与分类，
-response judge 判断诊断和复验结论。turn 天然限定本轮，不需要累计游标。
+- Agent 取证只走公开 CLI：`niceeval show`（动态 `@<locator>`）、前缀收窄、0.9.x 的
+  `--eval` / 0.12+ 的 `--source`，以及 `--execution` 等公开证据视图。**禁止**以读取
+  `.niceeval/` 落盘产物或 `evals/`、`agents/`
+  源码代替取证；这不是能力加分项，而是题目边界。
+- 外层确定性断言是 **scope-first 的短 API**：`commandMatch(executable, { argsStart,
+  excludes, status? })` 本身就是匹配同一笔 logical tool occurrence 的 `ToolMatch`，只锚定本轮
+  `t.send()` 作用域内的窄事实（例如本轮调过 `niceeval exp local`、本轮调过
+  `niceeval show`）；executable 匹配标准 logical command，透明兼容 direct、`pnpm exec`、
+  `pnpm --silent exec` 与无 runner option 的 `npx`，不解析任何 `show` JSON，也不维护全仓
+  文件清单；
+- `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))` 命中观察到的禁区路径
+  （`.niceeval`、`evals`、`agents`）会让 gate 失败；它复用工具负存在性，只是行为证据，
+  不是 OS 级文件审计；没有命中的文件系统操作不在判分范围内；
+- Judge 使用现有 `turn.judge.autoevals.closedQA()`，并通过 `{ on }` 显式传入本轮完整
+  `toolCalls + message`，逐维判断调用语义、CLI 输出计数与归因/复验结论。这里的
+  `JSON.stringify()` 只是把公开 Turn 材料传给只接受 string 的现有入口，不匹配 `show` JSON
+  形状，也不替 agent 重跑 experiment。
+- canned agent 只用于稳定复现判分路径，不构成对真实模型智力的任何结论。
 
-当前随包 NiceEval 的 `eventOrder` 仍只接受事件类型字符串，尚不接受上述 tool/message matcher；
-Harness 有意直接写目标 API，让类型检查明确暴露框架缺口。在 NiceEval 补齐 matcher 及运行时匹配
-前，Harness 的 `eventOrder` 断言不能执行，这不是用类型断言掩盖的兼容分支。
+## 类型检查状态
 
-其它原生断言只验证各自擅长的事实：`includes` 检查明确源码值，`equals` 检查结构化配置，
-`runCommand` + `commandSucceeded` 运行隐藏 black-box 行为测试，`succeeded` 检查 turn 正常结束。
-不维护全仓文件清单或逐字节防作弊 allowlist。Evaluator 不替 agent 运行或重跑内层 experiment，
-也不从 CLI/record 解析 verdict。0.12+ 与 0.9.x 的 rerun/carry 契约由候选版本感知的 judge rubric
-分别判断。
-
-三题改用 `defineScoreEval`：核心闭环仍是 gate；诊断、回归质量、范围纪律、隐藏行为与完整复验
-分别记分，因此除了最终成败，还能看出文档在哪一步开始失效。
-
-Harness 不预设 agent 必须读取哪一篇随包页面，也不维护页面路径白名单。候选版本、随包索引和
-初始化产物由候选物化与镜像构建负责校验；文档是否真正有效，由上述行为与产出体现。
+Harness 直接写下一版 target assertion API（scope-first 的短断言面）。在 NiceEval 补齐
+`commandMatch()`、`referencesAnyPath()`、无 name `toolMatch({ input })` 与对应 scoped assertion 签名前，`pnpm run typecheck` 和加载
+Harness eval 都会明确失败。这是文档面、评估面与实现面的已知依赖，不得用旧 JSON shape、
+正则 matcher、类型断言或本地 helper 把它静默掉。
 
 ## 运行成本
 
-每个版本选中 3 道题，每题运行 3 次，避免把 coding agent 的单次随机性误判成候选文档差异；
-因此完整 `niceeval exp harness` 是 3 版本 × 3 题 × 3 次，共 27 个付费 coding-agent attempt，
-且每次包含多个 judge 评分点。日常验证运行 `niceeval list` 和各版本的 `--dry`；typecheck 在
-matcher-based `eventOrder` 落地前会有意暴露该目标 API 缺口。没有用户明确批准时不启动真实模型运行。
+每个版本选中 2 道题，每题运行 3 次，避免把 coding agent 的单次随机性误判成候选文档差异；
+因此完整 `niceeval exp harness` 是 3 版本 × 2 题 × 3 次，共 **18 个付费 coding-agent
+attempt**，且每次包含多个 judge 评分点。target API 尚未落地时只做源码与文档 diff 检查；
+实现落地后再恢复 `niceeval list` 和各版本的 `--dry` 验证。
+没有用户明确批准时不启动真实模型运行。

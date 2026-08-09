@@ -7,6 +7,10 @@
     "eval": "niceeval exp local"
   },
   "devDependencies": {
+    "@types/dockerode": "^3.3.47",
+    "dockerode": "^4.0.12",
+    "react": "^19.2.7",
+    "react-dom": "^19.2.7",
     "tsx": "^4.23.1",
     "typescript": "^7.0.2"
   }

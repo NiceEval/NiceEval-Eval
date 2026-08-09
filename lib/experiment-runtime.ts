@@ -52,10 +52,11 @@ function assertRuntime(candidateVersion?: string): SandboxHook {
       throw new Error(`docker compose 不可用：${compose.stderr.trim() || "compose version 无输出"}`);
     }
     if (candidateVersion !== undefined) {
-      const [project, modules, installed, guidance, noCaseSource] = await Promise.all([
+      const [project, modules, installed, projectCli, guidance, noCaseSource] = await Promise.all([
         sandbox.runCommand("test", ["-f", "package.json"]),
         sandbox.runCommand("test", ["-L", "node_modules"]),
         sandbox.runCommand("node", ["-p", "require('./node_modules/niceeval/package.json').version"]),
+        sandbox.runCommand("pnpm", ["exec", "niceeval", "--version"]),
         sandbox.runCommand("test", ["-f", "AGENTS.md"]),
         sandbox.runCommand("test", ["!", "-e", "src"]),
       ]);
@@ -69,6 +70,12 @@ function assertRuntime(candidateVersion?: string): SandboxHook {
         throw new Error(
           `workspace 候选版本不符：期望 niceeval@${candidateVersion}，实测 ` +
             `${installed.stdout.trim() || installed.stderr.trim() || "无输出"}`,
+        );
+      }
+      if (projectCli.exitCode !== 0 || projectCli.stdout.trim() !== candidateVersion) {
+        throw new Error(
+          `workspace 项目内 niceeval 命令不可用或版本不符：期望 ${candidateVersion}，实测 ` +
+            `${projectCli.stdout.trim() || projectCli.stderr.trim() || "无输出"}`,
         );
       }
       if (noCaseSource.exitCode !== 0) {
@@ -92,19 +99,25 @@ function assertRuntime(candidateVersion?: string): SandboxHook {
  * install 实验不传，保持「安装流程由被测 agent 在沙箱内完成」的测点。
  */
 export function sandboxWith(profile: "node" | "python" = "node", candidateVersion?: string) {
+  const harnessCandidate = candidateVersion !== undefined;
   const base = dockerfileSandbox({
     context: new URL("../", import.meta.url),
     dockerfile: "sandbox/Dockerfile",
-    ...(candidateVersion !== undefined ? { buildArgs: { NICEEVAL_VERSION: candidateVersion } } : {}),
+    ...(harnessCandidate
+      ? {
+          buildArgs: { NICEEVAL_VERSION: candidateVersion },
+          target: "harness-candidate",
+        }
+      : { target: "candidate" }),
     user: "node",
     privileged: "rootless",
     resources: {
       cpus: 4,
-      memoryBytes: 6 * GIB,
+      memoryBytes: harnessCandidate ? 8 * GIB : 6 * GIB,
       pidsLimit: 2048,
       readOnlyRootfs: true,
       tmpfs: {
-        "/var/lib/docker": { sizeBytes: 3 * GIB, mode: 0o711, uid: 0, gid: 0 },
+        "/var/lib/docker": { sizeBytes: harnessCandidate ? 6 * GIB : 3 * GIB, mode: 0o711, uid: 0, gid: 0 },
         "/home/sandbox/workspace": { sizeBytes: 2 * GIB, mode: 0o755, uid: 1000, gid: 1000 },
         "/home/node": { sizeBytes: 512 * MIB, mode: 0o700, uid: 1000, gid: 1000 },
         "/tmp": { sizeBytes: 1024 * MIB, mode: 0o1777, uid: 0, gid: 0 },

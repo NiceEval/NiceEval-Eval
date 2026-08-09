@@ -56,4 +56,11 @@ chgrp docker /run/niceeval-docker "$socket"
 chmod 0750 /run/niceeval-docker
 chmod 0660 "$socket"
 
+# 候选镜像才有离线 inner runtime 归档（install 基线没有该目录）。导入脚本先 sha256sum -c
+# 校验归档，再做本地 docker import 与 --pull=never 冒烟；失败即退出，让 NiceEval 在派发
+# 被测 agent 前就把缺运行时的 Sandbox 判为 errored。
+if [ -d /opt/niceeval-harness/runtime ]; then
+  /usr/local/bin/niceeval-runtime-import
+fi
+
 exec "$@"

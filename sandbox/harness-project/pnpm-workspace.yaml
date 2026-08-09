@@ -1,5 +1,8 @@
 allowBuilds:
+  cpu-features: false
   esbuild: true
+  protobufjs: false
+  ssh2: false
 
 # pnpm 11 从 workspace manifest 读取项目级设置。依赖在候选镜像构建时已经完整物化；
 # attempt 只运行候选 CLI，不因状态检查触发 install。

@@ -1,25 +1,31 @@
 # Harness case repos
 
-三道 Harness 题各自拥有一份小 repo，互不 overlay、互不依赖：
+两道 Harness 题各自拥有一份小 repo，互不 overlay、互不依赖：
 
 ```text
 fixtures/harness/
-├── add-regression/repo/    # 五道全绿，但取消订单行为有未覆盖回归
-├── repair-failing/repo/    # 3 passed / 2 failed：实现错 + eval 过期
-└── repair-errored/repo/    # 3 passed / 2 errored：局部 compliance 故障
+└── terminal-bench/
+    ├── regex-log/repo/     # hello-world / fix-permissions / classifier-debug / regex-log
+    └── log-summary/repo/   # hello-world / classifier-debug / log-summary
 ```
 
-每份 repo 自己持有 agent、配置、业务源码、文档、五道起始 inner eval 与 `local` experiment。
+每份 repo 自己持有 agent、NiceEval 配置、起始 inner eval、TB task 资产与 `local` experiment。
 修改某道题时可以直接编辑它的 repo，不需要同步 canonical fixture 或理解 evaluator 注入逻辑。
 它们使用真实 `.ts` 扩展名；宿主 discovery 不扫描 `fixtures/`，因此不需要 `*.fixture` 改名。
+
+两份 repo 都裁自干净的 `NiceEval/terminal-bench@c74165d6a3f712a7646db5f9684fe68ab1e3abb8`。
+题面和 task ID 保持真实；`process_data.sh`、`code.py`、输入日志及两份 Python 判据均从审核后题包
+逐字节复制。为了跨 NiceEval 0.9 / 0.12 / canary 离线稳定运行，没有复制 TB 中需要联网构建的
+Dockerfile，而由 canned sandbox agent 在预载 runtime 里确定性重放 task 产出。
 
 ## 共享边界
 
 共享的是运行基建，不是题目内容：
 
 - `sandbox/Dockerfile` 的 `base` 阶段提供 Node、pnpm、Docker/Compose；
-- `candidate` 阶段按精确版本预装 NiceEval、依赖、lockfile 与该版本 `niceeval init` 生成的
-  `AGENTS.md`；
+- `candidate` 阶段在收到精确版本 build arg 时预装 NiceEval、依赖、lockfile 与该版本
+  `niceeval init` 生成的 `AGENTS.md`；`harness-candidate` 在它之上只增加两枚离线 inner
+  runtime 归档，install 实验不传版本并直接停在 `candidate`，不依赖 runtime 物化 stage；
 - 0.9.0、0.12.0 与解析后的 canary 由 build arg 形成独立缓存镜像；
 - attempt 启动后，各 outer eval 只上传自己几 KB 的 repo，覆盖到已准备的 workspace；不运行
   `pnpm add`、不运行 `niceeval init`，也不复制 `node_modules`。
@@ -27,11 +33,50 @@ fixtures/harness/
 case repo 不进入 Docker build context，所以改题目不会使候选依赖镜像失效。镜像内也没有任何
 case 的正确或错误业务源码；只有共享 package/lock、候选版指引和只读 `node_modules`。
 
-## 跨版本兼容
+## 离线 inner runtime 镜像
 
-每个 repo 的 `agents/policy.ts` 同时兼容 0.9.x 的
-`defineAgent + completeCoverage + coverage` 与 0.12.x 的
-`defineDirectAgent + completeEvidenceCoverage + evidenceCoverage`。三份 repo 有意各自保留这段
-适配代码：它属于场景项目，可独立演进；磁盘开销远小于把题目耦合到中央 fixture 的维护成本。
+`terminal-bench/regex-log` 要求候选 workspace 的 inner dockerd 启动完成后，本地已有两个 tag：
 
-项目不携带 `.niceeval`，每个 outer attempt 仍由被测 agent 当场产生结果。
+```text
+offline.invalid/niceeval-harness/runtime:node
+offline.invalid/niceeval-harness/runtime:python
+```
+
+- `runtime:node`：完整 rootfs 物化自固定 digest 的 codex stage（Debian 12 bookworm +
+  Node v24 + git），**没有任何可执行 python3**；缺 Python 的 eval 在它上面必然 errored；
+- `runtime:python`：完整 rootfs 物化自固定 digest 的 python:3.11.9-bookworm stage，并从
+  node stage 补入 node 二进制；python3 真实可运行（含 stdlib / pip / venv）。
+
+### 构造与生命周期
+
+- 构建期：`sandbox/Dockerfile` 里 `runtime-node` / `runtime-python` 两个**固定 digest**
+  stage 在 stage 内 RUN 真实验证 `node -v`、`git --version`、`python3 --version`（node
+  变体额外验证 python3 不存在），再把各自完整 rootfs 用确定性 tar/gzip（`--sort=name
+  --mtime=@0 --numeric-owner` + `gzip -n`）物化成两枚 `tar.gz` 归档，同层生成 `sha256`
+  校验文件。
+  全程**零包安装**——归档内容完全由固定 digest 镜像决定，不存在 unpinned package
+  install，也不存在随时间漂移；
+- Harness 阶段：专用 `harness-candidate` target 用 `COPY --from=runtime-*` 把归档与校验
+  文件放到 `/opt/niceeval-harness/runtime/`；普通 `candidate` 不引用这两个 stage，install
+  镜像不构建也不携带归档；
+- 启动期：`niceeval-dind-entrypoint.sh` 在 inner dockerd 就绪后调用
+  `niceeval-runtime-import.sh`，先对两枚归档做 `sha256sum -c` 校验，再做本地
+  `docker import`，最后用 `docker run --pull=never` 冒烟：node 变体 node/git 可用且
+  python3 不可执行，python 变体 node/git/python3 全可用；任一步失败即整体退出，
+  Sandbox 直接 errored；
+- 镜像准备期：导入只读本地归档，冒烟固定 `--pull=never`，两步均不访问网络；`.invalid`
+  保留域防止本地 tag 与真实 registry 名冲突。
+
+这层基建与候选预装、`node` 用户、DinD socket 生命周期互不影响：归档只在镜像层，不进入
+build context，也不进入 git。
+
+### 被测 agent 的唯一修改面
+
+`terminal-bench/regex-log` 的完整修复是**只改** `experiments/local.ts`：
+
+```diff
+- runtime:node
++ runtime:python
+```
+
+改错层（动 eval、动 fixture、改其它配置）或改出多余变化，都属于范围错误。
