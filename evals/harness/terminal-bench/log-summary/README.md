@@ -14,9 +14,11 @@
 
 ## 判分重点
 
-- 既有完整 Turn Judge 评估真实 `exp → show → 动态 locator → 下钻 → 最终回复` 的有序语义；当前
+- 根级 Judge Assertion 显式传入题面及完整 `toolCalls + message`，评估真实
+  `exp → show → 动态 locator → 下钻 → 最终回复` 的有序语义；当前
   CLI Adapter 看不到内部 shell argv，因此不把 `commandMatch` / `toolOrder` 当硬 gate；
-- 外层 Fact 禁止观察到把 `.niceeval`、`evals` 或 `agents` 作为工具输入读取，并要求 Turn 成功；
+- 外层 Assertion 以 `calledTool("shell", { input: <禁区路径>, count: 0 })` 禁止观察到把
+  `.niceeval`、`evals` 或 `agents` 作为工具输入读取，并要求 Turn 成功；
 - 对 `classifier-debug` 和 `log-summary` 都要求引用公开 `show` 的动态 locator 与输出，并明确排除互换归因；
 - 最终 workspace 必须无改动。
 
