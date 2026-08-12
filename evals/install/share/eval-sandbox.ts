@@ -123,8 +123,12 @@ export async function evalSandboxCreation(t: ScoreTestContext, opts: { material:
     )
   ).stdout.trim();
   const material = dockerfiles ? `${opts.material}\n\n${dockerfiles}` : opts.material;
+  const judgeInput = [...t.events]
+    .reverse()
+    .find((event) => event.type === "message" && event.role === "user")
+    ?.text ?? "";
   const judgeMaterial = {
-    input: "下面是待按给定判据评审的 agent 产出。",
+    input: judgeInput,
     output: material,
   };
 
