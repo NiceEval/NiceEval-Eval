@@ -47,7 +47,7 @@ const PREAMBLE =
   "用户已要求评估环境要预制好、attempt 里别现装。\n" +
   "本条判据只判其中一个点，其它点由别的判据各自判——不要因为材料在别的点上有缺陷就给这一条判 N。\n";
 
-/** sandbox/template 创建质量的三条独立判据。调用方各挂 legacy Judge `.points(1)`，纯加分不 gate。 */
+/** sandbox/template 创建质量的三条独立判据。调用方各挂 Judge `.score(1)`，纯加分不 gate。 */
 function buildSandboxRubrics(): { key: string; criteria: string }[] {
   return [
     {
@@ -123,39 +123,38 @@ export async function evalSandboxCreation(t: ScoreTestContext, opts: { material:
     )
   ).stdout.trim();
   const material = dockerfiles ? `${opts.material}\n\n${dockerfiles}` : opts.material;
+  const judgeMaterial = {
+    input: "下面是待按给定判据评审的 agent 产出。",
+    output: material,
+  };
 
   await t.group("评估sandbox创建", async () => {
     // gate：这条路径的题面就是「评估在隔离沙箱里跑」，experiment/config 没配任何 provider
     // 等于没做题——与「装成没装成」同级，红了 verdict 直接 failed。
-    t.assert(t.check(factories.length > 0, isTrue(`sandbox provider 已配置（实际检出：${factories || "无"}）`)));
+    t.check(factories.length > 0, isTrue(`sandbox provider 已配置（实际检出：${factories || "无"}）`)).gate();
 
     // 文档明说 provider SDK 不随 niceeval 安装、「用哪个就装哪个」。挣这分要求真用了某个
     // 云/容器 provider 且它的 SDK 进了依赖——只用 localSandbox 的挣不到（它免装，这条判据
     // 对它无事实可验，不发空对空的分）。
-    t.score(
-      "云/容器 provider SDK 依赖",
-      t.check(
-        { factories, deps },
-        satisfies("用到的云/容器 provider 的 SDK 按「用哪个装哪个」进了依赖", (v) => {
-          const { factories: f, deps: d } = v as { factories: string; deps: string };
-          const used = PROVIDER_SDK.filter(([factory]) => f.includes(factory));
-          return used.length > 0 && used.every(([, pkg]) => d.includes(`"${pkg}"`));
-        }),
-      ),
-      { max: 1 },
-    );
+    t.check(
+      { factories, deps },
+      satisfies("用到的云/容器 provider 的 SDK 按「用哪个装哪个」进了依赖", (v) => {
+        const { factories: f, deps: d } = v as { factories: string; deps: string };
+        const used = PROVIDER_SDK.filter(([factory]) => f.includes(factory));
+        return used.length > 0 && used.every(([, pkg]) => d.includes(`"${pkg}"`));
+      }),
+    ).score(1).label("云/容器 provider SDK 依赖");
 
     // 存在预制制品定义（构建脚本 / Dockerfile / 快照脚本）。「要预制」是任务要求，这条只验
     // 存在性；定义得对不对由下面 judge 三维分别判。
-    t.score(
-      "存在预制制品定义",
-      t.check(prebake.length > 0, isTrue(`存在预制制品定义（实际检出：${prebake || "无"}）`)),
-      { max: 1 },
-    );
+    t.check(
+      prebake.length > 0,
+      isTrue(`存在预制制品定义（实际检出：${prebake || "无"}）`),
+    ).score(1).label("存在预制制品定义");
 
     // judge 三维（纯加分）：预制分层 / 官方基线派生 / 制品引用版本化。
     for (const r of buildSandboxRubrics()) {
-      t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
+      t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, judgeMaterial).score(1);
     }
   });
 }
