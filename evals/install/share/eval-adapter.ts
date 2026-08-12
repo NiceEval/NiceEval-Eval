@@ -45,17 +45,13 @@ export async function evalExecutionEvidence(t: ScoreTestContext): Promise<void> 
   const execution = await sandbox.runShell(`npx --no-install niceeval show --execution 2>&1`, { cwd: at });
 
   await t.group("评估执行取证", async () => {
-    t.score(
-      "执行记录映射助手消息",
-      t.check(
-        execution.stdout,
-        satisfies(
-          "show --execution 的执行树里有 ASSISTANT 消息（adapter 真把被测系统的响应映射成了事件流）",
-          (s) => /^\s*ASSISTANT\b/m.test(s as string),
-        ),
+    t.check(
+      execution.stdout,
+      satisfies(
+        "show --execution 的执行树里有 ASSISTANT 消息（adapter 真把被测系统的响应映射成了事件流）",
+        (s) => /^\s*ASSISTANT\b/m.test(s as string),
       ),
-      { max: 1 },
-    );
+    ).score(1).label("执行记录映射助手消息");
   });
 }
 
@@ -104,39 +100,27 @@ export async function evalAdapterPractice(t: ScoreTestContext): Promise<void> {
     // 「不做进程内直调」：就算被测系统和评估在同一台机器上，也要像前端用户那样走传输层。
     // 本仓五条路径的宿主都是 Python，物理上没法进程内直调——这条因此是地板分而不是难分，
     // 它兜的是「adapter 里根本没有请求、回复是编的/写死的」这种退化。
-    t.score(
-      "真实传输层调用",
-      t.check(
-        source,
-        satisfies(
-          "send 里有真实的传输层调用（HTTP / WS 客户端），不是进程内直调或写死回复",
-          (s) => /\bfetch\s*\(|WebSocket|axios|https?\.request\s*\(|EventSource|node-fetch|undici/.test(src(s)),
-        ),
+    t.check(
+      source,
+      satisfies(
+        "send 里有真实的传输层调用（HTTP / WS 客户端），不是进程内直调或写死回复",
+        (s) => /\bfetch\s*\(|WebSocket|axios|https?\.request\s*\(|EventSource|node-fetch|undici/.test(src(s)),
       ),
-      { max: 1 },
-    );
+    ).score(1).label("真实传输层调用");
 
     // 第一步就该转发的 `ctx.signal`：运行器的超时与取消挂在它上面。不挂的 adapter 在
     // 超时时不会真的断开请求，attempt 被判超时了它还在后台跑。
-    t.score(
-      "转发 ctx.signal",
-      t.check(
-        source,
-        satisfies("把 ctx.signal 挂到了发出的请求上（运行器的超时与取消真能中断）", (s) => /ctx\.signal/.test(src(s))),
-      ),
-      { max: 1 },
-    );
+    t.check(
+      source,
+      satisfies("把 ctx.signal 挂到了发出的请求上（运行器的超时与取消真能中断）", (s) => /ctx\.signal/.test(src(s))),
+    ).score(1).label("转发 ctx.signal");
 
     // 同样是第一步：experiment 的 model 经 ctx.model 到 send。收尾自检里明写的一条——
     // 「Experiment 里声明的 model / flags 确实被 Adapter 消费」，没消费就是死配置。
-    t.score(
-      "转发 ctx.model",
-      t.check(
-        source,
-        satisfies("转发了 ctx.model（experiment 声明的模型不是没人读的死配置）", (s) => /ctx\.model/.test(src(s))),
-      ),
-      { max: 1 },
-    );
+    t.check(
+      source,
+      satisfies("转发了 ctx.model（experiment 声明的模型不是没人读的死配置）", (s) => /ctx\.model/.test(src(s))),
+    ).score(1).label("转发 ctx.model");
 
     // 「静态配置走 adapter 工厂参数」：URL / 鉴权进工厂参数，换环境（本地 / 预发 / 生产）
     // 只改实验文件里的一行，adapter 一行不动。
@@ -144,61 +128,45 @@ export async function evalAdapterPractice(t: ScoreTestContext): Promise<void> {
     // 参数，不写死、不读 process.env」，而官方 tier1 示例的 adapter 恰恰是
     // `process.env.X ?? "http://127.0.0.1:…"`。照示例写的 agent 不该被扣，所以这条只在
     // 真写成工厂时给分：工厂是文档里更进一步的那一档，挣到才加分。
-    t.score(
-      "adapter 工厂参数",
-      t.check(
-        source,
-        satisfies(
-          "静态配置走工厂参数（工厂函数返回 define*Agent，换环境只改实验文件一行）",
-          (s) => /(return|=>)\s*define(Direct|Sandbox)?Agent\s*\(/.test(src(s)),
-        ),
+    t.check(
+      source,
+      satisfies(
+        "静态配置走工厂参数（工厂函数返回 define*Agent，换环境只改实验文件一行）",
+        (s) => /(return|=>)\s*define(Direct|Sandbox)?Agent\s*\(/.test(src(s)),
       ),
-      { max: 1 },
-    );
+    ).score(1).label("adapter 工厂参数");
 
     // 第二步：接上 ctx.session 才有多轮与 t.newSession() 的会话隔离。接口无状态单轮时
     // 挣不到，属于「这次接入没走到那一档」，不是错——所以纯加分。
-    t.score(
-      "转发 ctx.session",
-      t.check(
-        source,
-        satisfies("接上了 ctx.session（多轮续接 / 会话隔离，不是每轮一场新对话）", (s) => /ctx\.session/.test(src(s))),
-      ),
-      { max: 1 },
-    );
+    t.check(
+      source,
+      satisfies("接上了 ctx.session（多轮续接 / 会话隔离，不是每轮一场新对话）", (s) => /ctx\.session/.test(src(s))),
+    ).score(1).label("转发 ctx.session");
 
     // 第三条贯穿原则：运行反馈走 ctx，不直接写终端。两半都要——用了 progress/diagnostic，
     // 且没有 console.log / process.stdout（后者会串进运行器的实时输出）。
-    t.score(
-      "运行反馈走 ctx",
-      t.check(
-        source,
-        satisfies(
-          "运行反馈走 ctx.progress / ctx.diagnostic，没有 console.log / 直写 stdout",
-          (s) =>
-            /ctx\.(progress|diagnostic)\s*\(/.test(src(s)) &&
-            !/console\.(log|error|warn|info)|process\.std(out|err)/.test(src(s)),
-        ),
+    t.check(
+      source,
+      satisfies(
+        "运行反馈走 ctx.progress / ctx.diagnostic，没有 console.log / 直写 stdout",
+        (s) =>
+          /ctx\.(progress|diagnostic)\s*\(/.test(src(s)) &&
+          !/console\.(log|error|warn|info)|process\.std(out|err)/.test(src(s)),
       ),
-      { max: 1 },
-    );
+    ).score(1).label("运行反馈走 ctx");
 
     // 第四步：把过程也归一进标准事件流——官方转换器（标准形状零映射）或手写 action.called /
     // thinking 映射。只吐一条最终文本的 send 也能跑绿，但工具族断言整族用不了。
-    t.score(
-      "过程映射为事件流",
-      t.check(
-        source,
-        satisfies(
-          "过程也归一进了事件流（官方转换器，或手写 action.called / thinking 映射），不是只映射最终文本",
-          (s) =>
-            /\b(turnFrom(ChatCompletion|Responses|AiSdk)|create(ClaudeSdkEventStream|PiAgentEventStream|CodexThreadEventStream)|from(ChatCompletion|Responses|AiSdk|ClaudeSdkMessages|PiAgentEvents|CodexThreadEvents))\s*\(|deltaStream\s*\(|driveFrameStream\s*\(|uiMessageStreamAgent\s*\(/.test(
-              src(s),
-            ) || /["']action\.called["']|["']thinking["']|["']input\.requested["']/.test(src(s)),
-        ),
+    t.check(
+      source,
+      satisfies(
+        "过程也归一进了事件流（官方转换器，或手写 action.called / thinking 映射），不是只映射最终文本",
+        (s) =>
+          /\b(turnFrom(ChatCompletion|Responses|AiSdk)|create(ClaudeSdkEventStream|PiAgentEventStream|CodexThreadEventStream)|from(ChatCompletion|Responses|AiSdk|ClaudeSdkMessages|PiAgentEvents|CodexThreadEvents))\s*\(|deltaStream\s*\(|driveFrameStream\s*\(|uiMessageStreamAgent\s*\(/.test(
+            src(s),
+          ) || /["']action\.called["']|["']thinking["']|["']input\.requested["']/.test(src(s)),
       ),
-      { max: 1 },
-    );
+    ).score(1).label("过程映射为事件流");
   });
 }
 
@@ -220,20 +188,16 @@ export async function evalAdapter(t: ScoreTestContext): Promise<void> {
     // 旧 Score API 的两个 `.atLeast(1)` 都是无权的 quality observation。Fact API 不再保留该
     // 消费面，故 breaking 地迁为显式的一分 score：仍不 gate，机器事实也不被丢掉；本考项的
     // max 因而较旧行为增加 2 分。其它原有 `.points` 判据仍各保持 1 分。
-    t.score("niceeval show 命令成功", t.check(show, commandSucceeded()), { max: 1 });
+    t.check(show, commandSucceeded()).score(1).label("niceeval show 命令成功");
     // 只要正向证据（出现 passed/failed = 请求真出去、回应真回来），不再排斥 errored 字样：
     // 「第一次跑挂、修好再跑通」是文件头明说合理的路径，历史里留着 errored 行不该连坐。
     // 连不上被测系统的 agent 本来就产不出任何 passed/failed。
-    t.score(
-      "show 有通过或失败结果",
-      t.check(
-        show.stdout,
-        satisfies(
-          "niceeval show 显示的 verdict 有 passed/failed（真联上了被测系统；从没联上只会有 errored）",
-          (s) => /\b(passed|failed)\b/i.test(s as string),
-        ),
+    t.check(
+      show.stdout,
+      satisfies(
+        "niceeval show 显示的 verdict 有 passed/failed（真联上了被测系统；从没联上只会有 errored）",
+        (s) => /\b(passed|failed)\b/i.test(s as string),
       ),
-      { max: 1 },
-    );
+    ).score(1).label("show 有通过或失败结果");
   });
 }
