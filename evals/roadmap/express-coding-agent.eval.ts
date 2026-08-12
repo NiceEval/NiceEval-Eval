@@ -1,5 +1,5 @@
 import { defineScoreEval } from "niceeval";
-import { referencesAnyPath, toolMatch } from "niceeval/expect";
+import { equals, referencesAnyPath, toolMatch } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { saveAgentOutput } from "../install/share/agent-archive.ts";
 import { evalExecutionEvidence } from "../install/share/eval-adapter.ts";
@@ -97,11 +97,13 @@ const SANDBOX_CLARIFY: { key: string; criteria: string }[] = [
 
 export default defineScoreEval({
   description: "为 Express 仓库搭一套评 coding agent 的沙箱评估（考 sandbox/template 创建）",
+  judge: true,
   // INIT.md 的完成清单含「真跑一次并 show 可见」，这条路径真跑一轮 = 嵌套跑一个 coding agent
   // 任务，与前五条起被测服务同量级，install 组统一放宽的 35min 照用。
   timeoutMs: 35 * 60 * 1000,
   async test(t) {
-    const version = t.flags.candidateVersion as string;
+    const version = t.flags.candidateVersion;
+    if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
 
     // 合格落点必须在这个候选里真实存在，否则「评估是否正确加载文档」只会静默读零
     assertPagesInCandidate(EXPECTED_PAGES, version);
@@ -124,10 +126,14 @@ export default defineScoreEval({
 
     // ── 评估交互（各写各的，机制同 evalInteraction：判第一轮回复，加分不 gate） ──────
     const clarifyReply = t.reply;
+    const isWaiting = turn.status === "waiting";
     await t.group("评估交互", async () => {
-      t.score("停下来澄清", turn.parked(), { max: 1 });
+      t.check(isWaiting, equals(true)).label("停下来澄清").score(1);
       for (const r of SANDBOX_CLARIFY) {
-        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: clarifyReply }).points(1);
+        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, {
+          input: "下面是 agent 在动手前给出的澄清回复。",
+          output: clarifyReply,
+        }).score(1);
       }
     });
 
@@ -141,7 +147,10 @@ export default defineScoreEval({
       "云端用 e2b，但云凭据只在 CI 有，本地不用真构建，预制的构建定义写好即可；" +
       "本地先用最省的方式把一轮最小任务真跑通。写两个实验（baseline + 一个 model 对比），" +
       "先不接 otel、也先不做变体 flag。其余你自行决定，不用再等我确认。";
-    if (turn.status === "waiting") {
+    if (isWaiting) {
+      // 当前 Assert-first 暂无 parked() handle；标准 HITL 入口确认该 waiting 轮确有唯一待答请求，
+      // 不自行复制旧 parked 的事件匹配器。
+      t.requireInputRequest();
       await t.respond(PICK_SANDBOX);
     } else {
       await t.send(PICK_SANDBOX);
@@ -163,7 +172,10 @@ export default defineScoreEval({
     await t.group("产出质量层", async () => {
       // 同前五条：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate。
       for (const r of buildQualityRubrics(QUALITY)) {
-        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
+        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, {
+          input: "下面是待按给定判据评审的 agent 产出。",
+          output: material,
+        }).score(1);
       }
     });
 
@@ -173,43 +185,32 @@ export default defineScoreEval({
     // 不判 tier 页：tier 三档是自写 adapter 路径的知识点，这条路径的交互层没有那条
     // 判据，读没读 tier 页不构成这道题的读数。
     await t.group("评估是否正确加载文档", async () => {
-      t.score(
-        "以随包 INDEX.md 为路由入口",
-        t.calledTool(toolMatch("shell", { input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) })),
-        { max: 1 },
-      );
-      t.score(
-        "读到 sandbox 这条路径的页面",
-        t.calledTool(toolMatch("shell", {
-          input: referencesAnyPath([
-            "docs-site/zh/how-to/sandbox-providers.mdx",
-            "docs-site/zh/how-to/fixtures.mdx",
-            "docs-site/zh/how-to/sandbox-agent.mdx",
-            "docs-site/zh/tutorials/sandbox-providers.mdx",
-            "docs-site/zh/tutorials/fixtures.mdx",
-            "docs-site/zh/tutorials/sandbox-agent.mdx",
-          ]),
-        })),
-        { max: 1 },
-      );
-      t.score(
-        "没退回官网 / GitHub main",
-        t.notCalledTool(toolMatch("shell", {
-          input: referencesAnyPath([
-            "niceeval.com/docs",
-            "github.com/CorrectRoadH/niceeval/blob/main",
-            "github.com/CorrectRoadH/niceeval/tree/main",
-            "github.com/CorrectRoadH/niceeval/raw/main",
-          ]),
-        })),
-        { max: 1 },
-      );
+      t.calledTool(
+        toolMatch("shell", { input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }),
+      ).label("以随包 INDEX.md 为路由入口").score(1);
+      t.calledTool(toolMatch("shell", {
+        input: referencesAnyPath([
+          "docs-site/zh/how-to/sandbox-providers.mdx",
+          "docs-site/zh/how-to/fixtures.mdx",
+          "docs-site/zh/how-to/sandbox-agent.mdx",
+          "docs-site/zh/tutorials/sandbox-providers.mdx",
+          "docs-site/zh/tutorials/fixtures.mdx",
+          "docs-site/zh/tutorials/sandbox-agent.mdx",
+        ]),
+      })).label("读到 sandbox 这条路径的页面").score(1);
+      t.notCalledTool(toolMatch("shell", {
+        input: referencesAnyPath([
+          "niceeval.com/docs",
+          "github.com/CorrectRoadH/niceeval/blob/main",
+          "github.com/CorrectRoadH/niceeval/tree/main",
+          "github.com/CorrectRoadH/niceeval/raw/main",
+        ]),
+      })).label("没退回官网 / GitHub main").score(1);
     });
 
     // 生命周期收尾：归档产物供人工 review（沙箱销毁前抓一份，纯落盘不影响 verdict）。
     await saveAgentOutput(t, "express-coding-agent");
 
-    t.assert(turn.succeeded());
-    return t.finishScore();
+    turn.succeeded().gate();
   },
 });

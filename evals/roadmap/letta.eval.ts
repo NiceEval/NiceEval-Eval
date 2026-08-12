@@ -1,6 +1,6 @@
 import { defineScoreEval } from "niceeval";
+import { referencesAnyPath, toolMatch } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
-import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "../install/share/agent-archive.ts";
 import type { ClarifyFacts } from "../install/share/clarify-criteria.ts";
 // 不调用 evalAdapter：起 Letta 服务重且不稳，断「真跑通」测到的是环境波动而不是文档效果
@@ -133,10 +133,29 @@ export default defineScoreEval({
     await t.group("评估是否正确加载文档", async () => {
       // 本段是「计量，不 gate」（见文件头）：计分制里 Assertion 的 .score(1) 不参与判定，
       // 没挣到只是少挣分，不会让「文档没起作用」判负。五条接入路径这段写法一致。
-      t.calledTool("shell", { input: { command: INDEX_RE } }).score(1).label("以随包 INDEX.md 为路由入口");
-      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).score(1).label("读到与宿主形态匹配的页面");
-      t.calledTool("shell", { input: { command: TIER_PAGE_RE } }).score(1).label("读到接入等级页");
-      t.calledTool("shell", { input: { command: ONLINE_DOCS_RE }, count: 0 }).score(1).label("没退回官网 / GitHub main");
+      t.calledTool(
+        toolMatch("shell", { input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }),
+      ).label("以随包 INDEX.md 为路由入口").score(1);
+      t.calledTool(toolMatch("shell", {
+        input: referencesAnyPath([
+          "docs-site/zh/how-to/connect-your-agent.mdx",
+          "docs-site/zh/how-to/write-send.mdx",
+          "docs-site/zh/tutorials/connect-your-agent.mdx",
+          "docs-site/zh/tutorials/write-send.mdx",
+          "docs-site/zh/tutorials/quickstart.mdx",
+        ]),
+      })).label("读到与宿主形态匹配的页面").score(1);
+      t.calledTool(
+        toolMatch("shell", { input: referencesAnyPath(["docs-site/zh/explanation/tier.mdx"]) }),
+      ).label("读到接入等级页").score(1);
+      t.notCalledTool(toolMatch("shell", {
+        input: referencesAnyPath([
+          "niceeval.com/docs",
+          "github.com/CorrectRoadH/niceeval/blob/main",
+          "github.com/CorrectRoadH/niceeval/tree/main",
+          "github.com/CorrectRoadH/niceeval/raw/main",
+        ]),
+      })).label("没退回官网 / GitHub main").score(1);
     });
 
     // 生命周期收尾：把 agent 写出的三件套 copy 到本地 .agent-output/（gitignore）供人工 review。
