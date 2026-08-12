@@ -1,5 +1,4 @@
 import { defineScoreEval } from "niceeval";
-import { referencesAnyPath, toolMatch } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
 import type { ClarifyFacts } from "./share/clarify-criteria.ts";
@@ -9,6 +8,32 @@ import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall, evalInteraction } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
 import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
+
+// Assert-first 的 `calledTool(..., { input })` 接收 JSON predicate；保持旧
+// referencesAnyPath 对嵌套输入值、路径边界及 `/` / `\\` 分隔符的匹配语义。
+function inputReferencesAnyPath(paths: readonly string[]) {
+  const patterns = paths.map((path) => {
+    const source = path
+      .split(/[\\/]+/u)
+      .filter((component) => component.length > 0 && component !== ".")
+      .map((component) => component.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&"))
+      .join("[\\\\/]+(?:\\.[\\\\/]+)*");
+    return new RegExp(`(?<![\\p{L}\\p{N}_.-])${source}(?![\\p{L}\\p{N}_.-])`, "u");
+  });
+
+  const referencesPath = (value: unknown): boolean => {
+    if (typeof value === "string") {
+      return patterns.some((pattern) => {
+        pattern.lastIndex = 0;
+        return pattern.test(value);
+      });
+    }
+    if (value === null || typeof value !== "object") return false;
+    return Object.values(value).some(referencesPath);
+  };
+
+  return referencesPath;
+}
 
 /**
  * 接入路径：真实开源项目 GPT Researcher（自动化研究报告 agent）。
@@ -68,6 +93,7 @@ const CLARIFY: ClarifyFacts = {
 
 export default defineScoreEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
+  judge: true,
   // INIT.md 的完成清单含「真跑一次并 show 可见」，装+读文档+写三件套+端到端一轮下来
   // 全局 20min 不够（canary.4 上这条正确迭代到一半被掐死），install 组统一放宽。
   timeoutMs: 35 * 60 * 1000,
@@ -85,10 +111,10 @@ export default defineScoreEval({
     // send 是「用户会原样复制的那句话」：只有读引导 + 装包 + 版本钉死。写三件套、真跑一次、
     // show 可见这些行为要求全部住在 INIT.md 的 TODO 清单里——agent 做没做到是文档的读数，
     // 不由 prompt 代劳。五条接入路径同一份文案。
-    const turn = await t.send(
+    const prompt =
       `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
-      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
-    );
+      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`;
+    const turn = await t.send(prompt);
 
     // ── 通用检查：评估安装（gate + 软分混合）+ 评估exp质量（软分）+ 评估adapter（软分）
     // ── + 评估执行取证（加分）+ 最佳实践两层（纯加分：adapter 的 send 写法、eval 的断言写法，
@@ -107,13 +133,14 @@ export default defineScoreEval({
 
     // ── 产出质量层（纯加分）：judge 读 agent 手写的 .ts 源码按维度判 eval 设计质量。 ──
     const material = await agentSourceMaterial(t.sandbox);
+    const qualityMaterial = { input: prompt, output: material };
 
     await t.group("产出质量层", async () => {
       // 纯加分：每维一条独立 closedQA，Y 挣 1 分、N 挣 0 分，不 gate——没挣到只是没提分。
       // 四维只判 eval 设计（adapter 链路由评估adapter/评估执行取证机械判，不进 judge）：
       // 机制与反模式从句住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
       for (const r of buildQualityRubrics(QUALITY)) {
-        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
+        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, qualityMaterial).score(1);
       }
     });
 
@@ -123,47 +150,35 @@ export default defineScoreEval({
     await t.group("评估是否正确加载文档", async () => {
       // 本段是「计量，不 gate」（见文件头）：计分制里 t.score 的得分点不参与判定，
       // 没挣到只是少挣分，不会让「文档没起作用」判负。五条接入路径这段写法一致。
-      t.score(
-        "以随包 INDEX.md 为路由入口",
-        t.calledTool(toolMatch("shell", { input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) })),
-        { max: 1 },
-      );
-      t.score(
-        "读到与宿主形态匹配的页面",
-        t.calledTool(toolMatch("shell", {
-          input: referencesAnyPath([
-            "docs-site/zh/how-to/write-send.mdx",
-            "docs-site/zh/how-to/connect-your-agent.mdx",
-            "docs-site/zh/tutorials/write-send.mdx",
-            "docs-site/zh/tutorials/connect-your-agent.mdx",
-            "docs-site/zh/reference/events.mdx",
-          ]),
-        })),
-        { max: 1 },
-      );
-      t.score(
-        "读到接入等级页",
-        t.calledTool(toolMatch("shell", { input: referencesAnyPath(["docs-site/zh/explanation/tier.mdx"]) })),
-        { max: 1 },
-      );
-      t.score(
-        "没退回官网 / GitHub main",
-        t.notCalledTool(toolMatch("shell", {
-          input: referencesAnyPath([
-            "niceeval.com/docs",
-            "github.com/CorrectRoadH/niceeval/blob/main",
-            "github.com/CorrectRoadH/niceeval/tree/main",
-            "github.com/CorrectRoadH/niceeval/raw/main",
-          ]),
-        })),
-        { max: 1 },
-      );
+      t.calledTool("shell", {
+        input: inputReferencesAnyPath(["node_modules/niceeval/INDEX.md"]),
+      }).label("以随包 INDEX.md 为路由入口").score(1);
+      t.calledTool("shell", {
+        input: inputReferencesAnyPath([
+          "docs-site/zh/how-to/write-send.mdx",
+          "docs-site/zh/how-to/connect-your-agent.mdx",
+          "docs-site/zh/tutorials/write-send.mdx",
+          "docs-site/zh/tutorials/connect-your-agent.mdx",
+          "docs-site/zh/reference/events.mdx",
+        ]),
+      }).label("读到与宿主形态匹配的页面").score(1);
+      t.calledTool("shell", {
+        input: inputReferencesAnyPath(["docs-site/zh/explanation/tier.mdx"]),
+      }).label("读到接入等级页").score(1);
+      t.calledTool("shell", {
+        input: inputReferencesAnyPath([
+          "niceeval.com/docs",
+          "github.com/CorrectRoadH/niceeval/blob/main",
+          "github.com/CorrectRoadH/niceeval/tree/main",
+          "github.com/CorrectRoadH/niceeval/raw/main",
+        ]),
+        count: 0,
+      }).label("没退回官网 / GitHub main").score(1);
     });
 
     // 生命周期收尾：把 agent 写出的三件套 copy 到本地 .agent-output/（gitignore）供人工 review。
     await saveAgentOutput(t, "gpt-researcher");
 
-    t.assert(turn.succeeded());
-    return t.finishScore();
+    turn.succeeded().gate();
   },
 });
