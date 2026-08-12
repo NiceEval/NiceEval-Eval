@@ -1,6 +1,6 @@
 import { defineScoreEval } from "niceeval";
-import { referencesAnyPath, toolMatch } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
+import { INDEX_RE, ONLINE_DOCS_RE, TIER_PAGE_RE } from "../../lib/routing.ts";
 import { saveAgentOutput } from "../install/share/agent-archive.ts";
 import type { ClarifyFacts } from "../install/share/clarify-criteria.ts";
 // 不调用 evalAdapter：起 Skyvern 服务 + 拉浏览器重且不稳，断「真跑通」测到的是环境波动而不是文档效果
@@ -75,11 +75,13 @@ const CLARIFY: ClarifyFacts = {
 
 export default defineScoreEval({
   description: "把 niceeval 接入 Skyvern（浏览器操作自动化 agent）",
+  judge: true,
   // INIT.md 的完成清单含「真跑一次并 show 可见」，agent 大概率会尝试起被测系统，
   // 全局 20min 不够（canary.4 上 gpt-researcher 干到一半被掐死过），install 组统一放宽。
   timeoutMs: 35 * 60 * 1000,
   async test(t) {
-    const version = t.flags.candidateVersion as string;
+    const version = t.flags.candidateVersion;
+    if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
 
     // 合格落点必须在这个候选里真实存在，否则「评估是否正确加载文档」只会静默读零
     assertPagesInCandidate(EXPECTED_PAGES, version);
@@ -119,7 +121,10 @@ export default defineScoreEval({
       // 四维只判 eval 设计（adapter 链路由评估执行取证机械判，不进 judge）：机制与反模式从句
       // 住 ./share/quality-criteria.ts，事实由上面的 QUALITY 传入。
       for (const r of buildQualityRubrics(QUALITY)) {
-        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, { on: material }).points(1);
+        t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, {
+          input: "下面是待按给定判据评审的 agent 产出。",
+          output: material,
+        }).score(1);
       }
     });
 
@@ -127,49 +132,17 @@ export default defineScoreEval({
     // 判据是碰过哪个路径、不是用了哪个工具：codex 走 shell 读文件（cat/rg），路径落在
     // input.command 里；miss 时断言的 received 会带同名 shell 调用的出入参,归因不用手搓。
     await t.group("评估是否正确加载文档", async () => {
-      // 本段是「计量，不 gate」（见文件头）：计分制里 t.score 的得分点不参与判定，
+      // 本段是「计量，不 gate」（见文件头）：计分制里 Assertion 的 .score(1) 不参与判定，
       // 没挣到只是少挣分，不会让「文档没起作用」判负。五条接入路径这段写法一致。
-      t.score(
-        "以随包 INDEX.md 为路由入口",
-        t.calledTool(toolMatch("shell", { input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) })),
-        { max: 1 },
-      );
-      t.score(
-        "读到与宿主形态匹配的页面",
-        t.calledTool(toolMatch("shell", {
-          input: referencesAnyPath([
-            "docs-site/zh/how-to/connect-your-agent.mdx",
-            "docs-site/zh/how-to/write-send.mdx",
-            "docs-site/zh/tutorials/connect-your-agent.mdx",
-            "docs-site/zh/tutorials/write-send.mdx",
-            "docs-site/zh/tutorials/quickstart.mdx",
-          ]),
-        })),
-        { max: 1 },
-      );
-      t.score(
-        "读到接入等级页",
-        t.calledTool(toolMatch("shell", { input: referencesAnyPath(["docs-site/zh/explanation/tier.mdx"]) })),
-        { max: 1 },
-      );
-      t.score(
-        "没退回官网 / GitHub main",
-        t.notCalledTool(toolMatch("shell", {
-          input: referencesAnyPath([
-            "niceeval.com/docs",
-            "github.com/CorrectRoadH/niceeval/blob/main",
-            "github.com/CorrectRoadH/niceeval/tree/main",
-            "github.com/CorrectRoadH/niceeval/raw/main",
-          ]),
-        })),
-        { max: 1 },
-      );
+      t.calledTool("shell", { input: { command: INDEX_RE } }).score(1).label("以随包 INDEX.md 为路由入口");
+      t.calledTool("shell", { input: { command: EXPECTED_PAGES } }).score(1).label("读到与宿主形态匹配的页面");
+      t.calledTool("shell", { input: { command: TIER_PAGE_RE } }).score(1).label("读到接入等级页");
+      t.calledTool("shell", { input: { command: ONLINE_DOCS_RE }, count: 0 }).score(1).label("没退回官网 / GitHub main");
     });
 
     // 生命周期收尾：把 agent 写出的三件套 copy 到本地 .agent-output/（gitignore）供人工 review。
     await saveAgentOutput(t, "skyvern");
 
-    t.assert(turn.succeeded());
-    return t.finishScore();
+    turn.succeeded().gate();
   },
 });
