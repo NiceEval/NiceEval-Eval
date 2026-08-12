@@ -5,16 +5,15 @@
  * 同容器 Unix socket 使用 docker / docker compose。privileged 只允许落到显式 rootless
  * 外层 daemon，NiceEval 在 create 前 fail-closed 验证。
  *
- * 使用当前 niceeval/sandbox 的真实 API：`dockerfileSandbox`（0.12 系）。0.9.x 时代的
- * `dockerSandbox({ source, readiness })` 已不存在，readiness 检查改为 sandbox setup hook
- * 内执行（容器起来后同一条语义）。
+ * 使用当前 niceeval/sandbox 的 Dockerfile source 构造：
+ * `dockerSandbox({ source: { type: "dockerfile", ... } })`。
  *
  * context 是仓库根，.dockerignore 把 context 白名单收窄到 sandbox/。候选版本经
  * buildArgs 传入并参与镜像身份（buildKey），每个版本一个可缓存、互不覆盖的共享基建镜像；
  * case repo 不进 build context，由所属 eval 在 send 前上传。
  */
 
-import { dockerfileSandbox } from "niceeval/sandbox";
+import { dockerSandbox } from "niceeval/sandbox";
 import type { SandboxHook } from "niceeval/sandbox";
 import { provisionTargetAppEnv } from "./target-app-env.ts";
 
@@ -119,15 +118,18 @@ function prepareHarnessCandidate(candidateVersion?: string): SandboxHook {
  */
 export function sandboxWith(profile: "node" | "python" = "node", candidateVersion?: string) {
   const harnessCandidate = candidateVersion !== undefined;
-  const base = dockerfileSandbox({
-    context: new URL("../", import.meta.url),
-    dockerfile: "sandbox/Dockerfile",
-    ...(harnessCandidate
-      ? {
-          buildArgs: { NICEEVAL_VERSION: candidateVersion },
-          target: "harness-candidate",
-        }
-      : { target: "candidate" }),
+  const base = dockerSandbox({
+    source: {
+      type: "dockerfile",
+      context: new URL("../", import.meta.url),
+      file: "sandbox/Dockerfile",
+      ...(harnessCandidate
+        ? {
+            buildArgs: { NICEEVAL_VERSION: candidateVersion },
+            target: "harness-candidate",
+          }
+        : { target: "candidate" }),
+    },
     user: "node",
     dockerAccess: harnessCandidate
       ? { mode: "dind", isolation: "raw-privileged" }
