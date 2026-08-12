@@ -40,48 +40,35 @@ export async function evalExperiment(t: ScoreTestContext): Promise<void> {
   await t.group("评估exp质量", async () => {
     // 旧 Score API 的 `.atLeast(1)` 是无权的 quality observation。Fact API 不再有这个消费面，
     // 所以这里 breaking 地迁为显式的一分 score：仍是非 gate，却保留可观察的机器事实；本考项
-    // 的 max 因而较旧行为增加 4 分。原有 `.points(1)` 的权重在下面保持为各 1 分。
+    // 的 max 因而较旧行为增加 4 分。原有一分判据的权重在下面保持为各 1 分。
     // 一格实验什么也比不了：baseline 之外至少还要有一个对比格。宿主接口完全不支持
     // 任何变体时允许退化，所以是软分不 gate。
-    t.score(
-      "至少两格实验配置",
-      t.check(
-        dryPlan,
-        satisfies("至少两格实验配置——baseline 加至少一个对比", (v) => (asPlan(v)?.matrix.length ?? 0) >= 2),
-      ),
-      { max: 1 },
-    );
+    t.check(
+      dryPlan,
+      satisfies("至少两格实验配置——baseline 加至少一个对比", (v) => (asPlan(v)?.matrix.length ?? 0) >= 2),
+    ).score(1).label("至少两格实验配置");
     // compare-models 是 INIT.md 明确要求的默认组织方式
-    t.score(
-      "compare-models 实验组",
-      t.check(
-        dryPlan,
-        satisfies(
-          "按 compare-models 实验组组织",
-          (v) => (asPlan(v)?.matrix ?? []).some((row) => row.experimentId.includes("compare-models/")),
-        ),
+    t.check(
+      dryPlan,
+      satisfies(
+        "按 compare-models 实验组组织",
+        (v) => (asPlan(v)?.matrix ?? []).some((row) => row.experimentId.includes("compare-models/")),
       ),
-      { max: 1 },
-    );
+    ).score(1).label("compare-models 实验组");
     // 接入期每格 attempts=1：先跑通一次再谈统计，多次重复只是烧时间和预算。当前协议字段是
     // attempts；0.11.0 对照候选仍输出旧字段 runs，所以探针只在协议边界保留兼容读取。
-    t.score(
-      "每格实验 attempts=1",
-      t.check(
-        dryPlan,
-        satisfies("每格实验 attempts=1", (v) => {
-          const plan = asPlan(v);
-          return (plan?.attempts ?? plan?.runs) === 1;
-        }),
-      ),
-      { max: 1 },
-    );
+    t.check(
+      dryPlan,
+      satisfies("每格实验 attempts=1", (v) => {
+        const plan = asPlan(v);
+        return (plan?.attempts ?? plan?.runs) === 1;
+      }),
+    ).score(1).label("每格实验 attempts=1");
     // 一两个实验不配抽象层：shared.ts 是文档里给「实验多了以后」的写法，起手就抽是过度设计
-    t.score(
-      "不提前抽 shared.ts",
-      t.check(shared.length === 0, isTrue(`没有先抽 shared.ts 共享抽象（实际：${shared || "无"}）`)),
-      { max: 1 },
-    );
+    t.check(
+      shared.length === 0,
+      isTrue(`没有先抽 shared.ts 共享抽象（实际：${shared || "无"}）`),
+    ).score(1).label("不提前抽 shared.ts");
   });
 
   // ── 最佳实践（纯加分，每条 1 分）：实验文件写没写成文档教的样子。 ────────────────────
@@ -115,41 +102,29 @@ export async function evalExperiment(t: ScoreTestContext): Promise<void> {
 
   await t.group("评估exp质量最佳实践", async () => {
     // 每个实验文件都写 description：报告与 CLI 的对比表按它认人，缺了只剩一个路径 id。
-    t.score(
-      "实验文件 description",
-      t.check(
-        files,
-        satisfies(
-          `每个实验文件都写了 description（实际取到 ${files.length} 个实验文件）`,
-          (v) => (v as string[]).length > 0 && (v as string[]).every((f) => /\bdescription:/.test(f)),
-        ),
+    t.check(
+      files,
+      satisfies(
+        `每个实验文件都写了 description（实际取到 ${files.length} 个实验文件）`,
+        (v) => (v as string[]).length > 0 && (v as string[]).every((f) => /\bdescription:/.test(f)),
       ),
-      { max: 1 },
-    );
+    ).score(1).label("实验文件 description");
 
     // 模型对比的实质：两格各钉一个不同的 model。宿主只有一个可用模型时挣不到，属于
     // 「这次接入没走到那一档」，所以纯加分。
-    t.score(
-      "至少两个不同 model",
-      t.check(
-        models.size >= 2,
-        isTrue(`对比组里至少两个不同的 model 值（实际：${[...models].join(" / ") || "无"}）`),
-      ),
-      { max: 1 },
-    );
+    t.check(
+      models.size >= 2,
+      isTrue(`对比组里至少两个不同的 model 值（实际：${[...models].join(" / ") || "无"}）`),
+    ).score(1).label("至少两个不同 model");
 
     // 「静态配置走 adapter 工厂」的实验侧一半：agent 字段是工厂调用、URL / 鉴权在这里传，
     // 换环境只改这一行。adapter 侧那一半在 ./eval-adapter.ts 的 evalAdapterPractice 里判。
-    t.score(
-      "实验侧 adapter 工厂调用",
-      t.check(
-        experiments,
-        satisfies(
-          "agent 字段是配置好的工厂调用（静态配置在实验文件里传，不写死在 adapter 里）",
-          (v) => /agent:\s*[A-Za-z_$][\w$]*\s*\(/.test(v as string),
-        ),
+    t.check(
+      experiments,
+      satisfies(
+        "agent 字段是配置好的工厂调用（静态配置在实验文件里传，不写死在 adapter 里）",
+        (v) => /agent:\s*[A-Za-z_$][\w$]*\s*\(/.test(v as string),
       ),
-      { max: 1 },
-    );
+    ).score(1).label("实验侧 adapter 工厂调用");
   });
 }
