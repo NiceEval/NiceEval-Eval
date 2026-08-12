@@ -34,7 +34,7 @@
  */
 
 import type { ScoreTestContext } from "niceeval";
-import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
+import { commandMatch, commandSucceeded, isTrue, jsonMatch, or, satisfies, toolMatch } from "niceeval/expect";
 import { readCandidateManifest } from "../../../lib/candidate.ts";
 import { buildClarifyRubrics, type ClarifyFacts } from "./clarify-criteria.ts";
 import {
@@ -309,33 +309,40 @@ export async function evalInstall(
     // 过程侧（加分，每条 1 分）：agent 该敲的命令敲没敲。跟上面几条的区别：上面是事后取证验
     // 产物、是 gate；这里回看 agent 自己的事件流、是加分——挣到才说明「是 agent 自己走完流程
     // 做对的」，没挣到也不连坐 gate。
-    // "shell" 是 canonical 工具名（codex 的 command_execution、claude-code 的 Bash 都归一到它），
-    // input.command 挂正则只对上 shell 调用的命令串——写进文件的文字不会被 Write 类调用误计；
-    // 命中的调用会作为证据带进报告。
+    // commandMatch 先消费 adapter 给出的 logical argv；jsonMatch 回退保留旧判据的原始命令
+    // 形态（版本化 npx、npm exec 等暂不属于 logical-command/v1 的透明 wrapper）。两者都是
+    // 同一条 ToolMatch 断言，不会把写入文件中的命令文字误计成 shell 调用。
     // `(?:@\S+)?\s+(?:--\s+)?`：CLI 的合法调用形态不止 `npx niceeval <cmd>`——canary.7 实跑里
     // codex 全程用 `npm exec niceeval -- exp baseline`（`--` 分隔符卡在包名与子命令之间），
     // `npx niceeval@<version> <cmd>` 也常见。旧正则 `niceeval\s+exp` 对不上这两种，把真跑过的
     // 分误杀成 0（2026-07-24 canary.7 取证）。
-    t.calledTool("shell", {
-      input: {
-        command: (value) => typeof value === "string" && /\bniceeval(?:@\S+)?\s+(?:--\s+)?init\b/.test(value),
-      },
-    }).score(1).label("运行 niceeval init"); // 托管指引该由 CLI 写入，不是手抄
+    t.calledTool(
+      or(
+        commandMatch("niceeval", { argsStart: ["init"] }),
+        toolMatch("shell", {
+          input: jsonMatch({ command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?init\b/ }),
+        }),
+      ),
+    ).score(1).label("运行 niceeval init"); // 托管指引该由 CLI 写入，不是手抄
     // (?![\s\S]*--dry|[\s\S]*--help)：同一条命令里带 --dry / --help 的不算真跑。不要求带 --json
     // ——CLI 只有两种形态（人读文本 / --json），非 TTY 下人读文本本就自动降级为只追加流，
     // agent 直接跑默认形态完全合理，逼它加 --json 才算数会误伤。
-    t.calledTool("shell", {
-      input: {
-        command: (value) =>
-          typeof value === "string" &&
-          /\bniceeval(?:@\S+)?\s+(?:--\s+)?exp\b(?![\s\S]*--dry|[\s\S]*--help)/.test(value),
-      },
-    }).score(1).label("实际运行 niceeval exp");
-    t.calledTool("shell", {
-      input: {
-        command: (value) => typeof value === "string" && /\bniceeval(?:@\S+)?\s+(?:--\s+)?show\b/.test(value),
-      },
-    }).score(1).label("运行 niceeval show");
+    t.calledTool(
+      or(
+        commandMatch("niceeval", { argsStart: ["exp"], excludes: ["--dry", "--help"] }),
+        toolMatch("shell", {
+          input: jsonMatch({ command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?exp\b(?![\s\S]*--dry|[\s\S]*--help)/ }),
+        }),
+      ),
+    ).score(1).label("实际运行 niceeval exp");
+    t.calledTool(
+      or(
+        commandMatch("niceeval", { argsStart: ["show"] }),
+        toolMatch("shell", {
+          input: jsonMatch({ command: /\bniceeval(?:@\S+)?\s+(?:--\s+)?show\b/ }),
+        }),
+      ),
+    ).score(1).label("运行 niceeval show");
   });
 
   // ── 最佳实践（纯加分，每条 1 分）：装成了之后，装的姿势对不对。 ───────────────────
