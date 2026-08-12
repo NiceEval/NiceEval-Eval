@@ -1,4 +1,5 @@
 import { defineScoreEval } from "niceeval";
+import { referencesAnyPath, toolMatch } from "niceeval/expect";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../lib/candidate.ts";
 import { saveAgentOutput } from "./share/agent-archive.ts";
 import type { ClarifyFacts } from "./share/clarify-criteria.ts";
@@ -8,32 +9,6 @@ import { evalExperiment } from "./share/eval-experiment.ts";
 import { evalInstall, evalInteraction } from "./share/eval-install.ts";
 import { agentSourceMaterial, cloneFixture } from "./share/fixture.ts";
 import { buildQualityRubrics, type QualityFacts } from "./share/quality-criteria.ts";
-
-// Assert-first 的 `calledTool(..., { input })` 接收 JSON predicate；保持旧
-// referencesAnyPath 对嵌套输入值、路径边界及 `/` / `\\` 分隔符的匹配语义。
-function inputReferencesAnyPath(paths: readonly string[]) {
-  const patterns = paths.map((path) => {
-    const source = path
-      .split(/[\\/]+/u)
-      .filter((component) => component.length > 0 && component !== ".")
-      .map((component) => component.replace(/[\\^$.*+?()[\]{}|]/g, "\\$&"))
-      .join("[\\\\/]+(?:\\.[\\\\/]+)*");
-    return new RegExp(`(?<![\\p{L}\\p{N}_.-])${source}(?![\\p{L}\\p{N}_.-])`, "u");
-  });
-
-  const referencesPath = (value: unknown): boolean => {
-    if (typeof value === "string") {
-      return patterns.some((pattern) => {
-        pattern.lastIndex = 0;
-        return pattern.test(value);
-      });
-    }
-    if (value === null || typeof value !== "object") return false;
-    return Object.values(value).some(referencesPath);
-  };
-
-  return referencesPath;
-}
 
 /**
  * 接入路径：真实开源项目 GPT Researcher（自动化研究报告 agent）。
@@ -150,30 +125,31 @@ export default defineScoreEval({
     await t.group("评估是否正确加载文档", async () => {
       // 本段是「计量，不 gate」（见文件头）：计分制里 t.score 的得分点不参与判定，
       // 没挣到只是少挣分，不会让「文档没起作用」判负。五条接入路径这段写法一致。
-      t.calledTool("shell", {
-        input: inputReferencesAnyPath(["node_modules/niceeval/INDEX.md"]),
-      }).label("以随包 INDEX.md 为路由入口").score(1);
-      t.calledTool("shell", {
-        input: inputReferencesAnyPath([
+      t.calledTool(
+        toolMatch("shell", { input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }),
+      ).label("以随包 INDEX.md 为路由入口").score(1);
+      t.calledTool(toolMatch("shell", {
+        input: referencesAnyPath([
           "docs-site/zh/how-to/write-send.mdx",
           "docs-site/zh/how-to/connect-your-agent.mdx",
           "docs-site/zh/tutorials/write-send.mdx",
           "docs-site/zh/tutorials/connect-your-agent.mdx",
           "docs-site/zh/reference/events.mdx",
         ]),
-      }).label("读到与宿主形态匹配的页面").score(1);
-      t.calledTool("shell", {
-        input: inputReferencesAnyPath(["docs-site/zh/explanation/tier.mdx"]),
-      }).label("读到接入等级页").score(1);
-      t.calledTool("shell", {
-        input: inputReferencesAnyPath([
-          "niceeval.com/docs",
-          "github.com/CorrectRoadH/niceeval/blob/main",
-          "github.com/CorrectRoadH/niceeval/tree/main",
-          "github.com/CorrectRoadH/niceeval/raw/main",
-        ]),
-        count: 0,
-      }).label("没退回官网 / GitHub main").score(1);
+      })).label("读到与宿主形态匹配的页面").score(1);
+      t.calledTool(
+        toolMatch("shell", { input: referencesAnyPath(["docs-site/zh/explanation/tier.mdx"]) }),
+      ).label("读到接入等级页").score(1);
+      t.notCalledTool(
+        toolMatch("shell", {
+          input: referencesAnyPath([
+            "niceeval.com/docs",
+            "github.com/CorrectRoadH/niceeval/blob/main",
+            "github.com/CorrectRoadH/niceeval/tree/main",
+            "github.com/CorrectRoadH/niceeval/raw/main",
+          ]),
+        }),
+      ).label("没退回官网 / GitHub main").score(1);
     });
 
     // 生命周期收尾：把 agent 写出的三件套 copy 到本地 .agent-output/（gitignore）供人工 review。
