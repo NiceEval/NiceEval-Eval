@@ -20,8 +20,9 @@
 - 根级 Judge Assertion 显式传入题面及完整 `toolCalls + message`，评估
   `exp → show → 动态 locator → 下钻 → 修复/复验 → 最终回复` 的有序语义；当前 CLI Adapter
   看不到内部 shell argv，因此不把 `commandMatch` / `toolOrder` 当硬 gate；
-- 外层 Assertion 以 `calledTool("shell", { input: <禁区路径>, count: 0 })` 禁止观察到把
-  `.niceeval`、`evals` 或 `agents` 作为工具输入读取，并要求 Turn 成功；
+- 外层 Assertion 以 `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`
+  保留禁区路径的结构化工具匹配，禁止观察到把 `.niceeval`、`evals` 或 `agents` 作为工具输入读取，并要求
+  Turn 成功；
 - 0.12+ / canary 必须从公开 `niceeval show` 输出取得动态 locator，恰好接受三条仍有效的 terminal results，
   只真实重跑原先 errored 的 `terminal-bench/regex-log`；0.9.x 没有 locator accept，改完后必须完整重跑；
 - 外层只接受 `experiments/local.ts` 的目标 image 改动，并用公开结果证据核验根因、保留项和最终分布。
