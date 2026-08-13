@@ -2,8 +2,8 @@
  * 各实验共用的 Docker-in-Docker sandbox 装配。
  *
  * 单个评估容器同时承载 coding agent 和内层 dockerd；agent 以 node 身份执行，但能通过
- * 同容器 Unix socket 使用 docker / docker compose。privileged 只允许落到显式 rootless
- * 外层 daemon，NiceEval 在 create 前 fail-closed 验证。
+ * 同容器 Unix socket 使用 docker / docker compose。全部实验显式授权 raw privileged DinD，
+ * 只适用于一次性 VM 或专用 runner，不把外层宿主当作不可信代码的安全隔离边界。
  *
  * 使用当前 niceeval/sandbox 的 Dockerfile source 构造：
  * `dockerSandbox({ source: { type: "dockerfile", ... } })`。
@@ -131,9 +131,7 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
         : { target: "candidate" }),
     },
     user: "node",
-    dockerAccess: harnessCandidate
-      ? { mode: "dind", isolation: "raw-privileged" }
-      : { mode: "dind", isolation: "managed-rootless", profile: "default" },
+    dockerAccess: { mode: "dind", isolation: "raw-privileged" },
     resources: {
       cpus: 4,
       memoryBytes: harnessCandidate ? 8 * GIB : 6 * GIB,

@@ -112,7 +112,7 @@ Fact / Match 作者面；全仓 `pnpm run typecheck` 必须通过，不能再用
 每个版本选中 2 道题，每题运行 3 次，避免把 coding agent 的单次随机性误判成候选文档差异；
 因此完整 `niceeval exp harness` 是 3 版本 × 2 题 × 3 次，共 **18 个付费 coding-agent
 attempt**，且每次包含多个 judge 评分点。实现落地后必须运行 `niceeval list` 和各版本的 `--dry`
-验证。本机尚未部署 managed-rootless execution profile；用户明确授权本 Harness 的 candidate
-runtime 使用 `raw-privileged` DinD 完成真实验收。该授权只适用于传入 candidate version 的 Harness，
-不改变 install / roadmap eval 的 managed-rootless 边界。
+验证。本机使用一次性 VM 或专用评测 runner；用户明确授权 install、roadmap 与 Harness 都使用
+`raw-privileged` DinD。该模式不提供不可信代码隔离；若迁移到共享宿主，必须恢复
+managed-rootless 并注册 execution profile。
 没有用户明确批准时不启动真实模型运行。
