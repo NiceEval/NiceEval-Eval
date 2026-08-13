@@ -7,6 +7,7 @@ node_modules/
 # 本仓库自己跑评估产生的结果。注意：evals/harness/*/repo/ 下作为题包资产签入的
 # .niceeval 是人工快照，必须签入，不受这条规则影响（前面的 / 限定只匹配仓库根）
 /.niceeval/
+/.niceeval-local/
 
 .DS_Store
 

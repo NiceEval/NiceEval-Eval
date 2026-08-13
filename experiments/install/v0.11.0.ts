@@ -1,7 +1,6 @@
 import { defineExperiment } from "niceeval";
-import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { sandboxWith } from "../../lib/experiment-runtime.ts";
+import { installCodexAgent, sandboxWith } from "../../lib/experiment-runtime.ts";
 
 /**
  * 上一代发布版（0.11.0）的安装路径对照格。
@@ -15,8 +14,8 @@ const NICEEVAL_VERSION = await ensureCandidate("0.11.0");
 
 export default defineExperiment({
   description: "niceeval@0.11.0：0.12.0 之前的发布版对照",
-  agent: codexAgent(),
-  model: "gpt-5.6-luna",
+  agent: installCodexAgent(),
+  model: "gpt-5.6-terra",
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("python"),
   evals: ["install/", "roadmap/"],

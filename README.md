@@ -29,8 +29,11 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 | `roadmap/` | 扩展路线与未来设计 | 复杂第三方接入与暂缓实现的评估方向 | Express Sandbox、Letta、OpenHands、Skyvern（4 道） |
 | `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | terminal-bench/regex-log、terminal-bench/log-summary（2 道） |
 
-`roadmap/` 下的 `.eval.ts` 是已实现但较复杂的安装路线；`roadmap/harness/*.md` 只是未来
-设计。`harness/` 物理上只放当前两道可运行题。
+`install/` 与 `roadmap/` 的每道可运行题都采用 `<case>/eval.ts` 目录入口，因此路径本身继续
+给出稳定 Eval ID（例如 `roadmap/openhands`）。场景脚本只保留 setup、任务、检查阶段与收口；
+宿主 repo/ref、协议和长 rubric 在 `fixtures/install/<case>/`，跨题机制在
+[`lib/install/`](lib/install/README.md)。`roadmap/harness/*.md` 仍只是未来设计；`harness/`
+物理上只放当前两道可运行题。
 
 ## harness/ 的共享基建与独立 repo
 

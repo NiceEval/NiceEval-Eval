@@ -13,12 +13,22 @@
  * case repo 不进 build context，由所属 eval 在 send 前上传。
  */
 
+import { codexAgent } from "niceeval/adapter";
 import { dockerSandbox } from "niceeval/sandbox";
 import type { SandboxHook } from "niceeval/sandbox";
 import { provisionTargetAppEnv } from "./target-app-env.ts";
 
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
+
+/**
+ * 安装题只根据对话、工具调用和最终工作区判分，不消费 Codex 的 OTLP trace。Docker 的只读
+ * rootfs 会让 collector 通过 shell/base64 搬运 trace；长会话能产生上百 MiB，反而挤占 attempt
+ * deadline。保留官方 adapter 的安装、setup、send 和证据采集，只关闭这条非判分遥测通道。
+ */
+export function installCodexAgent() {
+  return { ...codexAgent(), tracing: undefined };
+}
 
 /**
  * DinD 基线与镜像预装就绪检查（原 `readiness` 的语义，改成 setup hook）。

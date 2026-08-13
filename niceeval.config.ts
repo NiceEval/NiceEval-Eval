@@ -16,7 +16,7 @@ loadRepoEnv();
 export default defineConfig({
   judge: {
     // 全仓产出质量统一交给 Sol 裁判。被测 Agent 由各 Experiment 单独选择；Harness 当前使用
-    // Terra，install 实验仍可使用 Luna，裁判不再与被测模型混用。
+    // Terra；裁判不再与被测模型混用。
     model: "gpt-5.6-sol",
     // 复用被测 codexAgent() 那把 CODEX_API_KEY/网关，不单独开一份 judge 凭证。
     // baseUrl 必须显式给：judge 的解析链曾经在省略时按 NICEEVAL_JUDGE_BASE → CODEX_BASE_URL →
