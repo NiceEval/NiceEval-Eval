@@ -372,7 +372,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  niceeval: link:../../../.herdr/worktrees/NiceEval/polish-assert
+  niceeval: link:../../../.herdr/worktrees/NiceEval/refactor-sandbox
 
 importers:
 
@@ -388,8 +388,8 @@ importers:
         specifier: ^4.0.12
         version: 4.0.12
       niceeval:
-        specifier: link:../../../.herdr/worktrees/NiceEval/polish-assert
-        version: link:../../../.herdr/worktrees/NiceEval/polish-assert
+        specifier: link:../../../.herdr/worktrees/NiceEval/refactor-sandbox
+        version: link:../../../.herdr/worktrees/NiceEval/refactor-sandbox
       react:
         specifier: ^19.2.7
         version: 19.2.7
