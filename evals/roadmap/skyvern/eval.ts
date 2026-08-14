@@ -50,6 +50,6 @@ export default defineScoreEval({
     });
     await scoreDocumentationRouting(t, skyvernCase.documentation);
     await archiveAgentOutput(t, "skyvern");
-    turn.succeeded().gate();
+    turn.succeeded();
   },
 });

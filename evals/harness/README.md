@@ -88,7 +88,7 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
   内部 shell argv，故不把 `commandMatch()` 或 `toolOrder()` 当作硬 gate；不能把 opaque shell
   伪装成已经观察到的 CLI 子序列。
 - 每个 Fact use 都有稳定、互异的 `key`，用于 `show --json` 与后续重判对齐；key 只命名用途，
-  不改变 Fact 的求值、gate 或分值。一个 Fact 同时用于判定和计分时仍只创建一次。
+  不改变 Fact 的求值或分值。一个 Fact 同时用于观察和计分时仍只创建一次。
 - `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))` 命中观察到的禁区路径
   （`.niceeval`、`evals`、`agents`）会让对应 Fact 判定用途失败；它复用工具负存在性，只是行为证据，
   不是 OS 级文件审计；没有命中的文件系统操作不在判分范围内；
@@ -103,7 +103,7 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
 
 Harness 直接使用 Fact API：Fact producer 先创建事实，再用 `t.assert()`、`t.score()` 与
 `return t.finishScore()` 显式登记用途并收口。`niceeval list` 会实际加载这两道 eval；不得用旧
-`.points().gate()` Fact 链、旧 JSON shape、类型断言或本地 helper 掩盖签名错误。既有 Judge 链
+`.points().gate()` Fact 链、旧 JSON shape、类型断言或本地 helper 掩盖签名错误。Score Eval 没有 gate，既有 Judge 链
 是隔离的 legacy bridge，不属于 Fact 作者面迁移范围。install / roadmap eval 也已迁移到同一
 Fact / Match 作者面；全仓 `pnpm run typecheck` 必须通过，不能再用范围过滤掩盖旧 API 错误。
 

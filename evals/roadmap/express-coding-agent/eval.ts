@@ -57,6 +57,6 @@ export default defineScoreEval({
     await checkSandboxProvisioning(t, { material });
     await scoreDocumentationRouting(t, expressCodingAgentCase.documentation);
     await archiveAgentOutput(t, "express-coding-agent");
-    turn.succeeded().gate();
+    turn.succeeded();
   },
 });

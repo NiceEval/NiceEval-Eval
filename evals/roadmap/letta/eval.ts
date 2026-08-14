@@ -50,6 +50,6 @@ export default defineScoreEval({
     });
     await scoreDocumentationRouting(t, lettaCase.documentation);
     await archiveAgentOutput(t, "letta");
-    turn.succeeded().gate();
+    turn.succeeded();
   },
 });

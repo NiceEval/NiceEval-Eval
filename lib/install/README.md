@@ -4,7 +4,7 @@
 
 | 模块 | 职责 |
 | --- | --- |
-| `installation.ts` | 安装落点、gate、过程侧与安装最佳实践 |
+| `installation.ts` | 安装落点、过程侧与安装最佳实践评分 |
 | `interaction.ts` | 首轮澄清、HITL 续轮与完成交接 |
 | `adapter.ts` / `experiment.ts` / `authoring.ts` / `sandbox.ts` | 各自独立的检查阶段 |
 | `quality.ts` / `documentation.ts` | 产出设计与文档路由的计分阶段 |

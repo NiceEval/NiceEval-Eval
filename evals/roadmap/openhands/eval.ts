@@ -50,6 +50,6 @@ export default defineScoreEval({
     });
     await scoreDocumentationRouting(t, openhandsCase.documentation);
     await archiveAgentOutput(t, "openhands");
-    turn.succeeded().gate();
+    turn.succeeded();
   },
 });

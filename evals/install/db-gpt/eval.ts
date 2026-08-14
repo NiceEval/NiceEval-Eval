@@ -52,6 +52,6 @@ export default defineScoreEval({
     await scoreEvalDesign(t, dbGptCase.quality, { input: prompt, output: material });
     await scoreDocumentationRouting(t, dbGptCase.documentation);
     await archiveAgentOutput(t, "db-gpt");
-    turn.succeeded().gate();
+    turn.succeeded();
   },
 });

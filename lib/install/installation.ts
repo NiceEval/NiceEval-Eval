@@ -1,6 +1,6 @@
 /**
- * 安装落点检查：gate 验证候选包、配置、托管指引、发现和 dry plan；另外计分实际执行过程及
- * 安装最佳实践。对话澄清在 `interaction.ts`，其它检查阶段各自在同名模块。
+ * 安装落点检查：候选包、配置、托管指引、发现、dry plan、实际执行过程与安装最佳实践都按项
+ * 计分。对话澄清在 `interaction.ts`，其它检查阶段各自在同名模块。
  */
 
 import type { ScoreTestContext } from "niceeval";
@@ -134,7 +134,7 @@ export async function locateInstallRoot(sandbox: ScoreTestContext["sandbox"]): P
 }
 
 /**
- * 评估安装：agent 干完后回看「装成没装成（gate）+ 过程侧（加分）+ 最佳实践（加分）」的落地取证。
+ * 评估安装：agent 干完后回看安装结果、过程侧与最佳实践，并按同一完整 rubric 计分。
  *
  * 前置：agent 已拿到方案并干完活（通常紧跟 scoreIntegrationConversation 之后调；本函数只取证，
  * 不再驱动任何轮次）。
@@ -188,39 +188,38 @@ export async function checkInstallation(
   ).stdout.trim();
 
   await t.group("评估安装", async () => {
-    // 装成没装成是后面一切的前提：这几条是 gate（不给分），红了 verdict 直接 failed。
-    t.check(root !== null, isTrue("niceeval.config.ts 存在")).gate();
+    // 安装机制与其它 rubric 一样贡献分数；Score Eval 没有最低有效性 gate。
+    t.check(root !== null, isTrue("niceeval.config.ts 存在")).score(1).label("niceeval.config.ts 存在");
     t.check(
       version,
       satisfies(`依赖解析到候选包 niceeval@${candidate.version}（实际：${version || "未安装"}）`, (v) => v === candidate.version),
-    ).gate();
-    t.check(managed.length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块")).gate();
-    t.check(list, commandSucceeded()).gate();
+    ).score(1).label("候选版本正确");
+    t.check(managed.length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块")).score(1).label("托管指引存在");
+    t.check(list, commandSucceeded()).score(1).label("Eval 可发现");
     t.check(
       list.stdout,
       satisfies<string>(
         "niceeval 能发现 agent 写出的 eval",
         (s) => s.split("\n").some((l) => /\S/.test(l) && !/^(NAME|ID|—|-{3,})/.test(l.trim())),
       ),
-    ).gate();
+    ).score(1).label("至少发现一个 Eval");
     t.check(
       dryPlan,
       satisfies("exp --dry 能规划出至少一个 experiment", (v) => {
         const p = v as ExpPlanDocument | null;
         return p !== null && p.matrix.length > 0;
       }),
-    ).gate();
+    ).score(1).label("实验 dry-run 可执行");
     // 非 TS 宿主可以没有 tsconfig，这时不判——有 tsconfig 才要求 agent 自己的代码干净
     if (tsc) {
       t.check(
         tsc.stdout,
         satisfies<string>("agent 写的代码 typecheck 干净", (s) => !/^(?!.*node_modules).*\(\d+,\d+\): error TS\d+:/m.test(s)),
-      ).gate();
+      ).score(1).label("TypeScript 检查通过");
     }
 
-    // 过程侧（加分，每条 1 分）：agent 该敲的命令敲没敲。跟上面几条的区别：上面是事后取证验
-    // 产物、是 gate；这里回看 agent 自己的事件流、是加分——挣到才说明「是 agent 自己走完流程
-    // 做对的」，没挣到也不连坐 gate。
+    // 过程侧（加分，每条 1 分）：agent 该敲的命令敲没敲。上面是事后取证产物，这里回看 agent
+    // 自己的事件流；挣到才说明「是 agent 自己走完流程做对的」。
     // 这里先把标准事件里的 shell command 归约成布尔事实，再登记紧凑断言。直接 calledTool(or(...))
     // 会把每个 shell occurrence 的完整匹配诊断持久化；安装 agent 常有上百次调用，三条过程分就能
     // 撑破 assertions 文档的 4 MiB 上限。我们仍只读取真实 operation.started，不扫回复或文件内容。

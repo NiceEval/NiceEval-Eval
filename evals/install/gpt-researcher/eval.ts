@@ -52,6 +52,6 @@ export default defineScoreEval({
     await scoreEvalDesign(t, gptResearcherCase.quality, { input: prompt, output: material });
     await scoreDocumentationRouting(t, gptResearcherCase.documentation);
     await archiveAgentOutput(t, "gpt-researcher");
-    turn.succeeded().gate();
+    turn.succeeded();
   },
 });

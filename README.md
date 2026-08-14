@@ -100,8 +100,8 @@ pnpm exec niceeval show @<locator> --execution
 pnpm exec niceeval show @<locator> --diff
 ```
 
-Harness 题会把 observed tool input 中直接读取 `.niceeval`、`evals` 或 `agents` 的行为判为
-gate 失败，但这不是 OS 级文件审计。取证只承认公开 `niceeval show`：动态 `@<locator>`、
+Harness 题会把 observed tool input 中直接读取 `.niceeval`、`evals` 或 `agents` 的行为记为零分，
+但这不是 OS 级文件审计。取证只承认公开 `niceeval show`：动态 `@<locator>`、
 前缀收窄、0.9.x 的 `--eval` / 0.12+ 的 `--source`，以及 `--execution` 证据视图。外层
 确定性断言是 scope-first 的窄锚点：`commandMatch(executable, { argsStart, excludes,
 status? })` 本身就是匹配同一笔 logical tool occurrence 的 `ToolMatch`（没有直接传
@@ -140,7 +140,7 @@ attempt**；只想检查计划时始终先用 `--dry`。
 
 | 层 | 检查内容 | 作用 |
 | --- | --- | --- |
-| 安装机制 | 候选版本、config、托管区块、typecheck、eval 可发现性 | gate，判断链路能否工作 |
+| 安装机制 | 候选版本、config、托管区块、typecheck、eval 可发现性 | 分项计分，衡量链路完成度 |
 | 首次评估定题 | 核心评估面、真实数据、成败判据、运行约束、候选范围 | 软分，判断 INIT 是否把安装请求推进成有效 Eval |
 | 产出质量 | experiment 与 eval 是否真的覆盖宿主核心用例 | 软分，定位文档契约是否被理解 |
 | 完成交接 | 文件与复现命令、真实首跑结果、下一步选择 | 软分，判断 agent 是否交付可继续使用的评估入口 |

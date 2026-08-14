@@ -7,7 +7,7 @@
  * 读懂没读懂那页，就在这几条判据上显影：
  *
  * - **机械取证**（一条命令 + 紧跟 t.check，写法约定同 installation.ts）：
- *   experiment/config 配没配 provider（gate——这条路径的题面就是沙箱评估，没配等于没做题）；
+ *   experiment/config 配没配 provider（重要评分项）；
  *   用到的云/容器 provider SDK 有没有按文档「用哪个装哪个」进依赖；有没有预制制品定义
  *   （构建脚本 / Dockerfile / 快照脚本）。
  * - **judge 三维**（纯加分，各 1 分；closedQA 二值、一条只判一个点，机制同
@@ -87,7 +87,7 @@ function buildSandboxRubrics(): { key: string; criteria: string }[] {
 }
 
 /**
- * 评估sandbox创建：机械取证（gate + 加分）+ judge 三维（纯加分）。见文件头注。
+ * 评估sandbox创建：机械取证计分 + judge 三维计分。见文件头注。
  *
  * `material` 由调用方传入（与产出质量层共用同一份 collectAgentSource 快照，不重复下载）；
  * Dockerfile 不是 .ts、那份材料收不进，这里就地补探——预制定义走 docker 路线时 judge 才看得见。
@@ -133,9 +133,10 @@ export async function checkSandboxProvisioning(t: ScoreTestContext, opts: { mate
   };
 
   await t.group("评估sandbox创建", async () => {
-    // gate：这条路径的题面就是「评估在隔离沙箱里跑」，experiment/config 没配任何 provider
-    // 等于没做题——与「装成没装成」同级，红了 verdict 直接 failed。
-    t.check(factories.length > 0, isTrue(`sandbox provider 已配置（实际检出：${factories || "无"}）`)).gate();
+    // Sandbox 配置是重要评分项，但 Score Eval 没有最低有效性 gate。
+    t.check(factories.length > 0, isTrue(`sandbox provider 已配置（实际检出：${factories || "无"}）`))
+      .score(1)
+      .label("sandbox provider 已配置");
 
     // 文档明说 provider SDK 不随 niceeval 安装、「用哪个就装哪个」。挣这分要求真用了某个
     // 云/容器 provider 且它的 SDK 进了依赖——只用 localSandbox 的挣不到（它免装，这条判据
