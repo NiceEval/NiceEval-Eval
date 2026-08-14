@@ -372,7 +372,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  niceeval: link:../NiceEval
+  niceeval: link:../../../.herdr/worktrees/NiceEval/record
 
 importers:
 
@@ -388,8 +388,8 @@ importers:
         specifier: ^4.0.12
         version: 4.0.12
       niceeval:
-        specifier: link:../NiceEval
-        version: link:../NiceEval
+        specifier: link:../../../.herdr/worktrees/NiceEval/record
+        version: link:../../../.herdr/worktrees/NiceEval/record
       react:
         specifier: ^19.2.7
         version: 19.2.7
