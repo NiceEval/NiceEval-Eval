@@ -13,6 +13,4 @@ export default defineExperiment({
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("node", NICEEVAL_VERSION),
   evals: (evalDef) => evalDef.tags.includes("harness"),
-  attempts: 3,
-  maxConcurrency: 1,
 });
