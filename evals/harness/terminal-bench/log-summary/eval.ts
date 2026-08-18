@@ -34,7 +34,9 @@ export default defineScoreEval({
 
     turn.notCalledTool(
       toolMatch({ input: referencesAnyPath([".niceeval", "evals", "agents"]) }),
-    ).key("harness.log-summary.public-evidence");
+    )
+      .key("harness.log-summary.public-evidence")
+      .label("未读取私有结果或评估源码");
     turn.notCalledTool(
       toolMatch({
         input: referencesAnyPath([
@@ -45,10 +47,16 @@ export default defineScoreEval({
           "node_modules/niceeval",
         ]),
       }),
-    ).key("harness.log-summary.direct-show-no-doc-reading");
-    turn.succeeded().key("harness.log-summary.turn-succeeded");
+    )
+      .key("harness.log-summary.direct-show-no-doc-reading")
+      .label("未读取项目或 NiceEval 指引");
+    turn.succeeded()
+      .key("harness.log-summary.turn-succeeded")
+      .label("反馈 Turn 成功");
 
-    t.sandbox.noChanges().key("harness.log-summary.no-changes");
+    t.sandbox.noChanges()
+      .key("harness.log-summary.no-changes")
+      .label("工作区保持不变");
     t.sandbox.noChanges()
       .key("harness.log-summary.no-changes.score")
       .label("没有越界修改")
