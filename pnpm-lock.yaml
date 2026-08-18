@@ -372,7 +372,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  niceeval: link:../../../.herdr/worktrees/NiceEval/fix-show
+  niceeval: link:/home/ctrdh/.herdr/worktrees/NiceEval/fix-show-new
 
 importers:
 
@@ -388,8 +388,8 @@ importers:
         specifier: ^4.0.12
         version: 4.0.12
       niceeval:
-        specifier: link:../../../.herdr/worktrees/NiceEval/fix-show
-        version: link:../../../.herdr/worktrees/NiceEval/fix-show
+        specifier: link:/home/ctrdh/.herdr/worktrees/NiceEval/fix-show-new
+        version: link:../../../.herdr/worktrees/NiceEval/fix-show-new
       react:
         specifier: ^19.2.7
         version: 19.2.7

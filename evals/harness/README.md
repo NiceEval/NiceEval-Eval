@@ -10,7 +10,7 @@ coding-agent attempt**。
 | 用例 | 用户交互 | 初始状态 | 主要能力 |
 | --- | --- | --- | --- |
 | `terminal-bench/regex-log` | 单轮：把评估跑完并报告最终结果，题面不预告 error | 真实 TB task slice 首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 自主识别未完成的 errored、定位 experiment runtime 缺口、最小修改恢复、按候选版本差异复验 |
-| `terminal-bench/log-summary` | 单轮：运行并解释每个失败，未授权修改 | 真实 TB task slice 首跑 1 passed / 2 failed / 0 errored | 区分「agent 产出错误」与「eval 过紧」，给出正确因果归因 |
+| `terminal-bench/log-summary` | fixture 先运行；单轮追问每个失败，未授权修改 | 真实 TB task slice 已有 1 passed / 2 failed / 0 errored | 直接用 `show` 进入反馈闭环，区分「agent 产出错误」与「eval 过紧」 |
 
 ## 真实题意
 
@@ -39,8 +39,9 @@ coding-agent attempt**。
 
 ### B · terminal-bench/log-summary
 
-用户只要求运行评估并解释每个失败，没有授权修改项目文件。这里测的是 agent
-能否把已完成的 `failed` 当作需要归因的结果，而不是必须被“修绿”的执行错误。
+fixture 先替用户运行评估，随后用户只追问每个失败的原因，没有授权重跑或修改项目文件。
+这里测的是 agent 能否直接从 `niceeval show` 进入已经停稳的 Record，把已完成的 `failed`
+当作需要归因的结果，而不是先重学 CLI、重跑 experiment，或把红灯“修绿”。
 
 inner project 首跑 **1 passed / 2 failed / 0 errored**。agent 的任务是逐道给出因果归因并
 如实交接，**不得修改任何 eval 或项目文件**：
@@ -70,11 +71,12 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
 
 ## 题面原则
 
-- 每次 `t.send()` 都像真实用户说话，只表达当轮需求；两道题都是单轮，一次 `send` 内完成
-  运行、取证、修改或归因；
+- 每次 `t.send()` 都像真实用户说话，只表达当轮需求；两道题都是单轮。A 在一次 `send` 内完成
+  运行、取证、修改和复验；B 由 fixture 先运行，再用一次 `send` 测停稳 Record 的反馈归因；
 - 不告诉 agent 应使用哪些 NiceEval 命令、结果在哪里或根因属于哪一层；
 - agent 必须先形成可独立检查的诊断，再（仅 `terminal-bench/regex-log` 的题面授权下）做最小修改；
-- 项目不携带 `.niceeval`，结果必须由被测 agent 当场运行产生。
+- 项目不携带 `.niceeval`，结果必须在 Attempt 内真实运行产生：A 由被测 agent 运行，B 由 fixture
+  在发送反馈问题前运行，不预载历史 Record。
 
 ## 判分与取证边界
 
@@ -82,6 +84,9 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
   `--eval` / 0.12+ 的 `--source`，以及 `--execution` 等公开证据视图。**禁止**以读取
   `.niceeval/` 落盘产物或 `evals/`、`agents/`
   源码代替取证；这不是能力加分项，而是题目边界。
+- B 额外要求反馈轮的第一个 NiceEval 取证动作直接是 compact `niceeval show`；读取 INDEX、
+  随包 CLI 文档、package scripts、AGENTS/INIT，误用 `pnpm show`，或重新运行 experiment 都不算
+  完成这条反馈闭环。
 - 外层确定性断言只保留当前 Observation / Sandbox 能诚实证明的 **Fact**：
   `turn.notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`、`turn.succeeded()`，以及 A 的
   精确 `changedPaths` / `fileChanged`、B 的 `noChanges`。当前 Codex / Claude CLI Adapter 看不到
@@ -93,8 +98,9 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
   （`.niceeval`、`evals`、`agents`）会让对应 Fact 判定用途失败；它复用工具负存在性，只是行为证据，
   不是 OS 级文件审计；没有命中的文件系统操作不在判分范围内；
 - Judge 继续使用现有 `turn.judge.autoevals.closedQA()`，并通过 `{ on }` 显式传入本轮完整
-  `toolCalls + message`。既有完整 Turn rubric 负责运行 → show → 动态 locator → 下钻 → 最终回复的
-  有序语义，以及 CLI 输出计数、归因与复验结论；不增加 Judge 次数或分数。这里的
+  `toolCalls + message`。既有完整 Turn rubric 分别负责 A 的运行 → show → 修复/复验，以及 B 的
+  show → 动态 locator → 下钻 → 最终回复有序语义，并核对 CLI 输出、归因与复验结论；不增加
+  Judge 次数或分数。这里的
   `JSON.stringify()` 只是把公开 Turn 材料传给只接受 string 的现有入口，不匹配 `show` JSON
   形状，也不替 agent 重跑 experiment。
 - canned agent 只用于稳定复现判分路径，不构成对真实模型智力的任何结论。
