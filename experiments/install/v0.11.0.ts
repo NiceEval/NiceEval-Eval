@@ -18,6 +18,6 @@ export default defineExperiment({
   model: "gpt-5.6-terra",
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: sandboxWith("python"),
-  evals: ["install/", "roadmap/"],
+  evals: ["install/"],
   attempts: 1,
 });
