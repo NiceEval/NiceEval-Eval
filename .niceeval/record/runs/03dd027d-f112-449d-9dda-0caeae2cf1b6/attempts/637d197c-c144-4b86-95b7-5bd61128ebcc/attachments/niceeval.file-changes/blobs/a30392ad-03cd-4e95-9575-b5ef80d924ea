@@ -1,0 +1,36 @@
+import { defineEval } from "niceeval";
+import { and, pattern } from "niceeval/expect";
+
+export default [
+  defineEval({
+    description: "Summarizes a concrete local HR policy",
+    async test(t) {
+      const turn = await t.send(
+        "Using only the local employee-policy documents, state the US annual leave entitlement and its carry-over limit.",
+      );
+
+      turn.succeeded().label("local research request succeeds");
+      t.check(
+        turn.message,
+        and(
+          pattern(/\b22\s+(?:days?|PTO)\b/i),
+          pattern(/(?:no carry-over beyond|carry-over.{0,40}\b5\s+days?\b)/i),
+        ),
+      ).label("reports the US PTO entitlement and carry-over limit");
+    },
+  }),
+  defineEval({
+    description: "Does not invent a product-specific price absent from local documents",
+    async test(t) {
+      const turn = await t.send(
+        "Using only the local documents, what is the monthly RaaS price for the VLX-900?",
+      );
+
+      turn.succeeded().label("local research request succeeds");
+      t.check(
+        turn.message,
+        pattern(/(?:not (?:available|provided)|do(?:es)? not (?:contain|include)|cannot (?:determine|find)|no (?:information|data))/i),
+      ).label("declines to invent an unsupported product-specific price");
+    },
+  }),
+];

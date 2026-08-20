@@ -1,0 +1,22 @@
+import { defineEval } from "niceeval";
+import { includes } from "niceeval/expect";
+
+export default [
+  defineEval({
+    description: "Finds the maintenance commitment in supplied local research material",
+    async test(t) {
+      await t.send("Which system is scheduled for continued maintenance, and through what date?");
+      t.succeeded();
+      t.check(t.reply, includes("Orion"));
+      t.check(t.reply, includes("2027-12-31"));
+    },
+  }),
+  defineEval({
+    description: "Refuses to invent a release date absent from the supplied local material",
+    async test(t) {
+      await t.send("What is the approved release date for Project Lumen?");
+      t.succeeded();
+      t.check(t.reply, includes("cannot be determined"));
+    },
+  }),
+];

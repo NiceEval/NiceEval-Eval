@@ -1,0 +1,189 @@
+
+// ./experiments/skyvern-v2.ts
+import { defineExperiment } from "niceeval";
+import { skyvernTaskAgent } from "../agents/skyvern-task.ts";
+
+export default defineExperiment({
+  description: "Skyvern 2.0 browser-task baseline",
+  agent: skyvernTaskAgent({
+    baseUrl: process.env.SKYVERN_BASE_URL ?? "http://127.0.0.1:8000",
+    apiKey: process.env.SKYVERN_API_KEY,
+    engine: "skyvern-2.0",
+  }),
+  attempts: 1,
+  timeoutMs: 180_000,
+});
+
+// ./experiments/skyvern-v1.ts
+import { defineExperiment } from "niceeval";
+import { skyvernTaskAgent } from "../agents/skyvern-task.ts";
+
+export default defineExperiment({
+  description: "Skyvern 1.0 browser-task baseline",
+  agent: skyvernTaskAgent({
+    baseUrl: process.env.SKYVERN_BASE_URL ?? "http://127.0.0.1:8000",
+    apiKey: process.env.SKYVERN_API_KEY,
+    engine: "skyvern-1.0",
+  }),
+  attempts: 1,
+  timeoutMs: 180_000,
+});
+
+// ./agents/skyvern-task.ts
+import { defineDirectAgent } from "niceeval/adapter";
+import type { Agent, EvidenceCoverage } from "niceeval/adapter";
+
+type SkyvernEngine = "skyvern-1.0" | "skyvern-2.0";
+
+type SkyvernTaskInput = {
+  url: string;
+  prompt: string;
+  dataExtractionSchema: Record<string, unknown>;
+};
+
+type SkyvernTaskResponse = {
+  status?: string;
+  output?: unknown;
+  failure_reason?: string;
+  run_id?: string;
+};
+
+type SkyvernTaskAgentOptions = {
+  apiKey?: string;
+  baseUrl: string;
+  engine: SkyvernEngine;
+};
+
+const evidenceCoverage = {
+  events: { status: "partial", reason: "Skyvern returns only the completed task result." },
+  actions: { status: "unavailable", reason: "The task-run API does not expose action lifecycles." },
+  messages: { status: "complete" },
+  usage: { status: "unavailable", reason: "The task-run API does not return model usage." },
+  status: { status: "complete" },
+  data: { status: "complete" },
+} satisfies EvidenceCoverage;
+
+export function skyvernTaskInput(input: SkyvernTaskInput): string {
+  return JSON.stringify(input);
+}
+
+function parseTaskInput(text: string): SkyvernTaskInput {
+  const parsed = JSON.parse(text) as Partial<SkyvernTaskInput>;
+  if (!parsed.url || !parsed.prompt || !parsed.dataExtractionSchema) {
+    throw new Error("Skyvern eval input must contain url, prompt, and dataExtractionSchema.");
+  }
+  return parsed as SkyvernTaskInput;
+}
+
+function messageText(response: SkyvernTaskResponse): string {
+  if (response.output !== undefined && response.output !== null) {
+    return typeof response.output === "string" ? response.output : JSON.stringify(response.output);
+  }
+  return response.failure_reason ?? "Skyvern returned no task output.";
+}
+
+export function skyvernTaskAgent(options: SkyvernTaskAgentOptions): Agent {
+  const baseUrl = options.baseUrl.replace(/\/$/, "");
+
+  return defineDirectAgent({
+    name: `skyvern-task-${options.engine}`,
+    evidenceCoverage,
+    async send(input, ctx) {
+      const task = parseTaskInput(input.text);
+      ctx.progress({ message: "Running Skyvern browser task" });
+
+      const response = await fetch(`${baseUrl}/v1/run/tasks`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(options.apiKey ? { "x-api-key": options.apiKey } : {}),
+        },
+        body: JSON.stringify({
+          prompt: task.prompt,
+          url: task.url,
+          engine: options.engine,
+          data_extraction_schema: task.dataExtractionSchema,
+        }),
+        signal: ctx.signal,
+      });
+
+      const body = (await response.json()) as SkyvernTaskResponse;
+      if (!response.ok) {
+        ctx.diagnostic({
+          code: "skyvern-task-request-failed",
+          level: "error",
+          message: `Skyvern returned HTTP ${response.status}.`,
+          data: { runId: body.run_id },
+        });
+      }
+
+      const status = response.ok && body.status === "completed" ? "completed" : "failed";
+      return {
+        status,
+        data: body.output ?? null,
+        events: [{ type: "message", role: "assistant", text: messageText(body) }],
+      };
+    },
+  });
+}
+
+// ./niceeval.config.ts
+import { defineConfig } from "niceeval";
+
+export default defineConfig({
+  // Add experiments/ with defineExperiment(...) to run evals.
+  //
+  // IMPORTANT(judge): semantic assertions (t.judge.*) are unavailable until a judge
+  // model is configured. A required unavailable assertion errors the attempt; only
+  // .optional() leaves its Verdict unchanged. Any OpenAI-compatible /chat/completions
+  // service works; the key is read from NICEEVAL_JUDGE_KEY unless apiKeyEnv says otherwise.
+  // judge: { model: "gpt-5.4-mini" },
+});
+
+// ./evals/example-domain.eval.ts
+import { defineEval } from "niceeval";
+import { includes } from "niceeval/expect";
+import { skyvernTaskInput } from "../agents/skyvern-task.ts";
+
+const exampleDomainUrl = "https://example.com";
+
+export default [
+  defineEval({
+    description: "Extracts a page heading from a browser task",
+    async test(t) {
+      await t.send(
+        skyvernTaskInput({
+          url: exampleDomainUrl,
+          prompt: "Read the page heading and return it in the requested extraction field.",
+          dataExtractionSchema: {
+            type: "object",
+            properties: { heading: { type: "string" } },
+            required: ["heading"],
+          },
+        }),
+      );
+
+      t.succeeded();
+      t.check(t.reply, includes(/example\s+domain/i));
+    },
+  }),
+  defineEval({
+    description: "Does not invent a telephone number absent from a page",
+    async test(t) {
+      await t.send(
+        skyvernTaskInput({
+          url: exampleDomainUrl,
+          prompt: "Find the page's explicitly published telephone number. Return null when none exists.",
+          dataExtractionSchema: {
+            type: "object",
+            properties: { telephone_number: { type: ["string", "null"] } },
+            required: ["telephone_number"],
+          },
+        }),
+      );
+
+      t.succeeded();
+      t.check(t.reply, includes(/"telephone_number"\s*:\s*null/i));
+    },
+  }),
+];

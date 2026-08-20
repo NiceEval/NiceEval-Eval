@@ -1,0 +1,10 @@
+import { defineExperiment } from "niceeval";
+import openhands from "../agents/openhands.ts";
+
+export default defineExperiment({
+  description: "OpenHands repository-task baseline",
+  agent: openhands,
+  model: "openhands/minimax-m2.7",
+  attempts: 1,
+  evals: (candidate) => candidate.id.startsWith("core/"),
+});

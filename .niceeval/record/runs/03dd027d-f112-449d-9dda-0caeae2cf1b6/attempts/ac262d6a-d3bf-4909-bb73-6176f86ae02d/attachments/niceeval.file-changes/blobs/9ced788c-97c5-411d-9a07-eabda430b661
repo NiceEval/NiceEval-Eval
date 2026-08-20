@@ -1,0 +1,36 @@
+import { defineEval } from "niceeval";
+import { pattern } from "niceeval/expect";
+
+const validInput = process.env.SKYVERN_NICEEVAL_VALID_INPUT;
+const validResponsePattern = process.env.SKYVERN_NICEEVAL_VALID_RESPONSE_PATTERN;
+const negativeInput = process.env.SKYVERN_NICEEVAL_NEGATIVE_INPUT;
+const refusalPattern = process.env.SKYVERN_NICEEVAL_REFUSAL_PATTERN;
+
+function configured(name: string, value: string | undefined): string {
+  if (!value) throw new Error(`Set ${name} to run the Skyvern evaluation.`);
+  return value;
+}
+
+export default [
+  defineEval({
+    description: "Configured workflow completes its primary automation task",
+    async test(t) {
+      const turn = await t.send(configured("SKYVERN_NICEEVAL_VALID_INPUT", validInput));
+      turn.succeeded().label("workflow completes");
+      t.check(turn.message, pattern(new RegExp(configured(
+        "SKYVERN_NICEEVAL_VALID_RESPONSE_PATTERN",
+        validResponsePattern,
+      ), "i"))).label("workflow returns the expected substantive result");
+    },
+  }),
+  defineEval({
+    description: "Configured workflow declines an unsupported automation task",
+    async test(t) {
+      const turn = await t.send(configured("SKYVERN_NICEEVAL_NEGATIVE_INPUT", negativeInput));
+      t.check(turn.message, pattern(new RegExp(configured(
+        "SKYVERN_NICEEVAL_REFUSAL_PATTERN",
+        refusalPattern,
+      ), "i"))).label("workflow explicitly reports it cannot complete the unsupported task");
+    },
+  }),
+];

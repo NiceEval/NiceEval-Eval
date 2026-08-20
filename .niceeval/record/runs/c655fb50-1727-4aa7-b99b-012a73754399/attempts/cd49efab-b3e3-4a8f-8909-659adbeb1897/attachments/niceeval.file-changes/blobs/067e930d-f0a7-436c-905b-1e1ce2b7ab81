@@ -1,0 +1,19 @@
+import { Template } from "e2b";
+import {
+  e2bCodingAgentTemplate,
+  verifyE2BNodeToolContract,
+} from "niceeval/sandbox/e2b-template";
+
+const template = verifyE2BNodeToolContract(
+  e2bCodingAgentTemplate("codex")
+    .copy(["package.json", "node_modules"], "/opt/express/", { user: "user" })
+    .runCmd(
+      "test -x \"$(command -v codex)\" && test -f /opt/express/node_modules/mocha/bin/mocha.js",
+      { user: "user" },
+    ),
+);
+
+await Template.build(template, "express-codex-evals:2026-08-19", {
+  cpuCount: 2,
+  memoryMB: 4096,
+});

@@ -1,0 +1,17 @@
+import { defineEval } from "niceeval";
+import { includes } from "niceeval/expect";
+
+export default defineEval({
+  description: "Explains how an existing conversation forwards a user message to its agent server",
+  timeoutMs: 180_000,
+  async test(t) {
+    await t.send(
+      "Inspect openhands/app_server/app_conversation/app_conversation_router.py. " +
+        "Explain whether the send-message route forwards a user message to the agent server, " +
+        "and identify one concrete error status that it returns when a sandbox cannot accept work. " +
+        "Do not modify any files.",
+    );
+    t.succeeded();
+    t.check(t.reply, includes("502"));
+  },
+});

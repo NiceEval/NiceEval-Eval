@@ -1,0 +1,17 @@
+import {
+  NICEEVAL_CODEX_DOCKER_IMAGE,
+  dockerSandbox,
+  e2bSandbox,
+} from "niceeval/sandbox";
+
+export const E2B_TEMPLATE = "express-codex-evals:0.144.1-r1";
+
+export function codexSandbox() {
+  if (process.env.CI) {
+    return e2bSandbox({ template: E2B_TEMPLATE });
+  }
+
+  return dockerSandbox({
+    source: { type: "image", image: NICEEVAL_CODEX_DOCKER_IMAGE },
+  });
+}

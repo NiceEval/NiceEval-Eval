@@ -1,0 +1,8 @@
+{
+  "name": "openhands-niceeval",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "niceeval": "0.11.0"
+  }
+}

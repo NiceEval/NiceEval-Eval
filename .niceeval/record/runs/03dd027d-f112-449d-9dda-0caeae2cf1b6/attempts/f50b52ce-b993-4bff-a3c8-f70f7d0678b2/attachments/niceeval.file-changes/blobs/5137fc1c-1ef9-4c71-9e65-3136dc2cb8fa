@@ -1,0 +1,15 @@
+import { defineExperiment } from "niceeval";
+import { codexAgent } from "niceeval/adapter";
+import { e2bSandbox } from "niceeval/sandbox";
+
+export default defineExperiment({
+  description: "CI E2B comparison model for the Express regression fixture",
+  agent: codexAgent({ maxTurns: 8 }),
+  model: "gpt-5.4",
+  attempts: 1,
+  maxConcurrency: 1,
+  timeoutMs: 300_000,
+  budget: 5,
+  evals: ["coding/express-enabled-regression"],
+  sandbox: e2bSandbox({ template: "express-niceeval-codex:0.144.1-r5" }),
+});

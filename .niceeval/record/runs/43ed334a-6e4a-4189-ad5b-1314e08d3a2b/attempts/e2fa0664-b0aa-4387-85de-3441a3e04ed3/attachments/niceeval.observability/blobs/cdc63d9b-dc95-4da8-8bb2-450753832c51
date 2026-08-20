@@ -1,0 +1,145 @@
+// @file ./agents/dbgpt-excel.ts
+import { readFile } from "node:fs/promises";
+import { basename } from "node:path";
+import { defineAgent } from "niceeval/adapter";
+import type { Agent, EvidenceCoverage } from "niceeval/adapter";
+
+type DbGptExcelOptions = {
+  baseUrl: string;
+  fixturePath: string;
+};
+
+const evidenceCoverage = {
+  events: {
+    status: "partial",
+    reason: "DB-GPT's chat SSE stream does not expose every internal event.",
+  },
+  actions: {
+    status: "unavailable",
+    reason: "DB-GPT's chat SSE stream does not expose tool lifecycle events.",
+  },
+  messages: { status: "complete" },
+  usage: {
+    status: "unavailable",
+    reason: "The selected DB-GPT chat endpoint does not return token usage.",
+  },
+  status: { status: "complete" },
+  data: { status: "complete" },
+} satisfies EvidenceCoverage;
+
+export function dbGptExcel(options: DbGptExcelOptions): Agent {
+  return defineAgent({
+    name: "dbgpt-excel",
+    evidenceCoverage,
+    async send(input, ctx) {
+      const conversationId = ctx.session.id;
+      const model = ctx.model as string;
+
+      ctx.progress({ message: "Uploading spreadsheet fixture to DB-GPT" });
+      const fixture = await readFile(options.fixturePath);
+      const form = new FormData();
+      form.append(
+        "doc_files",
+        new Blob([fixture], { type: "text/csv" }),
+        basename(options.fixturePath),
+      );
+
+      const upload = await fetch(
+        `${options.baseUrl}/api/v1/resource/file/upload?${new URLSearchParams({
+          chat_mode: "chat_excel",
+          conv_uid: conversationId,
+          model_name: model,
+        })}`,
+        { method: "POST", body: form, signal: ctx.signal },
+      );
+
+      if (!upload.ok) {
+        return { status: "failed", events: [] };
+      }
+      const uploaded = (await upload.json()) as {
+        success?: boolean;
+        data?: unknown;
+      };
+      if (!uploaded.success || !uploaded.data) {
+        return { status: "failed", events: [] };
+      }
+
+      ctx.progress({ message: "Requesting spreadsheet analysis from DB-GPT" });
+      const response = await fetch(`${options.baseUrl}/api/v1/chat/completions`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          conv_uid: conversationId,
+          user_input: input.text,
+          chat_mode: "chat_excel",
+          app_code: "chat_excel",
+          model_name: model,
+          select_param: uploaded.data,
+          incremental: false,
+        }),
+        signal: ctx.signal,
+      });
+
+      if (!response.ok || !response.body) {
+        return { status: "failed", events: [] };
+      }
+
+      const text = await readDbGptSse(response.body);
+      if (!text) {
+        ctx.diagnostic({
+          code: "empty-dbgpt-response",
+          level: "warning",
+          message: "DB-GPT returned a successful stream with no assistant text.",
+        });
+      }
+
+      if (text.startsWith("[SERVER_ERROR]")) {
+        ctx.diagnostic({
+          code: "dbgpt-server-error",
+          level: "error",
+          message: "DB-GPT returned a server error while analyzing the spreadsheet.",
+        });
+        return { status: "failed", events: [] };
+      }
+
+      return {
+        status: "completed",
+        events: [{ type: "message", role: "assistant", text }],
+      };
+    },
+  });
+}
+
+async function readDbGptSse(stream: ReadableStream<Uint8Array>): Promise<string> {
+  const reader = stream.pipeThrough(new TextDecoderStream()).getReader();
+  let buffer = "";
+  let text = "";
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+    buffer += value;
+
+    const frames = buffer.split("\n\n");
+    buffer = frames.pop() ?? "";
+    for (const frame of frames) {
+      const data = frame
+        .split("\n")
+        .filter((line) => line.startsWith("data:"))
+        .map((line) => line.slice(5).trimStart())
+        .join("\n");
+      if (!data || data === "[DONE]") continue;
+
+      try {
+        const chunk = JSON.parse(data) as {
+          choices?: Array<{ delta?: { content?: string }; message?: { content?: string } }>;
+        };
+        text += chunk.choices?.[0]?.delta?.content ?? chunk.choices?.[0]?.message?.content ?? "";
+      } catch {
+        text += data;
+      }
+    }
+  }
+
+  return text;
+}

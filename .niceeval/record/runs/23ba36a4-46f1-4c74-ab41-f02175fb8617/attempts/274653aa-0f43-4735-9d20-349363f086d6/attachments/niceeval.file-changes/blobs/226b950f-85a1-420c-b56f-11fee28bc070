@@ -1,0 +1,13 @@
+import { defineExperiment } from "niceeval";
+import { lettaAgent } from "../agents/letta-agent.ts";
+
+export default defineExperiment({
+  description: "Letta REST API baseline using GPT-4o mini",
+  agent: lettaAgent({
+    baseUrl: process.env.LETTA_EVAL_BASE_URL ?? "http://127.0.0.1:8283",
+    agentId: process.env.LETTA_EVAL_AGENT_ID ?? "",
+  }),
+  model: "openai/gpt-4o-mini",
+  runs: 1,
+  maxConcurrency: 1,
+});

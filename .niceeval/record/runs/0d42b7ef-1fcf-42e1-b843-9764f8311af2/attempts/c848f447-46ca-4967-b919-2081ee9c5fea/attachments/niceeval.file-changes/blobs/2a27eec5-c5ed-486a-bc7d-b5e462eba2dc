@@ -1,0 +1,36 @@
+import { defineEval } from "niceeval";
+import { commandSucceeded } from "niceeval/expect";
+import { loadText } from "niceeval/loaders";
+
+const hiddenCheck = loadText(
+  new URL("../fixtures/template-renderer-check.js", import.meta.url),
+);
+
+export default defineEval({
+  description: "Repair nested template interpolation without breaking render errors",
+  async test(t) {
+    await t.sandbox.uploadDirectory(new URL("../../", import.meta.url), undefined, {
+      ignore: ["node_modules", ".niceeval", "evals", "experiments", "scripts"],
+    });
+
+    const template = await t.sandbox.readText("test/support/tmpl.js");
+    const seededBug = template.replace("path.split('.')", "path.split('/')");
+    if (seededBug === template) {
+      throw new Error("Could not seed the template interpolation regression");
+    }
+    await t.sandbox.writeText("test/support/tmpl.js", seededBug);
+
+    const turn = await t.send(`A regression was introduced in test/support/tmpl.js: dot-separated nested template variables no longer interpolate correctly. Repair the renderer while preserving its callback API and RenderError behavior for missing nested values. Keep the change focused; do not modify package manifests or evaluation files.`);
+    turn.succeeded().label("Codex completed the repair task");
+
+    await t.sandbox.writeText(
+      ".niceeval-template-renderer-check.js",
+      await hiddenCheck,
+    );
+    t.check(
+      await t.sandbox.runCommand("node", [".niceeval-template-renderer-check.js"]),
+      commandSucceeded(),
+    ).label("Nested interpolation works and missing values still produce RenderError");
+    t.sandbox.fileChanged("test/support/tmpl.js").label("Repair is attributed to Codex");
+  },
+});

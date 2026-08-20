@@ -1,0 +1,68 @@
+Metadata-Version: 2.4
+Name: httpx-aiohttp
+Version: 0.2.0
+Summary: Aiohttp transport for HTTPX
+Project-URL: Homepage, https://karpetrosyan.github.io/httpx-aiohttp/
+Project-URL: Source, https://github.com/karpetrosyan/httpx-aiohttp
+Author-email: Karen Petrosyan <kar.petrosyanpy@gmail.com>
+License: Copyright © 2025, Karen Petrosyan.
+        All rights reserved.
+        
+        Redistribution and use in source and binary forms, with or without
+        modification, are permitted provided that the following conditions are met:
+        
+        * Redistributions of source code must retain the above copyright notice, this
+          list of conditions and the following disclaimer.
+        
+        * Redistributions in binary form must reproduce the above copyright notice,
+          this list of conditions and the following disclaimer in the documentation
+          and/or other materials provided with the distribution.
+        
+        * Neither the name of the copyright holder nor the names of its
+          contributors may be used to endorse or promote products derived from
+          this software without specific prior written permission.
+        
+        THIS SOFTWARE IS PROVIDED BY THE COPYRIGHT HOLDERS AND CONTRIBUTORS "AS IS"
+        AND ANY EXPRESS OR IMPLIED WARRANTIES, INCLUDING, BUT NOT LIMITED TO, THE
+        IMPLIED WARRANTIES OF MERCHANTABILITY AND FITNESS FOR A PARTICULAR PURPOSE ARE
+        DISCLAIMED. IN NO EVENT SHALL THE COPYRIGHT HOLDER OR CONTRIBUTORS BE LIABLE
+        FOR ANY DIRECT, INDIRECT, INCIDENTAL, SPECIAL, EXEMPLARY, OR CONSEQUENTIAL
+        DAMAGES (INCLUDING, BUT NOT LIMITED TO, PROCUREMENT OF SUBSTITUTE GOODS OR
+        SERVICES; LOSS OF USE, DATA, OR PROFITS; OR BUSINESS INTERRUPTION) HOWEVER
+        CAUSED AND ON ANY THEORY OF LIABILITY, WHETHER IN CONTRACT, STRICT LIABILITY,
+        OR TORT (INCLUDING NEGLIGENCE OR OTHERWISE) ARISING IN ANY WAY OUT OF THE USE
+        OF THIS SOFTWARE, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGE.
+License-File: LICENSE
+Requires-Python: >=3.9
+Requires-Dist: aiohttp<4,>=3.10.0
+Requires-Dist: httpx>=0.27.0
+Provides-Extra: httpx2
+Requires-Dist: httpx2<3,>=2; extra == 'httpx2'
+Description-Content-Type: text/markdown
+
+
+<p align="center"><strong>httpx-aiohttp</strong> <em>- provides transports for httpx to work on top of aiohttp, handling all high-level features like authentication, retries, and cookies through httpx, while delegating low-level socket-level HTTP messaging to aiohttp</em></p>
+
+<p align="center">
+
+  <a href="https://pypi.org/project/httpx-aiohttp">
+      <img src="https://img.shields.io/pypi/v/httpx-aiohttp.svg" alt="pypi">
+  </a>
+</p>
+
+## Installation
+
+```shell
+uv pip install httpx-aiohttp
+```
+
+For [httpx2](https://github.com/pydantic/httpx2) support, install the `httpx2` extra and use `httpx_aiohttp.httpx2.Httpx2AiohttpClient` / `httpx_aiohttp.httpx2.AiohttpTransport`:
+
+```shell
+uv pip install httpx-aiohttp[httpx2]
+```
+
+## Documentation
+
+Project documentation is available at https://karpetrosyan.github.io/httpx-aiohttp/
+

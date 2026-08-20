@@ -1,0 +1,193 @@
+
+// ./experiments/letta-constrained.ts
+import { defineExperiment } from "niceeval";
+import { lettaAgent } from "../agents/letta.ts";
+
+export default defineExperiment({
+  description: "Letta memory-agent comparison with a constrained tool-step budget",
+  agent: lettaAgent({
+    baseUrl: process.env.LETTA_BASE_URL ?? "http://127.0.0.1:8283",
+    agentId: process.env.LETTA_AGENT_ID ?? "",
+    apiKey: process.env.LETTA_API_KEY,
+    maxSteps: 3,
+  }),
+  attempts: 1,
+});
+
+// ./experiments/letta-standard.ts
+import { defineExperiment } from "niceeval";
+import { lettaAgent } from "../agents/letta.ts";
+
+export default defineExperiment({
+  description: "Letta memory-agent baseline with the normal tool-step budget",
+  agent: lettaAgent({
+    baseUrl: process.env.LETTA_BASE_URL ?? "http://127.0.0.1:8283",
+    agentId: process.env.LETTA_AGENT_ID ?? "",
+    apiKey: process.env.LETTA_API_KEY,
+    maxSteps: 8,
+  }),
+  attempts: 1,
+});
+
+// ./agents/letta.ts
+import { completeEvidenceCoverage, defineAgent } from "niceeval/adapter";
+import type { Agent } from "niceeval/adapter";
+
+type LettaMessage = {
+  message_type: string;
+  content?: string | Array<{ text?: string }>;
+  reasoning?: string;
+  tool_call?: { name?: string; arguments?: string; tool_call_id?: string };
+  tool_return?: string;
+  status?: "success" | "error";
+  tool_call_id?: string;
+};
+
+type LettaResponse = {
+  messages: LettaMessage[];
+  usage?: {
+    prompt_tokens?: number;
+    completion_tokens?: number;
+    cached_input_tokens?: number;
+    cache_write_tokens?: number;
+    reasoning_tokens?: number;
+    step_count?: number;
+  };
+};
+
+function text(content: LettaMessage["content"]): string {
+  if (typeof content === "string") return content;
+  return content?.map((part) => part.text ?? "").join("") ?? "";
+}
+
+function jsonOrText(value: string | undefined): string | Record<string, unknown> {
+  if (!value) return "";
+  try {
+    return JSON.parse(value) as Record<string, unknown>;
+  } catch {
+    return value;
+  }
+}
+
+export function lettaAgent(options: { baseUrl: string; agentId: string; apiKey?: string; maxSteps: number }): Agent {
+  return defineAgent({
+    name: "letta",
+    evidenceCoverage: completeEvidenceCoverage,
+    async send(input, ctx) {
+      const response = await fetch(`${options.baseUrl}/v1/agents/${options.agentId}/messages`, {
+        method: "POST",
+        headers: {
+          "content-type": "application/json",
+          ...(options.apiKey ? { authorization: `Bearer ${options.apiKey}` } : {}),
+        },
+        body: JSON.stringify({
+          input: input.text,
+          streaming: false,
+          max_steps: options.maxSteps,
+          ...(ctx.model ? { override_model: ctx.model } : {}),
+        }),
+        signal: ctx.signal,
+      });
+
+      if (!response.ok) {
+        throw new Error(`Letta message request failed with HTTP ${response.status}`);
+      }
+
+      const body = (await response.json()) as LettaResponse;
+      const events = [] as Array<
+        | { type: "message"; role: "assistant"; text: string }
+        | { type: "thinking"; text: string }
+        | { type: "operation.started"; operationId: string; operation: { kind: "tool"; name: string; input: string | Record<string, unknown> } }
+        | { type: "operation.finished"; operationId: string; kind: "tool"; output: string; status: "completed" | "failed" }
+      >;
+
+      for (const message of body.messages) {
+        if (message.message_type === "assistant_message") {
+          events.push({ type: "message", role: "assistant", text: text(message.content) });
+        } else if (message.message_type === "reasoning_message" && message.reasoning) {
+          events.push({ type: "thinking", text: message.reasoning });
+        } else if (message.message_type === "tool_call_message" && message.tool_call?.tool_call_id) {
+          events.push({
+            type: "operation.started",
+            operationId: message.tool_call.tool_call_id,
+            operation: {
+              kind: "tool",
+              name: message.tool_call.name ?? "unknown",
+              input: jsonOrText(message.tool_call.arguments),
+            },
+          });
+        } else if (message.message_type === "tool_return_message" && message.tool_call_id) {
+          events.push({
+            type: "operation.finished",
+            operationId: message.tool_call_id,
+            kind: "tool",
+            output: message.tool_return ?? "",
+            status: message.status === "error" ? "failed" : "completed",
+          });
+        }
+      }
+
+      return {
+        status: "completed",
+        events,
+        usage: body.usage
+          ? {
+              inputTokens: body.usage.prompt_tokens,
+              outputTokens: body.usage.completion_tokens,
+              cacheReadTokens: body.usage.cached_input_tokens,
+              cacheCreationTokens: body.usage.cache_write_tokens,
+              reasoningTokens: body.usage.reasoning_tokens,
+              requests: body.usage.step_count,
+            }
+          : undefined,
+      };
+    },
+  });
+}
+
+// ./niceeval.config.ts
+import { defineConfig } from "niceeval";
+
+export default defineConfig({
+  // Add experiments/ with defineExperiment(...) to run evals.
+  //
+  // Judge Facts require an Eval declaration: judge: true. Configure the model here or
+  // on an Experiment. A consumed Fact without a model or key becomes unavailable and
+  // makes that Attempt errored. Any OpenAI-compatible /chat/completions service works;
+  // the key is read from OPENAI_API_KEY unless apiKeyEnv says otherwise.
+  // judge: { model: "gpt-5.4-mini" },
+});
+
+// ./evals/unknown-memory.eval.ts
+import { defineEval } from "niceeval";
+import { pattern } from "niceeval/expect";
+
+export default defineEval({
+  description: "Does not fabricate a preference that was never provided",
+  async test(t) {
+    const turn = await t.send(
+      "What deployment region did I say I prefer for the fictional Zephyr Vault project? I have never provided a preference for that project.",
+    );
+
+    turn.succeeded().label("memory query completed");
+    t.check(turn.message, pattern(/(?:do not|don't|did not|haven't|no)\s+(?:know|have|information|record|preference)|not\s+(?:provided|available|known)/i)).label(
+      "states that the unknown preference is unavailable",
+    );
+  },
+});
+
+// ./evals/memory-write.eval.ts
+import { defineEval } from "niceeval";
+import { pattern } from "niceeval/expect";
+
+export default defineEval({
+  description: "Stores a user preference in the Letta agent's long-term memory",
+  async test(t) {
+    const turn = await t.send(
+      "Remember this durable preference for future conversations: my preferred deployment region is eu-west-1. Confirm the preference you stored.",
+    );
+
+    turn.succeeded().label("memory update completed");
+    t.check(turn.message, pattern(/eu[ -]?west[ -]?1/i)).label("confirms the stored deployment region");
+  },
+});

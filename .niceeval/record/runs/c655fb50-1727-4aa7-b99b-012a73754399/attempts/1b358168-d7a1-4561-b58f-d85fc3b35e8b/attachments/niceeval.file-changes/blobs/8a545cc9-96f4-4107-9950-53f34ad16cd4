@@ -1,0 +1,22 @@
+import { defineEval } from "niceeval";
+import { includes } from "niceeval/expect";
+
+export default [
+  defineEval({
+    description: "Answers a concrete query against the bundled Walmart Sales fixture",
+    async test(t) {
+      await t.send("Which store has the highest total weekly sales in the connected Walmart Sales database? Give the store number and total.");
+      t.succeeded();
+      t.check(t.reply, includes(/store\s*(?:number\s*)?20|20\s*(?:has|is).*(?:highest|top)/i));
+      t.check(t.reply, includes(/301[,.]?397[,.]?792(?:\.46)?/));
+    },
+  }),
+  defineEval({
+    description: "Declines to invent results for a nonexistent database table",
+    async test(t) {
+      await t.send("What was the 2042 inventory shortage recorded in the inventory_forecast_2042 table?");
+      t.succeeded();
+      t.check(t.reply, includes(/not found|does not exist|no such table|cannot find|不存在|未找到|没有.*表|无法.*找到/i));
+    },
+  }),
+];

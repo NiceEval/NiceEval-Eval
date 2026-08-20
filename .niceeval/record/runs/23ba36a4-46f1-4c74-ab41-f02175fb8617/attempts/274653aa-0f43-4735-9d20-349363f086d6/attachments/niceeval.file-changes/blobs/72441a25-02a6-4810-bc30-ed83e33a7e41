@@ -1,0 +1,62 @@
+import { defineAgent } from "niceeval/adapter";
+import type { Agent } from "niceeval/adapter";
+
+type LettaMessage = {
+  content?: string | Array<{ text?: string }>;
+  message_type?: string;
+};
+
+type LettaResponse = {
+  messages?: LettaMessage[];
+};
+
+function assistantText(message: LettaMessage): string {
+  if (typeof message.content === "string") return message.content;
+  return (message.content ?? []).map((part) => part.text ?? "").join("");
+}
+
+export function lettaAgent(options: { agentId: string; baseUrl: string }): Agent {
+  const baseUrl = options.baseUrl.replace(/\/$/, "");
+
+  return defineAgent({
+    name: "letta-rest-agent",
+    async send(input, ctx) {
+      ctx.progress({ message: "Sending message to Letta" });
+      const response = await fetch(`${baseUrl}/v1/agents/${options.agentId}/messages`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          input: input.text,
+          streaming: false,
+          ...(ctx.model ? { override_model: ctx.model } : {}),
+        }),
+        signal: ctx.signal,
+      });
+
+      const body = (await response.json()) as LettaResponse;
+      const messages = (body.messages ?? []).filter((message) => message.message_type === "assistant_message");
+
+      if (!response.ok) {
+        ctx.diagnostic({
+          code: "letta-http-error",
+          level: "error",
+          message: `Letta returned HTTP ${response.status}`,
+        });
+        return { status: "failed", events: [] };
+      }
+
+      if (messages.length === 0) {
+        ctx.diagnostic({
+          code: "missing-assistant-message",
+          level: "warning",
+          message: "Letta completed the request without an assistant message.",
+        });
+      }
+
+      return {
+        status: "completed",
+        events: messages.map((message) => ({ type: "message" as const, role: "assistant" as const, text: assistantText(message) })),
+      };
+    },
+  });
+}

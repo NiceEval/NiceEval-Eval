@@ -1,0 +1,10 @@
+import { defineExperiment } from "niceeval";
+import { gptResearcher } from "../agents/gpt-researcher.ts";
+
+export default defineExperiment({
+  description: "GPT Researcher local-document baseline",
+  agent: gptResearcher({ baseUrl: "http://127.0.0.1:8000" }),
+  attempts: 1,
+  evals: ["research/"],
+  timeoutMs: 120_000,
+});

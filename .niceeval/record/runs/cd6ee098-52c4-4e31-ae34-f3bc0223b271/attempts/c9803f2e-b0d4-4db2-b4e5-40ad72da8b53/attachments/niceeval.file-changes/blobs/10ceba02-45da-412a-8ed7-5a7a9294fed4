@@ -1,0 +1,11 @@
+import { defineEval } from "niceeval";
+import { includes } from "niceeval/expect";
+
+export default defineEval({
+  description: "Read the repository and summarize its primary product purpose",
+  async test(t) {
+    await t.send("Read README.md in the workspace. State what product this repository builds and name one concrete workflow it supports. Do not modify files.");
+    t.succeeded();
+    t.check(t.reply, includes(/developer control center|always-on engineering team|automating everyday tasks/i));
+  },
+});

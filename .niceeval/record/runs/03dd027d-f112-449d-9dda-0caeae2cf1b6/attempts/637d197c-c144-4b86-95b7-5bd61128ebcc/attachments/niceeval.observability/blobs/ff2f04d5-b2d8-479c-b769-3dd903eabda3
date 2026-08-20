@@ -1,0 +1,124 @@
+
+// ./experiments/local-research.ts
+import { defineExperiment } from "niceeval";
+import { gptResearcher } from "../agents/gpt-researcher.ts";
+
+export default defineExperiment({
+  description: "GPT Researcher local-document baseline",
+  agent: gptResearcher({ baseUrl: "http://127.0.0.1:8000" }),
+  attempts: 1,
+  evals: ["research/"],
+  timeoutMs: 120_000,
+});
+
+// ./agents/gpt-researcher.ts
+import { defineAgent, type Agent, type EvidenceCoverage } from "niceeval/adapter";
+
+type ReportResponse = {
+  research_id?: string;
+  report?: string;
+  research_information?: {
+    source_urls?: string[];
+    research_costs?: number;
+    visited_urls?: string[];
+  };
+};
+
+const evidenceCoverage = {
+  events: { status: "partial", reason: "The HTTP endpoint returns only the final report." },
+  actions: { status: "unavailable", reason: "The HTTP response does not expose tool lifecycles." },
+  messages: { status: "complete" },
+  usage: { status: "partial", reason: "The response exposes aggregate research cost, not token usage." },
+  status: { status: "complete" },
+  data: { status: "complete" },
+} satisfies EvidenceCoverage;
+
+export function gptResearcher(options: { baseUrl: string }): Agent {
+  return defineAgent({
+    name: "gpt-researcher-http",
+    evidenceCoverage,
+    async send(input, ctx) {
+      ctx.progress({ message: "Requesting a local-source research report" });
+
+      const response = await fetch(`${options.baseUrl}/report/`, {
+        method: "POST",
+        headers: { "content-type": "application/json" },
+        body: JSON.stringify({
+          task: input.text,
+          report_type: "research_report",
+          report_source: "local",
+          tone: "Informative (providing clear and comprehensive information)",
+          repo_name: "gpt-researcher",
+          branch_name: "main",
+          generate_in_background: false,
+        }),
+        signal: ctx.signal,
+      });
+
+      const body = (await response.json()) as ReportResponse;
+      const report = typeof body.report === "string" ? body.report : "";
+
+      return {
+        status: response.ok ? "completed" : "failed",
+        events: [{ type: "message", role: "assistant", text: report }],
+        data: {
+          researchId: body.research_id ?? null,
+          sourceUrls: body.research_information?.source_urls ?? [],
+          visitedUrls: body.research_information?.visited_urls ?? [],
+          researchCost: body.research_information?.research_costs ?? null,
+        },
+      };
+    },
+  });
+}
+
+// ./niceeval.config.ts
+import { defineConfig } from "niceeval";
+
+export default defineConfig({
+  // Add experiments/ with defineExperiment(...) to run evals.
+  //
+  // Judge Facts require an Eval declaration: judge: true. Configure the model here or
+  // on an Experiment. A consumed Fact without a model or key becomes unavailable and
+  // makes that Attempt errored. Any OpenAI-compatible /chat/completions service works;
+  // the key is read from OPENAI_API_KEY unless apiKeyEnv says otherwise.
+  // judge: { model: "gpt-5.4-mini" },
+});
+
+// ./evals/research/local-documents.eval.ts
+import { defineEval } from "niceeval";
+import { and, pattern } from "niceeval/expect";
+
+export default [
+  defineEval({
+    description: "Summarizes a concrete local HR policy",
+    async test(t) {
+      const turn = await t.send(
+        "Using only the local employee-policy documents, state the US annual leave entitlement and its carry-over limit.",
+      );
+
+      turn.succeeded().label("local research request succeeds");
+      t.check(
+        turn.message,
+        and(
+          pattern(/\b22\s+(?:days?|PTO)\b/i),
+          pattern(/(?:no carry-over beyond|carry-over.{0,40}\b5\s+days?\b)/i),
+        ),
+      ).label("reports the US PTO entitlement and carry-over limit");
+    },
+  }),
+  defineEval({
+    description: "Does not invent a product-specific price absent from local documents",
+    async test(t) {
+      const turn = await t.send(
+        "Using only the local documents, what is the monthly RaaS price for the VLX-900?",
+      );
+
+      turn.succeeded().label("local research request succeeds");
+      t.check(
+        turn.message,
+        pattern(/(?:not (?:available|provided)|do(?:es)? not (?:contain|include)|cannot (?:determine|find)|no (?:information|data))/i),
+      ).label("declines to invent an unsupported product-specific price");
+    },
+  }),
+];

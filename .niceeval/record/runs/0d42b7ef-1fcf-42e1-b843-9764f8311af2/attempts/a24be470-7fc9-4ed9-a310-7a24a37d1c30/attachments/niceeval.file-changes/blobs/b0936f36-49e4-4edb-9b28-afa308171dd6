@@ -1,0 +1,30 @@
+import { defineEval } from "niceeval";
+import { pattern } from "niceeval/expect";
+
+const salesFixture = [
+  { month: "January", amount: 12 },
+  { month: "February", amount: 18 },
+  { month: "April", amount: 30 },
+];
+
+export default defineEval({
+  description: "Analyze local sales fixture without inventing absent data",
+  async test(t) {
+    const total = await t.send(
+      `Using this local sales fixture, calculate the total sales and briefly explain the calculation: ${JSON.stringify(salesFixture)}`,
+    );
+    total.succeeded().label("fixture analysis request succeeds");
+    t.check(total.message, pattern(/\b60\b/)).label("reports the computed total");
+
+    const missingMonth = await t.send(
+      `Using only this local sales fixture, report the sales amount for March: ${JSON.stringify(salesFixture)}`,
+    );
+    missingMonth.succeeded().label("missing-data request succeeds");
+    t.check(
+      missingMonth.message,
+      pattern(
+        /(not available|insufficient data|cannot (be )?determined|not provided|no data)/i,
+      ),
+    ).label("declines to fabricate missing data");
+  },
+});

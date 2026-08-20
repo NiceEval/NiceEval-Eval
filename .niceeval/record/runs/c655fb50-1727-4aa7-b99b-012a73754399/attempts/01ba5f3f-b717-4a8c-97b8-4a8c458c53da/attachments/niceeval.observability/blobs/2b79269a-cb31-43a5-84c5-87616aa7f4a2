@@ -1,0 +1,49 @@
+@12vfpyc6 · example-domain · agent · errored
+
+s1/t1 · failed · 1.1s
+  USER
+    Extract the primary heading from the page.
+
+  ASSISTANT
+    {"status":"failed","output":null,"failureReason":"Failed to create browser context (Error). BrowserType.launch_persistent_context: ╔══════════════════════════════════════════════════════╗ ║ Host system is missing dependencies to run browsers. ║ ║ Please install them with the following command: ║ ║ ║ ║ sudo playwright install-deps ║ ║ ║ ║ Alternatively, use apt: ║ ║ s... Please try re-running. If this continues, contact support@skyvern.com."}
+
+  ERROR
+    Failed to create browser context (Error). BrowserType.launch_persistent_context: ╔══════════════════════════════════════════════════════╗ ║ Host system is missing dependencies to run browsers. ║ ║ Please install them with the following command: ║ ║ ║ ║ sudo playwright install-deps ║ ║ ║ ║ Alternatively, use apt: ║ ║ s... Please try re-running. If this continues, contact support@skyvern.com.
+
+s1/t2 · failed · 1.0s
+  USER
+    Extract the official customer support email address from the page. If there is no email address, say it is unavailable instead of inventing one.
+
+  ASSISTANT
+    {"status":"failed","output":null,"failureReason":"Failed to create browser context (Error). BrowserType.launch_persistent_context: ╔══════════════════════════════════════════════════════╗ ║ Host system is missing dependencies to run browsers. ║ ║ Please install them with the following command: ║ ║ ║ ║ sudo playwright install-deps ║ ║ ║ ║ Alternatively, use apt: ║ ║ s... Please try re-running. If this continues, contact support@skyvern.com."}
+
+  ERROR
+    Failed to create browser context (Error). BrowserType.launch_persistent_context: ╔══════════════════════════════════════════════════════╗ ║ Host system is missing dependencies to run browsers. ║ ║ Please install them with the following command: ║ ║ ║ ║ sudo playwright install-deps ║ ║ ║ ║ Alternatively, use apt: ║ ║ s... Please try re-running. If this continues, contact support@skyvern.com.
+
+timing unavailable · OTel trace was not collected
+full events: .niceeval/agent/2026-08-19T03-19-06-459Z-afwj/example-domain/a0/events.json
+
+@17nu31xn · example-domain · code · errored
+
+s1/t1 · failed · 1.0s
+  USER
+    Extract the primary heading from the page.
+
+  ASSISTANT
+    {"status":"failed","output":null,"failureReason":"Failed to create browser context (Error). BrowserType.launch_persistent_context: ╔══════════════════════════════════════════════════════╗ ║ Host system is missing dependencies to run browsers. ║ ║ Please install them with the following command: ║ ║ ║ ║ sudo playwright install-deps ║ ║ ║ ║ Alternatively, use apt: ║ ║ s... Please try re-running. If this continues, contact support@skyvern.com."}
+
+  ERROR
+    Failed to create browser context (Error). BrowserType.launch_persistent_context: ╔══════════════════════════════════════════════════════╗ ║ Host system is missing dependencies to run browsers. ║ ║ Please install them with the following command: ║ ║ ║ ║ sudo playwright install-deps ║ ║ ║ ║ Alternatively, use apt: ║ ║ s... Please try re-running. If this continues, contact support@skyvern.com.
+
+s1/t2 · failed · 1.0s
+  USER
+    Extract the official customer support email address from the page. If there is no email address, say it is unavailable instead of inventing one.
+
+  ASSISTANT
+    {"status":"failed","output":null,"failureReason":"Failed to create browser context (Error). BrowserType.launch_persistent_context: ╔══════════════════════════════════════════════════════╗ ║ Host system is missing dependencies to run browsers. ║ ║ Please install them with the following command: ║ ║ ║ ║ sudo playwright install-deps ║ ║ ║ ║ Alternatively, use apt: ║ ║ s... Please try re-running. If this continues, contact support@skyvern.com."}
+
+  ERROR
+    Failed to create browser context (Error). BrowserType.launch_persistent_context: ╔══════════════════════════════════════════════════════╗ ║ Host system is missing dependencies to run browsers. ║ ║ Please install them with the following command: ║ ║ ║ ║ sudo playwright install-deps ║ ║ ║ ║ Alternatively, use apt: ║ ║ s... Please try re-running. If this continues, contact support@skyvern.com.
+
+timing unavailable · OTel trace was not collected
+full events: .niceeval/code/2026-08-19T03-19-35-372Z-m7zn/example-domain/a0/events.json

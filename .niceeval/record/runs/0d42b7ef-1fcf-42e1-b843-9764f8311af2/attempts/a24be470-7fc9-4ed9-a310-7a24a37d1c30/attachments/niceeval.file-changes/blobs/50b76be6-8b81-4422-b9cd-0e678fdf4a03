@@ -1,0 +1,8 @@
+{
+  "name": "dbgpt-niceeval",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "niceeval": "0.13.2-canary.35"
+  }
+}

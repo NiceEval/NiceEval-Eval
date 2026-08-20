@@ -1,0 +1,12 @@
+import { defineExperiment } from "niceeval";
+import { openHandsAgent } from "../agents/openhands.ts";
+
+export default defineExperiment({
+  description: "OpenHands unsupported-request baseline against a local app server",
+  agent: openHandsAgent({
+    baseUrl: process.env.OPENHANDS_BASE_URL ?? "http://localhost:3000",
+    apiKey: process.env.OPENHANDS_API_KEY,
+  }),
+  attempts: 1,
+  evals: (eval_) => eval_.id === "capability-boundary",
+});

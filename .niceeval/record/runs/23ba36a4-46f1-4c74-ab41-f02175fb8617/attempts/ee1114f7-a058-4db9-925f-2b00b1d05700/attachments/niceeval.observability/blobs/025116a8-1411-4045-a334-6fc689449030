@@ -1,0 +1,137 @@
+
+// ./experiments/local-walmart.ts
+import { defineExperiment } from "niceeval";
+import { dbgptAgent } from "../agents/dbgpt.ts";
+
+export default defineExperiment({
+  description: "DB-GPT local Walmart Sales baseline",
+  agent: dbgptAgent({
+    apiKey: process.env.DBGPT_API_KEY,
+    baseUrl: process.env.DBGPT_BASE_URL ?? "http://127.0.0.1:5670",
+    database: "Walmart_Sales",
+  }),
+  budget: 0.1,
+  model: "gpt-4o",
+  runs: 1,
+});
+
+// ./agents/dbgpt.ts
+import { defineAgent } from "niceeval/adapter";
+
+type DbgptAgentOptions = {
+  apiKey?: string;
+  baseUrl: string;
+  database: string;
+};
+
+export function dbgptAgent(options: DbgptAgentOptions) {
+  return defineAgent({
+    name: "dbgpt-data-assistant",
+    async send(input, ctx) {
+      const headers: Record<string, string> = {
+        "content-type": "application/json",
+      };
+      if (options.apiKey) {
+        headers.authorization = `Bearer ${options.apiKey}`;
+      }
+
+      const response = await fetch(
+        `${options.baseUrl}/api/v2/chat/completions`,
+        {
+          method: "POST",
+          headers,
+          body: JSON.stringify({
+            chat_mode: "chat_with_db_execute",
+            chat_param: options.database,
+            conv_uid: ctx.session.id,
+            messages: [{ role: "user", content: input.text }],
+            model: ctx.model,
+            stream: false,
+            temperature: 0,
+          }),
+          signal: ctx.signal,
+        },
+      );
+
+      if (!response.ok) {
+        ctx.diagnostic({
+          code: "dbgpt-http-error",
+          level: "error",
+          message: `DB-GPT returned HTTP ${response.status}`,
+          data: { status: response.status },
+        });
+        return {
+          status: "failed" as const,
+          events: [
+            { type: "error" as const, message: `DB-GPT returned HTTP ${response.status}` },
+          ],
+        };
+      }
+
+      const body = (await response.json()) as {
+        choices?: Array<{ message?: { content?: string } }>;
+        id?: string;
+      };
+      const reply = body.choices?.[0]?.message?.content;
+      if (!reply) {
+        ctx.diagnostic({
+          code: "dbgpt-invalid-response",
+          level: "error",
+          message: "DB-GPT returned no assistant message",
+        });
+        return {
+          status: "failed" as const,
+          events: [{ type: "error" as const, message: "DB-GPT returned no assistant message" }],
+        };
+      }
+
+      ctx.session.capture(body.id);
+      return {
+        status: "completed" as const,
+        events: [{ type: "message" as const, role: "assistant" as const, text: reply }],
+      };
+    },
+  });
+}
+
+// ./niceeval.config.ts
+import { defineConfig } from "niceeval";
+
+export default defineConfig({
+  // Add experiments/ with defineExperiment(...) to run evals.
+  //
+  // TODO(judge): semantic assertions (t.judge.*) are silently skipped until a judge
+  // model is configured — an all-green run does not mean the judge ran. Any
+  // OpenAI-compatible /chat/completions service works; the key is read from
+  // OPENAI_API_KEY unless apiKeyEnv says otherwise.
+  // judge: { model: "gpt-5.4-mini" },
+});
+
+// ./evals/walmart/missing-store.eval.ts
+import { defineEval } from "niceeval";
+import { matches } from "niceeval/expect";
+
+export default defineEval({
+  description: "Walmart fixture: refuse to fabricate data for a missing store",
+  async test(t) {
+    await t.send("What was the total weekly sales amount for Store 99 in the connected database?");
+
+    t.succeeded();
+    t.check(t.reply, matches(/(no data|not found|does not exist|missing|不存在|未找到|没有.*数据)/i));
+  },
+});
+
+// ./evals/walmart/top-store.eval.ts
+import { defineEval } from "niceeval";
+import { matches } from "niceeval/expect";
+
+export default defineEval({
+  description: "Walmart fixture: identify the highest-total-sales store",
+  async test(t) {
+    await t.send("Which store has the largest total weekly sales in the connected database? State the store number and total sales.");
+
+    t.succeeded();
+    t.check(t.reply, matches(/store\s*20\b/i));
+    t.check(t.reply, matches(/301[,.\s]?397[,.\s]?792(?:[,.]46)?/));
+  },
+});

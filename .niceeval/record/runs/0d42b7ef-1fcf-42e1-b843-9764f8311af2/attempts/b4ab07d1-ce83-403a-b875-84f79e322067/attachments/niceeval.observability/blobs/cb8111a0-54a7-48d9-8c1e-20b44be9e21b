@@ -1,0 +1,145 @@
+
+// ./experiments/local-fixture.ts
+import { defineExperiment } from "niceeval";
+import { gptResearcherAgent } from "../agents/gpt-researcher.ts";
+
+export default defineExperiment({
+  description: "One-shot local-fixture reference run",
+  agent: gptResearcherAgent({ baseUrl: "http://127.0.0.1:8000" }),
+  attempts: 1,
+  maxConcurrency: 1,
+  timeoutMs: 120_000,
+});
+
+// ./agents/gpt-researcher.ts
+import { defineAgent } from "niceeval/adapter";
+
+type ServerFrame = {
+  type?: string;
+  content?: unknown;
+  output?: unknown;
+};
+
+const websocketEvidence = {
+  events: {
+    status: "partial" as const,
+    reason: "The server emits progress frames but does not expose a complete ordered event stream.",
+  },
+  actions: {
+    status: "unavailable" as const,
+    reason: "The WebSocket protocol does not expose tool lifecycle events.",
+  },
+  messages: { status: "complete" as const },
+  usage: {
+    status: "unavailable" as const,
+    reason: "The WebSocket protocol does not return token or cost usage.",
+  },
+  status: { status: "complete" as const },
+  data: {
+    status: "unavailable" as const,
+    reason: "The WebSocket protocol does not return structured report data.",
+  },
+};
+
+export function gptResearcherAgent(options: { baseUrl: string }) {
+  const wsUrl = options.baseUrl.replace(/^http/, "ws").replace(/\/$/, "") + "/ws";
+
+  return defineAgent({
+    name: "gpt-researcher-websocket",
+    evidenceCoverage: websocketEvidence,
+    async send(input, ctx) {
+      ctx.progress({ message: "Connecting to GPT Researcher" });
+      const socket = new WebSocket(wsUrl);
+      const report = await new Promise<string>((resolve, reject) => {
+        const abort = () => {
+          socket.close();
+          reject(new Error("GPT Researcher request aborted"));
+        };
+        ctx.signal.addEventListener("abort", abort, { once: true });
+
+        socket.addEventListener("open", () => {
+          socket.send(`start ${JSON.stringify({
+            task: input.text,
+            report_type: "research_report",
+            report_source: "local",
+            source_urls: [],
+            document_urls: [],
+            tone: "Objective",
+            query_domains: [],
+            max_search_results: 1,
+          })}`);
+        });
+        socket.addEventListener("message", (event) => {
+          if (event.data === "pong") return;
+          let frame: ServerFrame;
+          try {
+            frame = JSON.parse(String(event.data)) as ServerFrame;
+          } catch {
+            return;
+          }
+          if (frame.type === "logs") {
+            if (frame.content === "error") {
+              socket.close();
+              reject(new Error(`GPT Researcher failed: ${String(frame.output ?? "unknown server error")}`));
+              return;
+            }
+            ctx.progress({ message: `Researcher: ${String(frame.content ?? "working")}` });
+            return;
+          }
+          if (frame.type === "report" && typeof frame.output === "string") {
+            socket.close();
+            resolve(frame.output);
+          }
+        });
+        socket.addEventListener("error", () => reject(new Error(`Could not connect to GPT Researcher at ${wsUrl}. Start the service and retry.`)));
+        socket.addEventListener("close", () => ctx.signal.removeEventListener("abort", abort));
+      });
+
+      return {
+        status: "completed",
+        events: [{ type: "message", role: "assistant", text: report }],
+      };
+    },
+  });
+}
+
+// ./niceeval.config.ts
+import { defineConfig } from "niceeval";
+
+export default defineConfig({
+  // Add experiments/ with defineExperiment(...) to run evals.
+  //
+  // Judge Facts require an Eval declaration: judge: true. Configure the model here or
+  // on an Experiment. A consumed Fact without a model or key becomes unavailable and
+  // makes that Attempt errored. Any OpenAI-compatible /chat/completions service works;
+  // the key is read from OPENAI_API_KEY unless apiKeyEnv says otherwise.
+  // judge: { model: "gpt-5.4-mini" },
+});
+
+// ./evals/research/local-fixture.eval.ts
+import { defineEval } from "niceeval";
+import { includes, pattern } from "niceeval/expect";
+
+export default [
+  defineEval({
+    description: "Produces a grounded local research report from the fixture brief",
+    async test(t) {
+      const turn = await t.send(
+        "Write a short research report explaining the release cadence and the documented support window.",
+      );
+      turn.succeeded();
+      t.check(turn.message, includes("monthly"));
+      t.check(turn.message, pattern(/support window[\s\S]{0,80}18 months|18 months[\s\S]{0,80}support window/i));
+    },
+  }),
+  defineEval({
+    description: "Declines a factual claim absent from the local fixture",
+    async test(t) {
+      const turn = await t.send(
+        "According to the local documents, what is the name of the CEO of Acme Research? If it is not documented, say that it is not available in the local documents.",
+      );
+      turn.succeeded();
+      t.check(turn.message, pattern(/not (?:available|documented|provided)|cannot (?:determine|find)|do not (?:contain|include)/i));
+    },
+  }),
+];

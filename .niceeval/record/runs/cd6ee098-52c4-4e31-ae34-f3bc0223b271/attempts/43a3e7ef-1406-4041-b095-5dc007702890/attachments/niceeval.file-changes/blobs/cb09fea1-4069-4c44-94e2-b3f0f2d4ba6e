@@ -1,0 +1,14 @@
+import { Template } from "e2b";
+import { NICEEVAL_CODEX_E2B_TEMPLATE, e2bBaselineBuildTag } from "niceeval/sandbox/e2b-template";
+
+const tag = e2bBaselineBuildTag("codex");
+const template = Template()
+  .fromTemplate(NICEEVAL_CODEX_E2B_TEMPLATE)
+  .aptInstall(["git"])
+  .copy("package.json", "/opt/express/package.json")
+  .runCmd("cd /opt/express && npm install --ignore-scripts");
+
+await Template.build(template, `express-codex-evals:${tag}`, {
+  cpuCount: 2,
+  memoryMB: 4096,
+});

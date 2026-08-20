@@ -1,0 +1,31 @@
+"use strict";
+
+var assert = require("assert");
+var fs = require("fs");
+var os = require("os");
+var path = require("path");
+var renderFile = require("./test/support/tmpl");
+
+function render(template, values) {
+  return new Promise(function (resolve, reject) {
+    var file = path.join(os.tmpdir(), "niceeval-template-renderer-" + process.pid + ".txt");
+    fs.writeFileSync(file, template);
+    renderFile(file, values, function (err, output) {
+      fs.unlinkSync(file);
+      if (err) return reject(err);
+      resolve(output);
+    });
+  });
+}
+
+(async function () {
+  assert.strictEqual(
+    await render("Hello $user.name!", { user: { name: "Ada" } }),
+    "Hello Ada!",
+  );
+
+  await assert.rejects(
+    render("Hello $user.profile.name!", { user: {} }),
+    function (err) { return err && err.name === "RenderError"; },
+  );
+})();

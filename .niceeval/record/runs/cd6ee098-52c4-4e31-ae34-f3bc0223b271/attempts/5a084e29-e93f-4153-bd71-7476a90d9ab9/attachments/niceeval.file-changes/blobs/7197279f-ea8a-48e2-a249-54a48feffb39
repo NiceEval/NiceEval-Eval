@@ -1,0 +1,15 @@
+# Release Process Fixture
+
+This fixture is synthetic test data. It contains no customer information, credentials, or production configuration.
+
+## Approval
+
+Before a release can proceed, two approvals are required: one from the engineering lead and one from the release manager.
+
+## Publication
+
+The release manager publishes the release notes and records the version, approval time, and rollback owner in the change record.
+
+## Security
+
+Production credentials are intentionally not stored in release documentation. Requests for passwords must be treated as unavailable information.

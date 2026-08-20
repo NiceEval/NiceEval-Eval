@@ -1,0 +1,17 @@
+import { defineExperiment } from "niceeval";
+import { codexAgent } from "niceeval/adapter";
+import { dockerSandbox, NICEEVAL_CODEX_DOCKER_IMAGE } from "niceeval/sandbox";
+
+export default defineExperiment({
+  description: "Local Codex baseline for the Express regression fixture",
+  agent: codexAgent({ maxTurns: 8 }),
+  model: "gpt-5.6-terra",
+  attempts: 1,
+  maxConcurrency: 1,
+  timeoutMs: 300_000,
+  budget: 5,
+  evals: ["coding/express-enabled-regression"],
+  sandbox: dockerSandbox({
+    source: { type: "image", image: "express-niceeval-codex:0.144.1-r5" },
+  }),
+});

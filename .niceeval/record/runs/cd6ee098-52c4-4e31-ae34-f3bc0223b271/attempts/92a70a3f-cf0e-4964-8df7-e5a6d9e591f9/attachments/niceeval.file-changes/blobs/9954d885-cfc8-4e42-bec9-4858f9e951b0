@@ -1,0 +1,8 @@
+{
+  "name": "letta-niceeval",
+  "private": true,
+  "type": "module",
+  "devDependencies": {
+    "niceeval": "^0.12.0"
+  }
+}

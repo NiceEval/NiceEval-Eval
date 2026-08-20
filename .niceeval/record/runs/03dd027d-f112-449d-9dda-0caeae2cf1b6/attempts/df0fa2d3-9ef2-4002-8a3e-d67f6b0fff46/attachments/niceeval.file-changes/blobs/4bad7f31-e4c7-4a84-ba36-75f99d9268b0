@@ -1,0 +1,6 @@
+allowBuilds:
+  '@parcel/watcher': true
+  esbuild: true
+  msgpackr-extract: true
+minimumReleaseAgeExclude:
+  - niceeval@0.13.2-canary.35

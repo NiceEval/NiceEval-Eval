@@ -1,0 +1,12 @@
+FROM niceeval/codex:0.144.1-r5
+
+USER root
+WORKDIR /opt/express
+
+COPY package.json pnpm-lock.yaml pnpm-workspace.yaml ./
+RUN corepack enable && pnpm install --frozen-lockfile
+
+COPY index.js ./
+COPY lib ./lib
+COPY test ./test
+COPY History.md LICENSE Readme.md ./

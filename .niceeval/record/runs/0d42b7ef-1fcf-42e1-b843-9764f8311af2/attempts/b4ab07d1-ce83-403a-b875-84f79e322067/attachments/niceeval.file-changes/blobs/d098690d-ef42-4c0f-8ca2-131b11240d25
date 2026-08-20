@@ -1,0 +1,11 @@
+httpx_aiohttp/__init__.py,sha256=ijtsNnwp3aKYKfYWbTNhtp9MspHBeqcw1-PpQ8yEnic,133
+httpx_aiohttp/client.py,sha256=aI_XoPKFBHZXs-vFRc8vVrUo6_TNAO-A5XGrqcUURDE,1794
+httpx_aiohttp/py.typed,sha256=47DEQpj8HBSa-_TImW-5JCeuQeRkm5NMpJWZG3hSuFU,0
+httpx_aiohttp/transport.py,sha256=3oincUt6Ql9VexeyTxd8Zzg4w8nSYmv4rxe9CeWLzR0,7099
+httpx_aiohttp/httpx2/__init__.py,sha256=8ZJcoEnDcoR7ZreEJAi6fdYDdRzPB6Ovl8wZ4fSnKqU,305
+httpx_aiohttp/httpx2/client.py,sha256=x_bLdQcyMi74u8GK4SnXQHbkWwJF6_sJziQl0rFGH6g,1805
+httpx_aiohttp/httpx2/transport.py,sha256=2H_1VAvWaWRwDinB5pygwM3vl4D6z1MMFwUPItVk-Tw,7109
+httpx_aiohttp-0.2.0.dist-info/METADATA,sha256=nuYIN5Rb7P6Tptj0YdOwAQpV3b58jvPFkIxi19IQXJU,3052
+httpx_aiohttp-0.2.0.dist-info/WHEEL,sha256=qtCwoSJWgHk21S1Kb4ihdzI2rlJ1ZKaIurTj_ngOhyQ,87
+httpx_aiohttp-0.2.0.dist-info/licenses/LICENSE,sha256=FUdZwenrWOQmQ-5D7FnVVt700dcC2RGkhMRp4C-F3V0,1493
+httpx_aiohttp-0.2.0.dist-info/RECORD,,

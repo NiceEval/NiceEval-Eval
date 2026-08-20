@@ -1,0 +1,123 @@
+
+// ./scripts/build-e2b-template.ts
+import { Template } from "e2b";
+import { e2bCodingAgentTemplate } from "niceeval/sandbox/e2b-template";
+import { E2B_TEMPLATE } from "../experiments/codex/sandbox.ts";
+
+async function main() {
+  const template = e2bCodingAgentTemplate("codex")
+    .aptInstall(["nodejs", "npm"])
+    .copy("package.json", "/opt/express-deps/package.json")
+    .copy("package-lock.json", "/opt/express-deps/package-lock.json")
+    .runCmd("cd /opt/express-deps && npm ci --ignore-scripts");
+
+  await Template.build(template, E2B_TEMPLATE, {
+    cpuCount: 2,
+    memoryMB: 4096,
+  });
+}
+
+main().catch(function (error) {
+  console.error(error);
+  process.exitCode = 1;
+});
+
+// ./experiments/codex/model-compare.ts
+import { defineExperiment } from "niceeval";
+import { codexAgent } from "niceeval/adapter";
+import { codexSandbox } from "./sandbox.ts";
+
+export default defineExperiment({
+  description: "Codex model comparison on isolated Express regression tasks",
+  agent: codexAgent(),
+  model: "gpt-5.3-codex",
+  attempts: 1,
+  maxConcurrency: 1,
+  timeoutMs: 300_000,
+  sandbox: codexSandbox(),
+});
+
+// ./experiments/codex/baseline.ts
+import { defineExperiment } from "niceeval";
+import { codexAgent } from "niceeval/adapter";
+import { codexSandbox } from "./sandbox.ts";
+
+export default defineExperiment({
+  description: "Codex baseline on isolated Express regression tasks",
+  agent: codexAgent(),
+  model: "gpt-5.4",
+  attempts: 1,
+  maxConcurrency: 1,
+  timeoutMs: 300_000,
+  sandbox: codexSandbox(),
+});
+
+// ./experiments/codex/sandbox.ts
+import {
+  NICEEVAL_CODEX_DOCKER_IMAGE,
+  dockerSandbox,
+  e2bSandbox,
+} from "niceeval/sandbox";
+
+export const E2B_TEMPLATE = "express-codex-evals:0.144.1-r1";
+
+export function codexSandbox() {
+  if (process.env.CI) {
+    return e2bSandbox({ template: E2B_TEMPLATE });
+  }
+
+  return dockerSandbox({
+    source: { type: "image", image: NICEEVAL_CODEX_DOCKER_IMAGE },
+  });
+}
+
+// ./niceeval.config.ts
+import { defineConfig } from "niceeval";
+
+export default defineConfig({
+  // Add experiments/ with defineExperiment(...) to run evals.
+  //
+  // Judge Facts require an Eval declaration: judge: true. Configure the model here or
+  // on an Experiment. A consumed Fact without a model or key becomes unavailable and
+  // makes that Attempt errored. Any OpenAI-compatible /chat/completions service works;
+  // the key is read from OPENAI_API_KEY unless apiKeyEnv says otherwise.
+  // judge: { model: "gpt-5.4-mini" },
+});
+
+// ./evals/codex/template-renderer.eval.ts
+import { defineEval } from "niceeval";
+import { commandSucceeded } from "niceeval/expect";
+import { loadText } from "niceeval/loaders";
+
+const hiddenCheck = loadText(
+  new URL("../fixtures/template-renderer-check.js", import.meta.url),
+);
+
+export default defineEval({
+  description: "Repair nested template interpolation without breaking render errors",
+  async test(t) {
+    await t.sandbox.uploadDirectory(new URL("../../", import.meta.url), undefined, {
+      ignore: ["node_modules", ".niceeval", "evals", "experiments", "scripts"],
+    });
+
+    const template = await t.sandbox.readText("test/support/tmpl.js");
+    const seededBug = template.replace("path.split('.')", "path.split('/')");
+    if (seededBug === template) {
+      throw new Error("Could not seed the template interpolation regression");
+    }
+    await t.sandbox.writeText("test/support/tmpl.js", seededBug);
+
+    const turn = await t.send(`A regression was introduced in test/support/tmpl.js: dot-separated nested template variables no longer interpolate correctly. Repair the renderer while preserving its callback API and RenderError behavior for missing nested values. Keep the change focused; do not modify package manifests or evaluation files.`);
+    turn.succeeded().label("Codex completed the repair task");
+
+    await t.sandbox.writeText(
+      ".niceeval-template-renderer-check.js",
+      await hiddenCheck,
+    );
+    t.check(
+      await t.sandbox.runCommand("node", [".niceeval-template-renderer-check.js"]),
+      commandSucceeded(),
+    ).label("Nested interpolation works and missing values still produce RenderError");
+    t.sandbox.fileChanged("test/support/tmpl.js").label("Repair is attributed to Codex");
+  },
+});

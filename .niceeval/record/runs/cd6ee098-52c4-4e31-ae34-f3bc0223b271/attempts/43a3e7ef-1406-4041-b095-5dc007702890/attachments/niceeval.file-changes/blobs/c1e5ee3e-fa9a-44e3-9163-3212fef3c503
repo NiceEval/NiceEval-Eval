@@ -1,0 +1,46 @@
+import { defineEval } from "niceeval";
+import { commandSucceeded, includes } from "niceeval/expect";
+
+export default defineEval({
+  description: "Add regression coverage for Express SEARCH routes",
+  timeoutMs: 10 * 60_000,
+  async test(t) {
+    t.progress({ message: "Preparing an isolated Express workspace" });
+    await t.sandbox.uploadDirectory("..", undefined, { ignore: ["node_modules", ".niceeval"] });
+
+    // CI templates bake these dependencies in. Locally, reuse the already-installed
+    // dependency tree without performing an install inside the attempt.
+    if (await t.sandbox.pathExists("/opt/express/node_modules")) {
+      await t.sandbox.runCommandOrThrow("cp", ["-a", "/opt/express/node_modules", "node_modules"]);
+    } else {
+      await t.sandbox.uploadDirectory("../node_modules", "node_modules");
+    }
+
+    await t
+      .send(
+        "Add a focused regression test for Express SEARCH routing. Create test/app.search.js " +
+          "following the existing app method test style. It must prove app.search() dispatches a " +
+          "SEARCH request, that automatic OPTIONS advertises SEARCH for that route, and that an " +
+          "unmatched OPTIONS path still returns 404. Keep the change limited to the new test file " +
+          "and run the focused test.",
+      )
+      .then((turn) => turn.succeeded().gate());
+
+    t.sandbox.fileChanged("test/app.search.js").gate();
+
+    const testSource = await t.sandbox.readText("test/app.search.js");
+    t.check(testSource, includes(/app\.search\s*\(/)).gate();
+    t.check(testSource, includes(/\.options\s*\(/)).gate();
+    t.check(testSource, includes(/\.expect\s*\(\s*404/)).gate();
+
+    t.progress({ message: "Running the agent's focused regression test" });
+    const result = await t.sandbox.runCommand("npx", [
+      "mocha",
+      "--require",
+      "test/support/env",
+      "--check-leaks",
+      "test/app.search.js",
+    ]);
+    t.check(result, commandSucceeded()).gate();
+  },
+});

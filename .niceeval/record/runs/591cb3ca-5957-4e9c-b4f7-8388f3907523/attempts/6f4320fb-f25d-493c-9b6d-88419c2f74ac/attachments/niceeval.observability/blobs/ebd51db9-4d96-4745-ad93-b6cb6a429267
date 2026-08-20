@@ -1,0 +1,173 @@
+// @file ./agents/skyvern.ts
+import { defineAgent, type Agent, type EvidenceCoverage } from "niceeval/adapter";
+import type { JsonValue, StreamEvent } from "niceeval";
+
+type SkyvernEngine = "skyvern-1.0" | "skyvern-2.0";
+
+type SkyvernRun = {
+  run_id: string;
+  run_type: string;
+  status: string;
+  output?: unknown;
+  failure_reason?: string | null;
+};
+
+type SkyvernAction = {
+  action_id?: string | null;
+  action_type?: string | null;
+  status?: string | null;
+  description?: string | null;
+  intention?: string | null;
+  output?: unknown;
+};
+
+type SkyvernTimelineEntry = {
+  block?: { actions?: SkyvernAction[] } | null;
+  children?: SkyvernTimelineEntry[];
+};
+
+export type SkyvernAgentOptions = {
+  baseUrl: string;
+  apiKey: string;
+  engine: SkyvernEngine;
+  taskUrl: string;
+  dataExtractionSchema: JsonValue;
+};
+
+const evidenceCoverage = {
+  events: {
+    status: "partial",
+    reason: "Only completed Skyvern v2 action records are available through the public timeline endpoint.",
+  },
+  actions: {
+    status: "partial",
+    reason: "Skyvern v1 exposes no action history; Skyvern v2 exposes only completed action records.",
+  },
+  messages: {
+    status: "unavailable",
+    reason: "Skyvern task runs return structured extraction output, not an assistant text message.",
+  },
+  usage: {
+    status: "unavailable",
+    reason: "The public Skyvern run API does not return model token or cost usage.",
+  },
+  status: { status: "complete" },
+  data: { status: "complete" },
+} satisfies EvidenceCoverage;
+
+const terminalStatuses = new Set(["completed", "failed", "terminated", "timed_out", "canceled"]);
+
+function isJsonValue(value: unknown): value is JsonValue {
+  if (value === null || typeof value === "string" || typeof value === "number" || typeof value === "boolean") {
+    return true;
+  }
+  if (Array.isArray(value)) return value.every(isJsonValue);
+  if (typeof value !== "object" || value === null) return false;
+  return Object.values(value).every(isJsonValue);
+}
+
+function flattenActions(entries: SkyvernTimelineEntry[]): SkyvernAction[] {
+  return entries.flatMap((entry) => [
+    ...(entry.block?.actions ?? []),
+    ...flattenActions(entry.children ?? []),
+  ]);
+}
+
+function actionEvents(actions: SkyvernAction[]): StreamEvent[] {
+  return actions.flatMap((action, index) => {
+    if (!action.action_type || !action.status) return [];
+
+    const operationId = action.action_id ?? `skyvern-action-${index}`;
+    const input = {
+      description: action.description ?? undefined,
+      intention: action.intention ?? undefined,
+    };
+    const events: StreamEvent[] = [{
+      type: "operation.started",
+      operationId,
+      operation: { kind: "tool", name: action.action_type, input },
+    }];
+
+    if (action.status === "completed" || action.status === "failed") {
+      events.push({
+        type: "operation.finished",
+        operationId,
+        kind: "tool",
+        output: isJsonValue(action.output) ? action.output : undefined,
+        status: action.status,
+      });
+    }
+    return events;
+  });
+}
+
+async function responseJson(response: Response): Promise<unknown> {
+  const body = await response.text();
+  try {
+    return JSON.parse(body) as unknown;
+  } catch {
+    throw new Error(`Skyvern returned invalid JSON (HTTP ${response.status}).`);
+  }
+}
+
+async function waitForRun(baseUrl: string, apiKey: string, run: SkyvernRun, signal: AbortSignal): Promise<SkyvernRun> {
+  let current = run;
+  while (!terminalStatuses.has(current.status)) {
+    if (signal.aborted) throw new Error("Skyvern run polling was canceled.");
+    await new Promise((resolve) => setTimeout(resolve, 1_000));
+    const response = await fetch(`${baseUrl}/v1/runs/${current.run_id}`, {
+      headers: { "x-api-key": apiKey },
+      signal,
+    });
+    if (!response.ok) throw new Error(`Skyvern run lookup failed (HTTP ${response.status}).`);
+    current = await responseJson(response) as SkyvernRun;
+  }
+  return current;
+}
+
+async function loadV2ActionEvents(baseUrl: string, apiKey: string, run: SkyvernRun, signal: AbortSignal): Promise<StreamEvent[]> {
+  if (run.run_type !== "task_v2") return [];
+  const response = await fetch(`${baseUrl}/v1/runs/${run.run_id}/timeline`, {
+    headers: { "x-api-key": apiKey },
+    signal,
+  });
+  if (!response.ok) return [];
+  const timeline = await responseJson(response);
+  return Array.isArray(timeline) ? actionEvents(flattenActions(timeline as SkyvernTimelineEntry[])) : [];
+}
+
+export function skyvernAgent(options: SkyvernAgentOptions): Agent {
+  const baseUrl = options.baseUrl.replace(/\/$/, "");
+  return defineAgent({
+    name: `skyvern-${options.engine}`,
+    evidenceCoverage,
+    async send(input, ctx) {
+      ctx.progress({ message: "Submitting Skyvern browser task" });
+      const response = await fetch(`${baseUrl}/v1/run/tasks`, {
+        method: "POST",
+        headers: { "content-type": "application/json", "x-api-key": options.apiKey },
+        body: JSON.stringify({
+          prompt: input.text,
+          url: options.taskUrl,
+          engine: options.engine,
+          data_extraction_schema: options.dataExtractionSchema,
+          max_steps: 5,
+        }),
+        signal: ctx.signal,
+      });
+      if (!response.ok) throw new Error(`Skyvern task submission failed (HTTP ${response.status}).`);
+
+      const submitted = await responseJson(response) as SkyvernRun;
+      if (!submitted.run_id) throw new Error("Skyvern task submission did not return a run id.");
+      ctx.progress({ message: `Waiting for Skyvern run ${submitted.run_id}` });
+      const run = await waitForRun(baseUrl, options.apiKey, submitted, ctx.signal);
+      const events = await loadV2ActionEvents(baseUrl, options.apiKey, run, ctx.signal);
+
+      return {
+        status: run.status === "completed" ? "completed" : "failed",
+        data: isJsonValue(run.output) ? run.output : null,
+        events: run.failure_reason ? [...events, { type: "error", message: run.failure_reason }] : events,
+      };
+    },
+  });
+}
