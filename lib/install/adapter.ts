@@ -1,10 +1,12 @@
 /**
- * 评估adapter（软分，不 gate）：agent 写的 adapter 有没有真联上被测系统。
+ * 评估 adapter：agent 写的 adapter 有没有真联上被测系统。roadmap 默认是软分；install 正式题
+ * 使用 outcome-weighted 模式，把真实终态与执行事件作为计分制的 orStop barrier。
  *
  * 只信 agent 自装的 CLI，不自己找/读 result.json——跑了几次不是这层关心的事（适配 live 系统
  * 的成本、稳不稳定各不相同，agent 跑几次都合理，不该被断言锁死），这里只看跑没跑通。
  * `niceeval show` 显示的 verdict 是 passed / failed 就说明请求真发出去、回应真回来，连不上会
- * 是 errored。起被测系统很重且波动大（见 lib/target-app-env.ts），所以只作软分计量、不 gate。
+ * 是 errored。起被测系统很重且波动大（见 lib/target-app-env.ts），因此 roadmap 只作软分计量；
+ * 正式 install 题则把这两条轻量路径的真实终态当作高权重 stop barrier。
  *
  * 只被 db-gpt / gpt-researcher 两条 eval 调用。理由是**起被测系统的代价**，不是「任务没要求」
  * ——「真跑一次」本来就写在 INIT.md 的完成清单里（Actually run it once and get it green），
@@ -25,9 +27,10 @@ import type { ScoreTestContext } from "niceeval";
 import { commandSucceeded, satisfies } from "niceeval/expect";
 import { locateInstallRoot } from "./installation.ts";
 import { readAuthoredFiles } from "./fixture.ts";
+import { INSTALL_OUTCOME_POINTS, isOutcomeWeighted, type InstallScoringMode } from "./scoring.ts";
 
 /**
- * 评估执行取证（纯加分，1 分）：adapter 是否真把被测系统的响应映射成了标准事件流。
+ * 评估执行取证：adapter 是否真把被测系统的响应映射成了标准事件流。
  *
  * 不用 judge 读 adapter 源码判「协议对不对」——链路真通没通，`niceeval show --execution`
  * 一条命令就能取证：不带范围 = 当前 Scope 全部 attempt 逐节展开执行树，事件流里的助手
@@ -38,20 +41,27 @@ import { readAuthoredFiles } from "./fixture.ts";
  *
  * 写法约定同文件头：只信 agent 自装的 CLI，取证一条命令，判定紧跟一条 t.check 配 matcher。
  */
-export async function checkExecutionEvidence(t: ScoreTestContext): Promise<void> {
+export async function checkExecutionEvidence(
+  t: ScoreTestContext,
+  opts: { scoring?: InstallScoringMode } = {},
+): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
+  const outcomeWeighted = isOutcomeWeighted(opts.scoring);
 
   const execution = await sandbox.runShell(`npx --no-install niceeval show --execution 2>&1`, { cwd: at });
 
   await t.group("评估执行取证", async () => {
-    t.check(
+    const assistantEvidence = t.check(
       execution.stdout,
       satisfies(
         "show --execution 的执行树里有 ASSISTANT 消息（adapter 真把被测系统的响应映射成了事件流）",
         (s) => /^\s*ASSISTANT\b/m.test(s as string),
       ),
-    ).score(1).label("执行记录映射助手消息");
+    ).score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.assistantEvent : 1)
+      .key("install.execution.assistant-event")
+      .label("执行记录映射助手消息");
+    if (outcomeWeighted) await assistantEvidence.orStop();
   });
 }
 
@@ -106,21 +116,21 @@ export async function checkAdapterPractice(t: ScoreTestContext): Promise<void> {
         "send 里有真实的传输层调用（HTTP / WS 客户端），不是进程内直调或写死回复",
         (s) => /\bfetch\s*\(|WebSocket|axios|https?\.request\s*\(|EventSource|node-fetch|undici/.test(src(s)),
       ),
-    ).score(1).label("真实传输层调用");
+    ).score(1).key("install.adapter.transport-call").label("真实传输层调用");
 
     // 第一步就该转发的 `ctx.signal`：运行器的超时与取消挂在它上面。不挂的 adapter 在
     // 超时时不会真的断开请求，attempt 被判超时了它还在后台跑。
     t.check(
       source,
       satisfies("把 ctx.signal 挂到了发出的请求上（运行器的超时与取消真能中断）", (s) => /ctx\.signal/.test(src(s))),
-    ).score(1).label("转发 ctx.signal");
+    ).score(1).key("install.adapter.forwards-signal").label("转发 ctx.signal");
 
     // 同样是第一步：experiment 的 model 经 ctx.model 到 send。收尾自检里明写的一条——
     // 「Experiment 里声明的 model / flags 确实被 Adapter 消费」，没消费就是死配置。
     t.check(
       source,
       satisfies("转发了 ctx.model（experiment 声明的模型不是没人读的死配置）", (s) => /ctx\.model/.test(src(s))),
-    ).score(1).label("转发 ctx.model");
+    ).score(1).key("install.adapter.forwards-model").label("转发 ctx.model");
 
     // 「静态配置走 adapter 工厂参数」：URL / 鉴权进工厂参数，换环境（本地 / 预发 / 生产）
     // 只改实验文件里的一行，adapter 一行不动。
@@ -134,14 +144,14 @@ export async function checkAdapterPractice(t: ScoreTestContext): Promise<void> {
         "静态配置走工厂参数（工厂函数返回 define*Agent，换环境只改实验文件一行）",
         (s) => /(return|=>)\s*define(Direct|Sandbox)?Agent\s*\(/.test(src(s)),
       ),
-    ).score(1).label("adapter 工厂参数");
+    ).score(1).key("install.adapter.factory-configuration").label("adapter 工厂参数");
 
     // 第二步：接上 ctx.session 才有多轮与 t.newSession() 的会话隔离。接口无状态单轮时
     // 挣不到，属于「这次接入没走到那一档」，不是错——所以纯加分。
     t.check(
       source,
       satisfies("接上了 ctx.session（多轮续接 / 会话隔离，不是每轮一场新对话）", (s) => /ctx\.session/.test(src(s))),
-    ).score(1).label("转发 ctx.session");
+    ).score(1).key("install.adapter.forwards-session").label("转发 ctx.session");
 
     // 第三条贯穿原则：运行反馈走 ctx，不直接写终端。两半都要——用了 progress/diagnostic，
     // 且没有 console.log / process.stdout（后者会串进运行器的实时输出）。
@@ -153,7 +163,7 @@ export async function checkAdapterPractice(t: ScoreTestContext): Promise<void> {
           /ctx\.(progress|diagnostic)\s*\(/.test(src(s)) &&
           !/console\.(log|error|warn|info)|process\.std(out|err)/.test(src(s)),
       ),
-    ).score(1).label("运行反馈走 ctx");
+    ).score(1).key("install.adapter.context-feedback").label("运行反馈走 ctx");
 
     // 第四步：把过程也归一进标准事件流——官方转换器（标准形状零映射）或手写 action.called /
     // thinking 映射。只吐一条最终文本的 send 也能跑绿，但工具族断言整族用不了。
@@ -166,17 +176,21 @@ export async function checkAdapterPractice(t: ScoreTestContext): Promise<void> {
             src(s),
           ) || /["']action\.called["']|["']thinking["']|["']input\.requested["']/.test(src(s)),
       ),
-    ).score(1).label("过程映射为事件流");
+    ).score(1).key("install.adapter.maps-events").label("过程映射为事件流");
   });
 }
 
 /**
- * 评估adapter（软分，不 gate）：agent 写的 adapter 有没有真联上被测系统。
- * 见文件头注：只信 agent 自装的 CLI，不判跑了几次，只被两条 install eval 调用。
+ * 评估 adapter：只信 agent 自装的 CLI，不判跑了几次。正式 install 题使用结果优先 barrier，
+ * roadmap 省略 scoring 参数时仍保持原来的纯加分语义。
  */
-export async function checkAdapterConnection(t: ScoreTestContext): Promise<void> {
+export async function checkAdapterConnection(
+  t: ScoreTestContext,
+  opts: { scoring?: InstallScoringMode } = {},
+): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
+  const outcomeWeighted = isOutcomeWeighted(opts.scoring);
 
   // 自装 CLI 能不能把跑出来的结果显示出来。show 没有 --output 这类 profile flag（两形态契约:
   // 不加 flag = 人读文本,非 TTY 自动降级为无框纯文本;--json 是机器面）,gate:show 尚未落地
@@ -185,19 +199,25 @@ export async function checkAdapterConnection(t: ScoreTestContext): Promise<void>
   const show = await sandbox.runShell(`npx --no-install niceeval show 2>&1`, { cwd: at });
 
   await t.group("评估adapter", async () => {
-    // 旧 Score API 的两个 `.atLeast(1)` 都是无权的 quality observation。Fact API 不再保留该
-    // 消费面，故 breaking 地迁为显式的一分 score：仍不 gate，机器事实也不被丢掉；本考项的
-    // max 因而较旧行为增加 2 分。其它原有 `.points` 判据仍各保持 1 分。
-    t.check(show, commandSucceeded()).score(1).label("niceeval show 命令成功");
+    // roadmap 保持原来的一分软观察；正式 install 题提高真实 show / terminal result 的权重，
+    // 并在失败时停止后续源码质量奖励。
+    const showSucceeded = t.check(show, commandSucceeded())
+      .score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.showSucceeded : 1)
+      .key("install.execution.show-succeeded")
+      .label("niceeval show 命令成功");
+    if (outcomeWeighted) await showSucceeded.orStop();
     // 只要正向证据（出现 passed/failed = 请求真出去、回应真回来），不再排斥 errored 字样：
     // 「第一次跑挂、修好再跑通」是文件头明说合理的路径，历史里留着 errored 行不该连坐。
     // 连不上被测系统的 agent 本来就产不出任何 passed/failed。
-    t.check(
+    const hasTerminalResult = t.check(
       show.stdout,
       satisfies(
         "niceeval show 显示的 verdict 有 passed/failed（真联上了被测系统；从没联上只会有 errored）",
         (s) => /\b(passed|failed)\b/i.test(s as string),
       ),
-    ).score(1).label("show 有通过或失败结果");
+    ).score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.terminalResult : 1)
+      .key("install.execution.has-terminal-result")
+      .label("show 有通过或失败结果");
+    if (outcomeWeighted) await hasTerminalResult.orStop();
   });
 }

@@ -16,4 +16,5 @@ export {
 } from "./interaction.ts";
 export { checkInstallation } from "./installation.ts";
 export { scoreEvalDesign } from "./quality.ts";
+export { INSTALL_OUTCOME_POINTS, type InstallScoringMode } from "./scoring.ts";
 export { checkSandboxProvisioning } from "./sandbox.ts";

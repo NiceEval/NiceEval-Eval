@@ -12,3 +12,16 @@
 | `fixture.ts` / `archive.ts` | fixture clone、源码取证和 attempt 产物归档 |
 
 题目特有的 repo、版本、协议、质量事实与文档落点在 `fixtures/install/<case>/case.ts`；只有该题独有的长 rubric 才放同目录 `rubrics.ts`。
+
+## install 正式题的计分顺序
+
+`evals/install/` 使用 `outcome-weighted` 模式，仍然是纯计分制，不引入通过制 Verdict：
+
+1. 完成交互后，安装落点、精确候选版本、Eval discovery、dry plan、真实 `exp`、公开 `show`、
+   terminal result 与 `ASSISTANT` 执行证据依次形成 `orStop` barrier。
+2. barrier 失败时保留此前已得的部分分，但不再发放 experiment / adapter / authoring / 设计品味分。
+3. 关键结果按 3–8 分加权；文档路由与源码姿势仍各 1 分。无 `tsconfig` 时满分 93，存在且
+   typecheck 干净时额外得 1 分，不能再用大量软分掩盖未跑通。
+4. `orStop` 后仍在 `finally` 中归档 agent 产物，保证失败样本可人工复审。
+
+`evals/roadmap/` 没有显式选择该模式，继续使用原来的 additive 评分，避免未来题的预览语义被正式题改动连带改变。

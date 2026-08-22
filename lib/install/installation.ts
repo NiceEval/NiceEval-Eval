@@ -6,6 +6,7 @@
 import type { ScoreTestContext } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import { readCandidateManifest } from "../candidate.ts";
+import { INSTALL_OUTCOME_POINTS, isOutcomeWeighted, type InstallScoringMode } from "./scoring.ts";
 
 /**
  * Codex 的 command_execution 事件只提供 shell source，command projection 因而按协议标成
@@ -146,10 +147,17 @@ export async function locateInstallRoot(sandbox: ScoreTestContext["sandbox"]): P
  */
 export async function checkInstallation(
   t: ScoreTestContext,
-  opts: { version: string; standaloneWorkspace?: boolean },
+  opts: {
+    version: string;
+    standaloneWorkspace?: boolean;
+    /** install 正式题使用：关键结果加权，失败时保留部分分并停止后续质量奖励。 */
+    scoring?: InstallScoringMode;
+  },
 ): Promise<void> {
   const sandbox = t.sandbox;
   const candidate = readCandidateManifest(opts.version);
+  const outcomeWeighted = isOutcomeWeighted(opts.scoring);
+  const foundationPoints = outcomeWeighted ? INSTALL_OUTCOME_POINTS.foundation : 1;
 
   const root = await locateInstallRoot(sandbox);
   const at = root ?? ".";
@@ -188,34 +196,67 @@ export async function checkInstallation(
   ).stdout.trim();
 
   await t.group("评估安装", async () => {
-    // 安装机制与其它 rubric 一样贡献分数；Score Eval 没有最低有效性 gate。
-    t.check(root !== null, isTrue("niceeval.config.ts 存在")).score(1).label("niceeval.config.ts 存在");
-    t.check(
+    // 结果优先模式把可运行闭环作为计分制的 stop barrier：前面挣到的部分分保留，后面的
+    // 源码姿势奖励不再掩盖基础安装或真实执行没有完成。roadmap 默认仍保持原来的纯加分行为。
+    const rootCheck = t.check(root !== null, isTrue("niceeval.config.ts 存在"))
+      .score(foundationPoints)
+      .key("install.foundation.config-exists")
+      .label("niceeval.config.ts 存在");
+    if (outcomeWeighted) await rootCheck.orStop();
+
+    const versionCheck = t.check(
       version,
       satisfies(`依赖解析到候选包 niceeval@${candidate.version}（实际：${version || "未安装"}）`, (v) => v === candidate.version),
-    ).score(1).label("候选版本正确");
-    t.check(managed.length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块")).score(1).label("托管指引存在");
-    t.check(list, commandSucceeded()).score(1).label("Eval 可发现");
-    t.check(
+    ).score(foundationPoints).key("install.foundation.exact-version").label("候选版本正确");
+    if (outcomeWeighted) await versionCheck.orStop();
+
+    const listCheck = t.check(list, commandSucceeded())
+      .score(foundationPoints)
+      .key("install.foundation.list-succeeded")
+      .label("Eval 可发现");
+    if (outcomeWeighted) await listCheck.orStop();
+
+    const discoveredCheck = t.check(
       list.stdout,
       satisfies<string>(
         "niceeval 能发现 agent 写出的 eval",
         (s) => s.split("\n").some((l) => /\S/.test(l) && !/^(NAME|ID|—|-{3,})/.test(l.trim())),
       ),
-    ).score(1).label("至少发现一个 Eval");
-    t.check(
+    ).score(foundationPoints).key("install.foundation.eval-discovered").label("至少发现一个 Eval");
+    if (outcomeWeighted) await discoveredCheck.orStop();
+
+    const dryCheck = t.check(
       dryPlan,
       satisfies("exp --dry 能规划出至少一个 experiment", (v) => {
         const p = v as ExpPlanDocument | null;
         return p !== null && p.matrix.length > 0;
       }),
-    ).score(1).label("实验 dry-run 可执行");
+    ).score(foundationPoints).key("install.foundation.dry-plan").label("实验 dry-run 可执行");
+    if (outcomeWeighted) await dryCheck.orStop();
+
+    const commands = shellCommands(t);
+    const ranExperiment = t.check(ranNiceeval(commands, "exp"), isTrue("实际运行过非 dry/help 的 niceeval exp"))
+      .score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.ranExperiment : 1)
+      .key("install.execution.ran-experiment")
+      .label("实际运行 niceeval exp");
+    if (outcomeWeighted) await ranExperiment.orStop();
+
+    const inspectedResults = t.check(ranNiceeval(commands, "show"), isTrue("运行过 niceeval show"))
+      .score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.inspectedResults : 1)
+      .key("install.execution.inspected-results")
+      .label("运行 niceeval show");
+    if (outcomeWeighted) await inspectedResults.orStop();
+
+    t.check(managed.length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块"))
+      .score(1)
+      .key("install.practice.managed-guidance-present")
+      .label("托管指引存在");
     // 非 TS 宿主可以没有 tsconfig，这时不判——有 tsconfig 才要求 agent 自己的代码干净
     if (tsc) {
       t.check(
         tsc.stdout,
         satisfies<string>("agent 写的代码 typecheck 干净", (s) => !/^(?!.*node_modules).*\(\d+,\d+\): error TS\d+:/m.test(s)),
-      ).score(1).label("TypeScript 检查通过");
+      ).score(1).key("install.practice.typecheck-clean").label("TypeScript 检查通过");
     }
 
     // 过程侧（加分，每条 1 分）：agent 该敲的命令敲没敲。上面是事后取证产物，这里回看 agent
@@ -227,16 +268,10 @@ export async function checkInstallation(
     // codex 全程用 `npm exec niceeval -- exp baseline`（`--` 分隔符卡在包名与子命令之间），
     // `npx niceeval@<version> <cmd>` 也常见。旧正则 `niceeval\s+exp` 对不上这两种，把真跑过的
     // 分误杀成 0（2026-07-24 canary.7 取证）。
-    const commands = shellCommands(t);
     t.check(ranNiceeval(commands, "init"), isTrue("运行过 niceeval init"))
-      .score(1).label("运行 niceeval init"); // 托管指引该由 CLI 写入，不是手抄
-    // (?![\s\S]*--dry|[\s\S]*--help)：同一条命令里带 --dry / --help 的不算真跑。不要求带 --json
-    // ——CLI 只有两种形态（人读文本 / --json），非 TTY 下人读文本本就自动降级为只追加流，
-    // agent 直接跑默认形态完全合理，逼它加 --json 才算数会误伤。
-    t.check(ranNiceeval(commands, "exp"), isTrue("实际运行过非 dry/help 的 niceeval exp"))
-      .score(1).label("实际运行 niceeval exp");
-    t.check(ranNiceeval(commands, "show"), isTrue("运行过 niceeval show"))
-      .score(1).label("运行 niceeval show");
+      .score(1)
+      .key("install.practice.ran-init")
+      .label("运行 niceeval init"); // 托管指引该由 CLI 写入，不是手抄
   });
 
   // ── 最佳实践（纯加分，每条 1 分）：装成了之后，装的姿势对不对。 ───────────────────
@@ -256,14 +291,14 @@ export async function checkInstallation(
         const m = v as InstallManifest | null;
         return !!m?.devDependencies?.niceeval && !m?.dependencies?.niceeval;
       }),
-    ).score(1).label("niceeval 位于 devDependencies");
+    ).score(1).key("install.practice.dev-dependency").label("niceeval 位于 devDependencies");
 
     // 托管指引由 `niceeval init` 写入：带 BEGIN/END 标记的托管区块，升级后重跑 init
     // 就能刷新。手抄一段同样的文字也能过上面那条 gate（它只 grep 关键字），但升级后不会更新。
     t.check(
       managedBlock.length > 0,
       isTrue(`托管指引是 init 写入的托管区块（有 BEGIN:niceeval-agent-rules 标记，实际：${managedBlock || "无"}）`),
-    ).score(1).label("init 托管指引区块");
+    ).score(1).key("install.practice.managed-guidance-block").label("init 托管指引区块");
 
     if (opts.standaloneWorkspace) {
       // 宿主不是 JS 项目：INIT.md 要求新建一个独立子目录装，不要装进宿主里已有的包——
@@ -272,13 +307,13 @@ export async function checkInstallation(
       t.check(
         root !== null && root !== ".",
         isTrue(`eval 工作区是新建的独立子目录（实际装在：${root ?? "未安装"}）`),
-      ).score(1).label("独立 eval 工作区");
+      ).score(1).key("install.practice.standalone-workspace").label("独立 eval 工作区");
       // 新建的 package.json 要 `"type": "module"`：`npm init -y` 默认 CommonJS，
       // 那种形态下 config / eval 文件用不了顶层 await。
       t.check(
         pkg,
         satisfies('eval 工作区的 package.json 是 ESM（"type": "module"）', (v) => (v as InstallManifest | null)?.type === "module"),
-      ).score(1).label("eval 工作区 ESM");
+      ).score(1).key("install.practice.esm-workspace").label("eval 工作区 ESM");
     }
   });
 }

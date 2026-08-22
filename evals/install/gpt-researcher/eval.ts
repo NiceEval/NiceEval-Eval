@@ -34,24 +34,32 @@ export default defineScoreEval({
       `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`;
     const turn = await t.send(prompt);
 
-    // 检查：交互、安装 gate、实验、adapter、运行证据与作者面实践。
-    await scoreIntegrationConversation(t, {
-      clarify: gptResearcherCase.clarify,
-      createEval: { quality: gptResearcherCase.quality, comparisonOptions: gptResearcherCase.clarify.flags },
-      turn,
-    });
-    await checkInstallation(t, { version, standaloneWorkspace: true });
-    await checkExperimentDesign(t);
-    await checkAdapterConnection(t);
-    await checkExecutionEvidence(t);
-    await checkAdapterPractice(t);
-    await checkAuthoringPractice(t);
+    try {
+      // 先验收计分制里的关键闭环；任一 orStop 都保留已得部分分，但不再发放后续质量奖励。
+      await scoreIntegrationConversation(t, {
+        clarify: gptResearcherCase.clarify,
+        createEval: { quality: gptResearcherCase.quality, comparisonOptions: gptResearcherCase.clarify.flags },
+        scoring: "outcome-weighted",
+        turn,
+      });
+      await checkInstallation(t, {
+        version,
+        standaloneWorkspace: true,
+        scoring: "outcome-weighted",
+      });
+      await checkAdapterConnection(t, { scoring: "outcome-weighted" });
+      await checkExecutionEvidence(t, { scoring: "outcome-weighted" });
 
-    // 收口：评审产出设计、文档路由并归档；首轮必须成功。
-    const material = await collectAgentSource(t.sandbox);
-    await scoreEvalDesign(t, gptResearcherCase.quality, { input: prompt, output: material });
-    await scoreDocumentationRouting(t, gptResearcherCase.documentation);
-    await archiveAgentOutput(t, "gpt-researcher");
-    turn.succeeded();
+      // 闭环成立后，再评实验、adapter、Eval 写法与设计质量。
+      await checkExperimentDesign(t);
+      await checkAdapterPractice(t);
+      await checkAuthoringPractice(t);
+      const material = await collectAgentSource(t.sandbox);
+      await scoreEvalDesign(t, gptResearcherCase.quality, { input: prompt, output: material });
+      await scoreDocumentationRouting(t, gptResearcherCase.documentation);
+    } finally {
+      // orStop 也必须保留本次产物，供人工复审。
+      await archiveAgentOutput(t, "gpt-researcher");
+    }
   },
 });

@@ -22,17 +22,17 @@ export async function scoreDocumentationRouting(
   await t.group("评估是否正确加载文档", async () => {
     t.calledTool(
       toolMatch("shell", { input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }),
-    ).label("以随包 INDEX.md 为路由入口").score(1);
+    ).label("以随包 INDEX.md 为路由入口").key("install.docs.read-index").score(1);
     t.calledTool(toolMatch("shell", {
       input: referencesAnyPath(facts.relevantPaths),
-    })).label(facts.relevantLabel).score(1);
+    })).label(facts.relevantLabel).key("install.docs.read-relevant-page").score(1);
     if (facts.includeTier) {
       t.calledTool(
         toolMatch("shell", { input: referencesAnyPath(["docs-site/zh/explanation/tier.mdx"]) }),
-      ).label("读到接入等级页").score(1);
+      ).label("读到接入等级页").key("install.docs.read-tier").score(1);
     }
     t.notCalledTool(
       toolMatch("shell", { input: referencesAnyPath(ONLINE_MAIN_SOURCES) }),
-    ).label("没退回官网 / GitHub main").score(1);
+    ).label("没退回官网 / GitHub main").key("install.docs.no-online-main").score(1);
   });
 }

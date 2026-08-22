@@ -61,7 +61,7 @@ export async function checkAuthoringPractice(t: ScoreTestContext): Promise<void>
             src(s),
           ),
       ),
-    ).score(1).label("官方断言词汇");
+    ).score(1).key("install.authoring.official-assertions").label("官方断言词汇");
 
     // 措辞开放的回答要留一条经得起换措辞的判定，文档给的三条路子都算数：t.judge 的语义评分、
     // 形状断言（includesUrl / hasSections / matches / similarity），以及**多措辞等价的正则**
@@ -79,7 +79,7 @@ export async function checkAuthoringPractice(t: ScoreTestContext): Promise<void>
           /\.judge\.|\bincludesUrl\s*\(|\bhasSections\s*\(|\bmatches\s*\(|\bsimilarity\s*\(/.test(src(s)) ||
           /\b(includes|excludes|messageIncludes)\s*\(\s*\//.test(src(s)),
       ),
-    ).score(1).label("措辞变化的判定");
+    ).score(1).key("install.authoring.robust-language-check").label("措辞变化的判定");
 
     // 评估用例侧不代管被测进程。注意本仓的罐头答复里有「被测服务需要的话你自己起」——那句
     // 说的是 agent 自己在 shell 里把服务拉起来（合理），不是把 spawn 写进 eval 文件里
@@ -92,6 +92,6 @@ export async function checkAuthoringPractice(t: ScoreTestContext): Promise<void>
           src(s).length > 0 &&
           !/child_process|\bexeca\b|\bspawn(Sync)?\s*\(|\bexecSync\s*\(|docker\s+(run|compose)/.test(src(s)),
       ),
-    ).score(1).label("不代管被测进程");
+    ).score(1).key("install.authoring.no-process-management").label("不代管被测进程");
   });
 }

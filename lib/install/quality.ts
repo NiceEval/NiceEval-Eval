@@ -8,8 +8,11 @@ export async function scoreEvalDesign(
   material: { input: string; output: string },
 ): Promise<void> {
   await t.group("产出质量层", async () => {
-    for (const rubric of buildQualityRubrics(facts)) {
-      t.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`, material).score(1);
+    for (const [index, rubric] of buildQualityRubrics(facts).entries()) {
+      t.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`, material)
+        .score(1)
+        .key(`install.quality.eval-design.${index + 1}`)
+        .label(rubric.key);
     }
   });
 }

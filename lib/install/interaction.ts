@@ -13,6 +13,7 @@ import {
   buildCreateEvalScopingRubrics,
   type CreateEvalFacts,
 } from "./criteria/first-eval.ts";
+import { INSTALL_OUTCOME_POINTS, isOutcomeWeighted, type InstallScoringMode } from "./scoring.ts";
 
 type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
 
@@ -21,6 +22,11 @@ export interface IntegrationConversationOptions {
   turn: Turn;
   /** 常见安装路径还要评「首次 Eval 定题」与「完成交接」。 */
   createEval?: CreateEvalFacts;
+  /**
+   * install 正式题使用结果优先模式：完成轮本身计 3 分，未完成则保留此前部分分并停止后续评分。
+   * roadmap 题省略时保持原来的纯加分行为。
+   */
+  scoring?: InstallScoringMode;
 }
 
 /** 计分通用接入澄清，并以原有 Tier 1 答复继续同一会话。 */
@@ -29,17 +35,27 @@ export async function scoreIntegrationConversation(
   opts: IntegrationConversationOptions,
 ): Promise<void> {
   const createEval = opts.createEval;
+  const outcomeWeighted = isOutcomeWeighted(opts.scoring);
   await t.group("评估交互", async () => {
-    t.check(opts.turn.status === "waiting", isTrue("首轮等待澄清")).score(1).label("首轮等待澄清");
-    for (const rubric of buildClarifyRubrics(opts.clarify)) {
-      opts.turn.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`).score(1);
+    t.check(opts.turn.status === "waiting", isTrue("首轮等待澄清"))
+      .score(1)
+      .key("install.interaction.waited-for-clarification")
+      .label("首轮等待澄清");
+    for (const [index, rubric] of buildClarifyRubrics(opts.clarify).entries()) {
+      opts.turn.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`)
+        .score(1)
+        .key(`install.interaction.clarification.${index + 1}`)
+        .label(rubric.key);
     }
   });
 
   if (createEval) {
     await t.group("首次评估定题", async () => {
-      for (const rubric of buildCreateEvalScopingRubrics(createEval)) {
-        opts.turn.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`).score(1);
+      for (const [index, rubric] of buildCreateEvalScopingRubrics(createEval).entries()) {
+        opts.turn.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`)
+          .score(1)
+          .key(`install.interaction.eval-scope.${index + 1}`)
+          .label(rubric.key);
       }
     });
   }
@@ -62,10 +78,21 @@ export async function scoreIntegrationConversation(
 
   if (createEval) {
     await t.group("完成交接", async () => {
-      for (const rubric of buildCreateEvalHandoffRubrics(createEval)) {
-        handoffTurn.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`).score(1);
+      for (const [index, rubric] of buildCreateEvalHandoffRubrics(createEval).entries()) {
+        handoffTurn.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`)
+          .score(1)
+          .key(`install.interaction.handoff.${index + 1}`)
+          .label(rubric.key);
       }
     });
+  }
+
+  if (outcomeWeighted) {
+    await handoffTurn.succeeded()
+      .score(INSTALL_OUTCOME_POINTS.completedTurn)
+      .key("install.interaction.completed")
+      .label("完成轮成功")
+      .orStop();
   }
 }
 
