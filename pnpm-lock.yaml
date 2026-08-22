@@ -372,7 +372,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  niceeval: link:/home/ctrdh/Code/NiceEval/NiceEval
+  niceeval: link:/home/ctrdh/.herdr/worktrees/NiceEval/dind-fix
 
 importers:
 
@@ -388,8 +388,8 @@ importers:
         specifier: ^4.0.12
         version: 4.0.12
       niceeval:
-        specifier: link:/home/ctrdh/Code/NiceEval/NiceEval
-        version: link:../NiceEval
+        specifier: link:/home/ctrdh/.herdr/worktrees/NiceEval/dind-fix
+        version: link:../../../.herdr/worktrees/NiceEval/dind-fix
       react:
         specifier: ^19.2.7
         version: 19.2.7

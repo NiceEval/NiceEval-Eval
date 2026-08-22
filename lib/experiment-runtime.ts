@@ -119,8 +119,9 @@ function prepareHarnessCandidate(candidateVersion?: string): SandboxHook {
 }
 
 /**
- * rootfs 只读；所有需要写入的位置都落到有大小上限的 tmpfs。memoryBytes 同时禁止额外 swap，
- * 因而单 attempt 无法靠 writable layer 或 inner image 把共享外层 data-root 写满。
+ * rootfs 只读；工作区等小型可写路径落到有大小上限的 tmpfs。inner `/var/lib/docker`
+ * 由宿主 storage profile 授予磁盘 backed、project-quota 限额的私有分配，不再占用 shmem。
+ * memoryBytes 同时禁止额外 swap，单 attempt 也无法把共享外层 data-root 写满。
  * 带 tmpfs 的 provider 能力是 DestroyOnly，NiceEval 会拒绝 --keep-sandbox。
  *
  * candidateVersion 可选：harness 实验传版本号触发共享基建预装（buildArgs NICEEVAL_VERSION）；
@@ -141,20 +142,14 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
         : { target: "candidate" }),
     },
     user: "node",
-    dockerAccess: { mode: "dind", isolation: "raw-privileged" },
+    dockerAccess: { mode: "dind", isolation: "raw-privileged", storageProfile: "harness-raw" },
     resources: {
       cpus: 4,
       memoryBytes: harnessCandidate ? 8 * GIB : 6 * GIB,
       pidsLimit: 2048,
+      dockerDataBytes: harnessCandidate ? 6 * GIB : 3 * GIB,
       readOnlyRootfs: true,
       tmpfs: {
-        "/var/lib/docker": {
-          sizeBytes: harnessCandidate ? 6 * GIB : 3 * GIB,
-          mode: 0o711,
-          uid: 0,
-          gid: 0,
-          executable: true,
-        },
         "/home/sandbox/workspace": {
           sizeBytes: 2 * GIB,
           mode: 0o755,
