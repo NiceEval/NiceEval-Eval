@@ -122,6 +122,7 @@ function prepareHarnessCandidate(candidateVersion?: string): SandboxHook {
  * rootfs 只读；工作区等小型可写路径落到有大小上限的 tmpfs。inner `/var/lib/docker`
  * 由宿主 storage profile 授予磁盘 backed、project-quota 限额的私有分配，不再占用 shmem。
  * memoryBytes 同时禁止额外 swap，单 attempt 也无法把共享外层 data-root 写满。
+ * 每 Attempt 限 1 CPU / 1536 MiB，使 12 并发可在 16 CPU / 18 GiB allocatable 的宿主 profile 中准入。
  * 带 tmpfs 的 provider 能力是 DestroyOnly，NiceEval 会拒绝 --keep-sandbox。
  *
  * candidateVersion 可选：harness 实验传版本号触发共享基建预装（buildArgs NICEEVAL_VERSION）；
@@ -144,8 +145,8 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
     user: "node",
     dockerAccess: { mode: "dind", isolation: "raw-privileged", storageProfile: "harness-raw" },
     resources: {
-      cpus: 2,
-      memoryBytes: 3 * GIB,
+      cpus: 1,
+      memoryBytes: 1536 * MIB,
       pidsLimit: 2048,
       dockerDataBytes: 4 * GIB,
       readOnlyRootfs: true,
