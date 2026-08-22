@@ -63,19 +63,23 @@ export default defineScoreEval({
       output: turn.message,
     };
 
-    // 每个失败各 7 分。classifier-debug 是公开证据链 2 分 + 最终归因 5 分；
-    // log-summary 除公开证据链 2 分外，再把“承认产物满足题面”与“把责任归到
-    // 过紧 Eval”拆成 2 + 3 分。后两件事不能只凭描述引号差异一起放行：回复若
-    // 明说是 agent 输出错误或“并非 Eval 问题”，即使复述了 exact mismatch 也不得分。
+    // 每个失败各 7 分：公开证据链 2 分、最终任务事实 2 分、责任归因 3 分。
+    // 两题都不能只凭复述 actual / expected mismatch 获得归因分；最终回复必须
+    // 明确判断责任在错误的 agent 结果，还是在拒绝合法结果的过紧 Eval。
     t.judge.autoevals.closedQA("【classifier-debug 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：先用 niceeval show 确认 current 为 1 passed、2 failed、0 errored，并取得 terminal-bench/classifier-debug 的动态 locator；再用该 locator 的公开下钻输出确认 agent 写入 B、正确答案与断言要求都是 A。", turnMaterial)
       .score(2)
       .key("harness.log-summary.classifier-evidence")
       .label("classifier-debug 公开证据完整");
 
-    t.judge.autoevals.closedQA("【classifier-debug 最终归因】只判断最终回复是否明确把 terminal-bench/classifier-debug 归因为 agent 选择 B、而正确答案与 Eval 都要求 A 所造成的 agent 答案错误；不能归因为 Eval 条件过紧。", replyMaterial)
-      .score(5)
-      .key("harness.log-summary.classifier-diagnosis")
-      .label("classifier-debug 最终归因正确");
+    t.judge.autoevals.closedQA("【classifier-debug 最终任务事实】只判断最终回复是否明确说明 terminal-bench/classifier-debug 的 agent 实际选择或写入 B，而题目正确答案与 Eval 期望都是 A。只需判断事实是否说清，不在本项判断责任归因。", replyMaterial)
+      .score(2)
+      .key("harness.log-summary.classifier-answer-fact")
+      .label("classifier-debug 最终事实正确");
+
+    t.judge.autoevals.closedQA("【classifier-debug 最终责任归因】只判断最终回复是否明确得出 terminal-bench/classifier-debug 的失败责任在 agent/canned answer 选错了 B，而不是 Eval 对 A 的要求过紧。仅仅复述‘实际 B、断言期望 A’或称业务断言不匹配而没有判断哪一方错，必须判为不满足。", replyMaterial)
+      .score(3)
+      .key("harness.log-summary.classifier-agent-attribution")
+      .label("classifier-debug 最终归因 agent 答案错误");
 
     t.judge.autoevals.closedQA("【log-summary 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：从 niceeval show 取得 terminal-bench/log-summary 的动态 locator；再用该 locator 的公开下钻输出确认 agent 生成四行合法 CSV，ERROR/WARNING/INFO 为 4/3/8，实际差异只是 CSV 字段带有允许的双引号，而 exact Assertion 要求无引号文本。", turnMaterial)
       .score(2)

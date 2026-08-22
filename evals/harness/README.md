@@ -80,10 +80,10 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
 
 ## 判分与取证边界
 
-- Agent 取证只走公开 CLI：`niceeval show`（动态 `@<locator>`）、前缀收窄、0.9.x 的
-  `--eval` / 0.12+ 的 `--source`，以及 `--execution` 等公开证据视图。**禁止**以读取
-  `.niceeval/` 落盘产物或 `evals/`、`agents/`
-  源码代替取证；这不是能力加分项，而是题目边界。
+- 当前运行结果只从公开 CLI 取证：`niceeval show`（动态 `@<locator>`）、前缀收窄、0.9.x 的
+  `--eval` / 0.12+ 的 `--source`，以及 `--execution` 等公开证据视图。读取 `evals/`、`agents/`
+  或随包文档可以辅助理解；唯一的路径黑名单是 `.niceeval/` 落盘数据，这不是能力加分项，
+  而是题目边界。
 - B 额外要求反馈轮的第一个 NiceEval 取证动作直接是 compact `niceeval show`；读取 INDEX、
   随包 CLI 文档、package scripts、AGENTS/INIT，误用 `pnpm show`，或重新运行 experiment 都不算
   完成这条反馈闭环。
@@ -99,11 +99,15 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
   会让对应 Fact 判定用途失败；读取 `evals/`、`agents/` 与随包文档不属于禁区。该检查复用工具负存在性，只是行为证据，
   不是 OS 级文件审计；没有命中的文件系统操作不在判分范围内；
 - Judge 继续使用现有 `t.judge.autoevals.closedQA()`，并显式传入本轮完整 `toolCalls + message`
-  或只含最终回复的材料。独立 rubric 分别核对 A 的根因、修复、公开复验与终态，以及 B 的
-  公开证据、任务事实与责任归因；其中 log-summary 把“合法且计数正确”与“Eval 过紧”拆开计分，
-  避免只复述字符串差异便获得完整归因分。两题总分仍为 14 / 18。这里的
+  或只含最终回复的材料。独立 rubric 分别核对 A 的错误现象、runtime 修复理解、实际修改、
+  公开复验与终态，以及 B 的
+  公开证据、任务事实与责任归因；两个失败都把“actual / expected 事实”与“责任归属”拆开计分，
+  避免只复述差异便获得完整归因分。两题总分仍为 14 / 18。这里的
   `JSON.stringify()` 只是把公开 Turn 材料传给只接受 string 的现有入口，不匹配 `show` JSON
   形状，也不替 agent 重跑 experiment。
+- A 的 18 分按能力阶梯分为：错误诊断 2、runtime 修复理解 2、实际配置修改 3、修后真实运行并
+  公开复验 3、公开 current 结果正确 5、最终回复正确 3。B 的两个失败各 7 分，均为公开证据 2、
+  最终任务事实 2、责任归因 3；权重不随候选版本变化。
 - canned agent 只用于稳定复现判分路径，不构成对真实模型智力的任何结论。
 
 ## 类型检查状态
