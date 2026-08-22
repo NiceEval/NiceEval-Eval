@@ -63,26 +63,27 @@ export default defineScoreEval({
       output: turn.message,
     };
 
-    // 每个失败各 7 分：公开证据链是 0/2；最终诊断用 factuality 的
-    // 0/0.4/0.6/1 measurement 折算为 0/2/3/5，保留有意义的部分分。
+    // 每个失败各 7 分：公开证据链 2 分，最终归因 5 分。事实识别已经在
+    // 证据项中独立计分，归因项只做一个二元语义判断，避免完整双项回复被
+    // factuality 误判为单项参考答案的 superset 或 disagreement。
     t.judge.autoevals.closedQA("【classifier-debug 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：先用 niceeval show 确认 current 为 1 passed、2 failed、0 errored，并取得 terminal-bench/classifier-debug 的动态 locator；再用该 locator 的公开下钻输出确认 agent 写入 B、正确答案与断言要求都是 A。", turnMaterial)
       .score(2)
       .key("harness.log-summary.classifier-evidence")
       .label("classifier-debug 公开证据完整");
 
-    t.judge.autoevals.factuality("terminal-bench/classifier-debug 中，agent 实际选择 B，而正确答案和 Eval 断言都要求 A；因此这是 agent 答案错误，不是 Eval 条件过紧。", replyMaterial)
+    t.judge.autoevals.closedQA("【classifier-debug 最终归因】只判断最终回复是否明确把 terminal-bench/classifier-debug 归因为 agent 选择 B、而正确答案与 Eval 都要求 A 所造成的 agent 答案错误；不能归因为 Eval 条件过紧。", replyMaterial)
       .score(5)
       .key("harness.log-summary.classifier-diagnosis")
-      .label("classifier-debug 诊断事实与归因");
+      .label("classifier-debug 最终归因正确");
 
     t.judge.autoevals.closedQA("【log-summary 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：从 niceeval show 取得 terminal-bench/log-summary 的动态 locator；再用该 locator 的公开下钻输出确认 agent 生成四行合法 CSV，ERROR/WARNING/INFO 为 4/3/8，实际差异只是 CSV 字段带有允许的双引号，而 exact Assertion 要求无引号文本。", turnMaterial)
       .score(2)
       .key("harness.log-summary.log-evidence")
       .label("log-summary 公开证据完整");
 
-    t.judge.autoevals.factuality("terminal-bench/log-summary 的 agent 输出是合法四行 CSV，ERROR/WARNING/INFO 计数正确，为 4/3/8；失败仅来自字段带有 CSV 允许的双引号，而 Eval 用 exact Assertion 要求唯一的无引号文本。因此这是 Eval 精确字符串条件过紧，不是 agent 统计或任务结果错误。", replyMaterial)
+    t.judge.autoevals.closedQA("【log-summary 最终归因】只判断最终回复是否明确把 terminal-bench/log-summary 归因为 Eval 对合法且计数正确的 CSV 使用了过紧的精确字符串断言；不能把主要原因归为 agent 统计或任务结果错误。题面没有要求修复建议，是否附带建议不属于本项。", replyMaterial)
       .score(5)
       .key("harness.log-summary.log-diagnosis")
-      .label("log-summary 诊断事实与归因");
+      .label("log-summary 最终归因正确");
   },
 });
