@@ -63,9 +63,10 @@ export default defineScoreEval({
       output: turn.message,
     };
 
-    // 每个失败各 7 分：公开证据链 2 分，最终归因 5 分。事实识别已经在
-    // 证据项中独立计分，归因项只做一个二元语义判断，避免完整双项回复被
-    // factuality 误判为单项参考答案的 superset 或 disagreement。
+    // 每个失败各 7 分。classifier-debug 是公开证据链 2 分 + 最终归因 5 分；
+    // log-summary 除公开证据链 2 分外，再把“承认产物满足题面”与“把责任归到
+    // 过紧 Eval”拆成 2 + 3 分。后两件事不能只凭描述引号差异一起放行：回复若
+    // 明说是 agent 输出错误或“并非 Eval 问题”，即使复述了 exact mismatch 也不得分。
     t.judge.autoevals.closedQA("【classifier-debug 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：先用 niceeval show 确认 current 为 1 passed、2 failed、0 errored，并取得 terminal-bench/classifier-debug 的动态 locator；再用该 locator 的公开下钻输出确认 agent 写入 B、正确答案与断言要求都是 A。", turnMaterial)
       .score(2)
       .key("harness.log-summary.classifier-evidence")
@@ -81,9 +82,14 @@ export default defineScoreEval({
       .key("harness.log-summary.log-evidence")
       .label("log-summary 公开证据完整");
 
-    t.judge.autoevals.closedQA("【log-summary 最终归因】只判断最终回复是否明确把 terminal-bench/log-summary 归因为 Eval 对合法且计数正确的 CSV 使用了过紧的精确字符串断言；不能把主要原因归为 agent 统计或任务结果错误。题面没有要求修复建议，是否附带建议不属于本项。", replyMaterial)
-      .score(5)
-      .key("harness.log-summary.log-diagnosis")
-      .label("log-summary 最终归因正确");
+    t.judge.autoevals.closedQA("【log-summary 最终任务事实】只判断最终回复是否明确说明 terminal-bench/log-summary 的 ERROR/WARNING/INFO 计数为 4/3/8，且带双引号的四行产物仍是满足题面要求的合法 CSV，因此任务结果本身正确。只说‘输出带引号、与 exact 文本不同’而没有肯定其合法且满足题面，必须判为不满足。", replyMaterial)
+      .score(2)
+      .key("harness.log-summary.log-result-valid")
+      .label("log-summary 最终确认任务结果正确");
+
+    t.judge.autoevals.closedQA("【log-summary 最终责任归因】只判断最终回复是否明确得出 terminal-bench/log-summary 的失败责任在 Eval：它用过紧的精确字符串断言拒绝了题面允许的合法 CSV。若回复称这是 agent 输出错误、称‘并非 NiceEval/Eval 问题’，或只描述引号与 exact 文本的差异而没有把判据定性为过紧，必须判为不满足。题面没有要求修复建议，是否附带建议不属于本项。", replyMaterial)
+      .score(3)
+      .key("harness.log-summary.log-eval-attribution")
+      .label("log-summary 最终归因 Eval 过紧");
   },
 });

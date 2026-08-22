@@ -95,13 +95,13 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
 - 每个 Fact use 都有稳定、互异的 `key`，用于 `show --json` 与后续重判对齐；key 只命名用途，
   不改变 Fact 的求值或分值。A 的 `changedPaths` 与 B 的 `noChanges` 只作为不计分的范围检查；
   分数奖励真正的 runtime 修复和语义归因。
-- `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))` 命中观察到的禁区路径
-  （`.niceeval`、`evals`、`agents`）会让对应 Fact 判定用途失败；它复用工具负存在性，只是行为证据，
+- `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))` 命中观察到的 `.niceeval` 禁区路径
+  会让对应 Fact 判定用途失败；读取 `evals/`、`agents/` 与随包文档不属于禁区。该检查复用工具负存在性，只是行为证据，
   不是 OS 级文件审计；没有命中的文件系统操作不在判分范围内；
-- Judge 继续使用现有 `turn.judge.autoevals.closedQA()`，并通过 `{ on }` 显式传入本轮完整
-  `toolCalls + message`。既有完整 Turn rubric 分别负责 A 的运行 → show → 修复/复验，以及 B 的
-  show → 动态 locator → 下钻 → 最终回复有序语义，并核对 CLI 输出、归因与复验结论；不增加
-  Judge 次数；范围检查的原有分数重分配给既有语义 Judge / runtime 修复，两题总分仍为 14 / 18。这里的
+- Judge 继续使用现有 `t.judge.autoevals.closedQA()`，并显式传入本轮完整 `toolCalls + message`
+  或只含最终回复的材料。独立 rubric 分别核对 A 的根因、修复、公开复验与终态，以及 B 的
+  公开证据、任务事实与责任归因；其中 log-summary 把“合法且计数正确”与“Eval 过紧”拆开计分，
+  避免只复述字符串差异便获得完整归因分。两题总分仍为 14 / 18。这里的
   `JSON.stringify()` 只是把公开 Turn 材料传给只接受 string 的现有入口，不匹配 `show` JSON
   形状，也不替 agent 重跑 experiment。
 - canned agent 只用于稳定复现判分路径，不构成对真实模型智力的任何结论。
