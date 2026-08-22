@@ -6,7 +6,7 @@ import { sandboxWith } from "../../lib/experiment-runtime.ts";
 const NICEEVAL_VERSION = await ensureCandidate("0.13.3");
 
 export default defineExperiment({
-  description: "niceeval@0.13.3：两道 Terminal-Bench Harness 运行与反馈闭环",
+  description: "niceeval@0.13.3：三道 Terminal-Bench Harness 运行、反馈与 authoring 闭环",
   agent: codexAgent(),
   model: "gpt-5.6-terra",
   flags: { candidateVersion: NICEEVAL_VERSION },

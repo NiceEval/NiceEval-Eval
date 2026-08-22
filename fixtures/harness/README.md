@@ -1,22 +1,25 @@
 # Harness case repos
 
-两道 Harness 题各自拥有一份小 repo，互不 overlay、互不依赖：
+三道 Harness 题各自拥有一份小 repo，互不 overlay、互不依赖：
 
 ```text
 fixtures/harness/
 └── terminal-bench/
     ├── regex-log/repo/     # hello-world / fix-permissions / classifier-debug / regex-log
-    └── log-summary/repo/   # hello-world / classifier-debug / log-summary
+    ├── log-summary/repo/   # hello-world / classifier-debug / log-summary
+    └── cancel-async-authoring/repo/ # 待接入的真实 cancel-async-tasks 题包与正反控制
 ```
 
 每份 repo 自己持有 agent、NiceEval 配置、起始 inner eval、TB task 资产与 `local` experiment。
 修改某道题时可以直接编辑它的 repo，不需要同步 canonical fixture 或理解 evaluator 注入逻辑。
 它们使用真实 `.ts` 扩展名；宿主 discovery 不扫描 `fixtures/`，因此不需要 `*.fixture` 改名。
 
-两份 repo 都裁自干净的 `NiceEval/terminal-bench@c74165d6a3f712a7646db5f9684fe68ab1e3abb8`。
-题面和 task ID 保持真实；`process_data.sh`、`code.py`、输入日志及两份 Python 判据均从审核后题包
-逐字节复制。为了跨 NiceEval 0.9 / 0.12 / canary 离线稳定运行，没有复制 TB 中需要联网构建的
-Dockerfile，而由 canned sandbox agent 在预载 runtime 里确定性重放 task 产出。
+前两份诊断 repo 裁自干净的
+`NiceEval/terminal-bench@c74165d6a3f712a7646db5f9684fe68ab1e3abb8`；authoring repo 来自
+`terminal-bench@5964952` 的 `cancel-async-tasks`。题面和 task ID 保持真实；业务资产及官方 Python
+判据均从审核后题包逐字节复制。为了跨 NiceEval 0.9 / 0.12 / canary 离线稳定运行，诊断题由 canned
+sandbox agent 在预载 runtime 里确定性重放 task 产出；authoring 题保留真实 Dockerfile 工作目录
+语义，并把联网依赖 bootstrap 替换为执行同一官方测试函数的离线 runner。
 
 ## 共享边界
 
@@ -35,7 +38,8 @@ case 的正确或错误业务源码；只有共享 package/lock、候选版指�
 
 ## 离线 inner runtime 镜像
 
-`terminal-bench/regex-log` 要求候选 workspace 的 inner dockerd 启动完成后，本地已有两个 tag：
+`terminal-bench/regex-log` 与 `cancel-async-authoring` 要求候选 workspace 的 inner dockerd 启动完成后，
+本地已有两个 tag：
 
 ```text
 offline.invalid/niceeval-harness/runtime:node
