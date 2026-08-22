@@ -42,10 +42,10 @@ export default defineScoreEval({
     const turn = await t.send(input);
 
     turn.notCalledTool(
-      toolMatch({ input: referencesAnyPath([".niceeval", "evals", "agents"]) }),
+      toolMatch({ input: referencesAnyPath([".niceeval"]) }),
     )
       .key("harness.log-summary.public-evidence")
-      .label("未读取私有结果或评估源码");
+      .label("未读取 .niceeval 私有结果");
     turn.succeeded()
       .key("harness.log-summary.turn-succeeded")
       .label("反馈 Turn 成功");
@@ -59,11 +59,11 @@ export default defineScoreEval({
       output: JSON.stringify({ toolCalls: turn.toolCalls, message: turn.message }),
     };
 
-    t.judge.autoevals.closedQA("【公开 show 与 classifier-debug 归因】local experiment 已由用户跑完。检查完整有序 Turn：Agent 可以读取当前安装版本的 bundled INDEX / docs 来学习公开命令，但不得重新运行 experiment，也不能用当前 eval/agent 源码或 .niceeval 私有文件证明历史事实。Agent 必须先从公开 compact niceeval show 得到 terminal-bench/hello-world、terminal-bench/classifier-debug、terminal-bench/log-summary 的 current 结果为 1 passed、2 failed、0 errored，以及 terminal-bench/classifier-debug 的动态 locator；再对同一个 locator 使用该安装版本公开提供的 Attempt overview、recorded eval/source 与 execution 证据切片。具体 flag 名称不是判分条件，版本缺少的命令也不是替代成功标准。公开证据必须显示 agent 写入选项 B，而该题正确选项与断言要求都是 A；最终回复必须在下钻输出之后建议修正 agent 的选择或推理，不应修改 Eval。不能把 classifier-debug 归因为 Eval 过紧，也不能把 log-summary 归为 agent 结果错误。", turnMaterial)
+    t.judge.autoevals.closedQA("【公开 show 与 classifier-debug 归因】local experiment 已由用户跑完。检查完整有序 Turn：Agent 可以读取当前安装版本的 bundled INDEX / docs 以及项目中的 eval/agent 源码，但不得重新运行 experiment，也不得直接读取 .niceeval 私有文件；历史执行与产出事实必须由公开 show 证据确认。Agent 必须先从公开 compact niceeval show 得到 terminal-bench/hello-world、terminal-bench/classifier-debug、terminal-bench/log-summary 的 current 结果为 1 passed、2 failed、0 errored，以及 terminal-bench/classifier-debug 的动态 locator；再对同一个 locator 使用该安装版本公开提供的 Attempt overview、recorded eval/source 与 execution 证据切片。具体 flag 名称不是判分条件，版本缺少的命令也不是替代成功标准。公开证据必须显示 agent 写入选项 B，而该题正确选项与断言要求都是 A；最终回复必须在下钻输出之后建议修正 agent 的选择或推理，不应修改 Eval。不能把 classifier-debug 归因为 Eval 过紧，也不能把 log-summary 归为 agent 结果错误。", turnMaterial)
       .score(7)
       .atLeast(1);
 
-    t.judge.autoevals.closedQA("【公开 show 与 log-summary 归因】local experiment 已由用户跑完。检查完整有序 Turn：Agent 可以读取当前安装版本的 bundled INDEX / docs 来学习公开命令，但不得重新运行 experiment，也不能用当前 eval/agent 源码或 .niceeval 私有文件证明历史事实。Agent 必须先从公开 compact niceeval show 取得 terminal-bench/log-summary 的动态 locator，再对同一个 locator 使用该安装版本公开提供的 Attempt overview、recorded eval/source 与 execution 证据切片；具体 flag 名称不是判分条件。公开证据必须显示 agent 生成的是四行合法 CSV，ERROR/WARNING/INFO 计数分别为 4/3/8，只是字段带有 CSV 允许的双引号；exact Assertion 却逐字要求无引号文本。最终回复必须在下钻输出之后建议改成 CSV 语义判定，不应要求 agent 输出唯一序列化。不能把 log-summary 归因为 agent 结果错误，也不能把 classifier-debug 归为 Eval 过紧。", turnMaterial)
+    t.judge.autoevals.closedQA("【公开 show 与 log-summary 归因】local experiment 已由用户跑完。检查完整有序 Turn：Agent 可以读取当前安装版本的 bundled INDEX / docs 以及项目中的 eval/agent 源码，但不得重新运行 experiment，也不得直接读取 .niceeval 私有文件；历史执行与产出事实必须由公开 show 证据确认。Agent 必须先从公开 compact niceeval show 取得 terminal-bench/log-summary 的动态 locator，再对同一个 locator 使用该安装版本公开提供的 Attempt overview、recorded eval/source 与 execution 证据切片；具体 flag 名称不是判分条件。公开证据必须显示 agent 生成的是四行合法 CSV，ERROR/WARNING/INFO 计数分别为 4/3/8，只是字段带有 CSV 允许的双引号；exact Assertion 却逐字要求无引号文本。最终回复必须在下钻输出之后建议改成 CSV 语义判定，不应要求 agent 输出唯一序列化。不能把 log-summary 归因为 agent 结果错误，也不能把 classifier-debug 归为 Eval 过紧。", turnMaterial)
       .score(7)
       .atLeast(1);
   },
