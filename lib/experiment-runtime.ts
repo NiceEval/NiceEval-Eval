@@ -144,10 +144,10 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
     user: "node",
     dockerAccess: { mode: "dind", isolation: "raw-privileged", storageProfile: "harness-raw" },
     resources: {
-      cpus: 4,
-      memoryBytes: harnessCandidate ? 8 * GIB : 6 * GIB,
+      cpus: 2,
+      memoryBytes: 3 * GIB,
       pidsLimit: 2048,
-      dockerDataBytes: harnessCandidate ? 6 * GIB : 3 * GIB,
+      dockerDataBytes: 4 * GIB,
       readOnlyRootfs: true,
       tmpfs: {
         "/home/sandbox/workspace": {
