@@ -13,7 +13,6 @@ export default defineScoreEval({
       ".",
     );
 
-    const candidateVersion = String(t.flags.candidateVersion);
     // 题面刻意不预告 error 或根因：测的就是 agent 能否把 errored
     // 识别为“还没跑完”，自主修复基础设施后复验，同时保留已完成的合法 failed。
     const turn = await t.send("把这次评估跑完，告诉我最终结果。");
@@ -47,11 +46,11 @@ export default defineScoreEval({
       .score(3)
       .atLeast(1);
 
-    t.judge.autoevals.closedQA(candidateVersion.startsWith("0.9.") ? "【公开 history 正确】候选是 0.9.x：只依据本轮完整有序 Turn 中先运行、再公开 show、修复、复验、再 show 的证据判断。该版本没有 locator accept；runtime 修复后必须看到四项都产生新的真实 terminal result，最终 terminal-bench/hello-world、terminal-bench/fix-permissions、terminal-bench/regex-log passed，terminal-bench/classifier-debug 保持原本合法的 failed，不能用回复自报或私有文件补证据。" : "【公开 history 正确】候选是 0.12+ 或 canary：综合本轮完整有序 Turn 中先运行后取得的公开 dry/show 输出、动态 locator、accept 回执与复验计划判断。terminal-bench/hello-world、terminal-bench/fix-permissions、terminal-bench/classifier-debug 恰好三个仍有效 terminal results 被 accept，原 verdict 依次为 passed、passed、failed；接受前公开的不兼容原因只能是 config:sandboxLayer 与 plan:physical。terminal-bench/regex-log 必须保留一次真实 errored 记录并再真实执行为 passed，复验计划应是 3 carried、1 to run；不能 accept 第四项，也不能强求公开界面没有展示的私有字段或 literal image tag。", turnMaterial)
+    t.judge.autoevals.closedQA("【公开 history 语义正确】只依据本轮完整有序 Turn 中真实运行、公开 show、修复、复验和最终 show 的证据判断。最终固定结果边界必须恰好包含四项：terminal-bench/hello-world、terminal-bench/fix-permissions、terminal-bench/regex-log passed，terminal-bench/classifier-debug 保持原本合法的 failed；首次运行中 errored 的 terminal-bench/regex-log 不能被 accept、沿用或自报为成功，必须产生修复后的真实 passed 结果。其余三个已有 terminal result 可以按安装版本公开支持的工作流重新执行、自动沿用或人工采用；具体机制和命令名不是判分条件，不能要求某版本不存在的功能。最终回复必须在最终公开证据之后说明结论，不能用私有文件或回复自报补证据。", turnMaterial)
       .score(6)
       .atLeast(1);
 
-    t.judge.autoevals.closedQA(candidateVersion.startsWith("0.9.") ? "【根因、范围与版本策略】完整有序 Turn 必须依次证明 Agent 先真实运行非 dry-run local experiment，再从 compact show 取得 errored terminal-bench/regex-log 的动态 locator，并让后续 --eval 与 --execution 在该 show 输出之后使用同一个 locator；公开输出必须证明根因是 runtime 缺少 Python，Agent 只修改基础设施配置。由于 0.9.x 没有 locator accept，改 runtime 后完整重跑四项，并保留 terminal-bench/classifier-debug 原本合法的 failed；最终回复必须在复验输出之后说明这些依据。" : "【根因、范围与版本策略】完整有序 Turn 必须依次证明 Agent 先真实运行非 dry-run local experiment，再从 compact show 取得 errored terminal-bench/regex-log 的动态 locator，并让后续 --source 与 --execution 在该 show 输出之后使用同一个 locator；公开输出必须证明根因是 runtime 缺少 Python，Agent 只修改基础设施配置。对 0.12+ 或 canary 应从 show 证据 accept 恰好三个仍有效 terminal results，只真实重跑 errored 的 terminal-bench/regex-log，并保留 terminal-bench/classifier-debug 原本合法的 failed；强制 --rerun all 或重跑全部四项判为错误，最终回复必须在复验输出之后说明这些依据。", turnMaterial)
+    t.judge.autoevals.closedQA("【根因、范围与修复闭环】完整有序 Turn 必须依次证明 Agent 先真实运行非 dry-run local experiment，再从公开 compact Run/show 取得 errored terminal-bench/regex-log 的动态 locator，并对同一个 locator 使用该安装版本公开提供的 Attempt overview、recorded eval/source 与 execution 证据切片；具体 flag 名称不是判分条件。公开证据必须证明根因是 runtime 缺少 Python，Agent 只能修改基础设施配置，把 experiments/local.ts 的 runtime:node 修为 runtime:python，不得修改 eval、agent 或历史 Record。修复后必须按安装版本公开支持的工作流复验，直到最终固定结果为 3 passed、1 failed、0 errored，并保留 terminal-bench/classifier-debug 原本合法的 failed；最终回复必须在复验输出之后说明这些依据。", turnMaterial)
       .score(4)
       .atLeast(1);
   },
