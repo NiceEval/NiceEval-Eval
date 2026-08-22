@@ -43,17 +43,36 @@ export default defineScoreEval({
       input: "把这次评估跑完，告诉我最终结果。",
       output: JSON.stringify({ toolCalls: turn.toolCalls, message: turn.message }),
     };
+    const replyMaterial = {
+      input: "把这次评估跑完，告诉我最终结果。",
+      output: turn.message,
+    };
 
-    t.judge.autoevals.closedQA("【最终 current 结果】检查完整有序 Turn。取证黑名单只有直接读取 .niceeval 原始文件；命中黑名单即不满足，除此之外读取哪些文件或文档不作为判分条件。Agent 必须先真实运行非 dry-run local experiment、经公开 show 诊断后才修复，并在修复后再次真实运行，再用最后一次 niceeval show 核对 current 结果。该最后公开输出必须恰好是 terminal-bench/hello-world、terminal-bench/fix-permissions、terminal-bench/classifier-debug、terminal-bench/regex-log 四项，其中 3 passed、1 failed、0 errored；唯一 failed 是原本就合法的 terminal-bench/classifier-debug，不能用回复中的自报数字代替 CLI 证据，最终回复也必须在这次复验 show 之后说明结论。", turnMaterial)
+    // 过程闭环拆成四个独立的二元得分项；最终 history 说明用 factuality
+    // 折算部分覆盖分。连同上面的确定性 runtime 修复 5 分，总分仍为 18。
+    t.judge.autoevals.closedQA("【首次公开诊断入口】只判断完整有序 Turn 中，Agent 是否在修改文件前先真实运行非 dry-run local experiment，再从公开 Run/show 取得 errored terminal-bench/regex-log 的动态 locator。", turnMaterial)
+      .score(1)
+      .key("harness.regex-log.initial-public-evidence")
+      .label("修改前取得公开失败 locator");
+
+    t.judge.autoevals.closedQA("【runtime 根因公开证据】只判断完整有序 Turn 中，Agent 是否在修改文件前用同一个 regex-log locator 的公开下钻输出证明 errored 根因是 runtime 缺少 Python。", turnMaterial)
       .score(3)
-      .atLeast(1);
+      .key("harness.regex-log.runtime-root-cause")
+      .label("公开下钻证明 runtime 缺少 Python");
 
-    t.judge.autoevals.closedQA("【公开 history 语义正确】检查完整有序 Turn。取证黑名单只有直接读取 .niceeval 原始文件；命中黑名单即不满足，除此之外读取哪些文件或文档不作为判分条件。只依据真实运行与公开 show 判断：最终固定结果边界必须恰好包含四项，terminal-bench/hello-world、terminal-bench/fix-permissions、terminal-bench/regex-log passed，terminal-bench/classifier-debug 保持原本合法的 failed；首次运行中 errored 的 terminal-bench/regex-log 不能被当成成功结果，必须产生修复后的真实 passed。形成该历史边界的具体策略和命令不作为判分条件。最终回复必须在最终公开证据之后说明结论，不能用回复自报补证据。", turnMaterial)
-      .score(6)
-      .atLeast(1);
+    t.judge.autoevals.closedQA("【修复后公开复验入口】只判断完整有序 Turn 中，Agent 是否在修改 runtime 配置后再次真实运行非 dry-run local experiment，并在该次运行后调用公开 niceeval show 核对结果。最终数字和逐项状态由其它得分项判断。", turnMaterial)
+      .score(1)
+      .key("harness.regex-log.post-repair-public-evidence")
+      .label("修复后真实运行并公开复验");
 
-    t.judge.autoevals.closedQA("【根因、范围与修复闭环】检查完整有序 Turn。取证黑名单只有直接读取 .niceeval 原始文件；命中黑名单即不满足，除此之外读取哪些文件或文档不作为判分条件。Agent 必须先真实运行非 dry-run local experiment，再从公开 Run/show 取得 errored terminal-bench/regex-log 的动态 locator，并用该 locator 的公开下钻证据证明根因是 runtime 缺少 Python。Agent 只能修改基础设施配置，把 experiments/local.ts 的 runtime:node 修为 runtime:python，不得修改 eval、agent 或历史 Record。修复后必须复验到最终固定结果为 3 passed、1 failed、0 errored，并保留 terminal-bench/classifier-debug 原本合法的 failed；最终回复必须在复验输出之后说明这些依据。", turnMaterial)
-      .score(4)
-      .atLeast(1);
+    t.judge.autoevals.closedQA("【最终 current 结果】只判断修复后最后一次公开 niceeval show：结果边界必须恰好包含 terminal-bench/hello-world、terminal-bench/fix-permissions、terminal-bench/classifier-debug、terminal-bench/regex-log 四项，汇总为 3 passed、1 failed、0 errored，且唯一 failed 是 terminal-bench/classifier-debug。回复中的自报数字不能替代公开 CLI 输出。", turnMaterial)
+      .score(3)
+      .key("harness.regex-log.final-current")
+      .label("最终公开结果为 3 passed、1 failed");
+
+    t.judge.autoevals.factuality("首次运行中的 terminal-bench/regex-log 是 errored，不能当作成功结果；修复 runtime 后它产生了新的真实 passed 结果。terminal-bench/hello-world 与 terminal-bench/fix-permissions 保持 passed，terminal-bench/classifier-debug 保持原本合法的 failed，没有被误报为成功或修绿。", replyMaterial)
+      .score(5)
+      .key("harness.regex-log.history-diagnosis")
+      .label("最终回复正确解释结果历史");
   },
 });

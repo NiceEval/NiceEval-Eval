@@ -58,13 +58,31 @@ export default defineScoreEval({
       input,
       output: JSON.stringify({ toolCalls: turn.toolCalls, message: turn.message }),
     };
+    const replyMaterial = {
+      input,
+      output: turn.message,
+    };
 
-    t.judge.autoevals.closedQA("【classifier-debug 归因】检查完整有序 Turn。取证黑名单只有直接读取 .niceeval 原始文件；命中黑名单即不满足，除此之外读取哪些文件或文档不作为判分条件。local experiment 已由用户跑完，Agent 不应重新运行；必须用公开 niceeval show 确认 current 结果为 1 passed、2 failed、0 errored，取得 terminal-bench/classifier-debug 的动态 locator，并用该 locator 的公开下钻证据确认 agent 写入 B、正确答案与断言要求都是 A。最终回复必须把 classifier-debug 判为 agent 答案错误，不能判成 Eval 过紧，也不能混淆另一个失败的原因。", turnMaterial)
-      .score(7)
-      .atLeast(1);
+    // 每个失败各 7 分：公开证据链是 0/2；最终诊断用 factuality 的
+    // 0/0.4/0.6/1 measurement 折算为 0/2/3/5，保留有意义的部分分。
+    t.judge.autoevals.closedQA("【classifier-debug 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：先用 niceeval show 确认 current 为 1 passed、2 failed、0 errored，并取得 terminal-bench/classifier-debug 的动态 locator；再用该 locator 的公开下钻输出确认 agent 写入 B、正确答案与断言要求都是 A。", turnMaterial)
+      .score(2)
+      .key("harness.log-summary.classifier-evidence")
+      .label("classifier-debug 公开证据完整");
 
-    t.judge.autoevals.closedQA("【log-summary 归因】检查完整有序 Turn。取证黑名单只有直接读取 .niceeval 原始文件；命中黑名单即不满足，除此之外读取哪些文件或文档不作为判分条件。local experiment 已由用户跑完，Agent 不应重新运行；必须从公开 niceeval show 取得 terminal-bench/log-summary 的动态 locator，并用该 locator 的公开下钻证据确认输出是四行合法 CSV，ERROR/WARNING/INFO 计数为 4/3/8，只是字段带有 CSV 允许的双引号，而 exact Assertion 逐字要求无引号文本。最终回复必须把 log-summary 判为 Eval 精确字符串条件过紧，不能判成 agent 统计或任务结果错误，也不能混淆另一个失败的原因。", turnMaterial)
-      .score(7)
-      .atLeast(1);
+    t.judge.autoevals.factuality("terminal-bench/classifier-debug 中，agent 实际选择 B，而正确答案和 Eval 断言都要求 A；因此这是 agent 答案错误，不是 Eval 条件过紧。", replyMaterial)
+      .score(5)
+      .key("harness.log-summary.classifier-diagnosis")
+      .label("classifier-debug 诊断事实与归因");
+
+    t.judge.autoevals.closedQA("【log-summary 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：从 niceeval show 取得 terminal-bench/log-summary 的动态 locator；再用该 locator 的公开下钻输出确认 agent 生成四行合法 CSV，ERROR/WARNING/INFO 为 4/3/8，实际差异只是 CSV 字段带有允许的双引号，而 exact Assertion 要求无引号文本。", turnMaterial)
+      .score(2)
+      .key("harness.log-summary.log-evidence")
+      .label("log-summary 公开证据完整");
+
+    t.judge.autoevals.factuality("terminal-bench/log-summary 的 agent 输出是合法四行 CSV，ERROR/WARNING/INFO 计数正确，为 4/3/8；失败仅来自字段带有 CSV 允许的双引号，而 Eval 用 exact Assertion 要求唯一的无引号文本。因此这是 Eval 精确字符串条件过紧，不是 agent 统计或任务结果错误。", replyMaterial)
+      .score(5)
+      .key("harness.log-summary.log-diagnosis")
+      .label("log-summary 诊断事实与归因");
   },
 });
