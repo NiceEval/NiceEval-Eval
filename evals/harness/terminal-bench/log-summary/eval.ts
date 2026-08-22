@@ -16,15 +16,25 @@ export default defineScoreEval({
     const candidateVersion = String(t.flags.candidateVersion);
     // 先由 fixture 跑完 experiment，再让 agent 接手已经停稳的 Record。反馈阶段不需要重新
     // 学 CLI 或检查 package scripts：公开 compact show 就是稳定入口。
+    // 不开 stream：0.9.x 的多行 agent handoff 经流式 tee 后可能只在返回值里留下首行，
+    // 这里需要完整公开汇总做前置判定。
     const initialRun = await t.sandbox.runCommand(
       "pnpm",
       ["exec", "niceeval", "exp", "local"],
-      { stream: true },
     );
-    if (initialRun.exitCode !== 1) {
+    const initialOutput = `${initialRun.stdout}\n${initialRun.stderr}`;
+    const hasExpectedSummary = initialOutput
+      .split(/\r?\n/u)
+      .some((line) =>
+        /^.*\b1 passed\s+·\s+2 failed\s+·\s+0 errored\s+\(0 reused\)(?:\s*│)?\s*$/u.test(line)
+        || /^summary:\s+1 passed,\s+2 failed,\s+0 errored\s+\(0 reused\)\s*$/u.test(line)
+        || /^.*1 通过\s+·\s+2 失败\s+·\s+0 出错\s+\(复用 0\)(?:\s*│)?\s*$/u.test(line)
+      );
+    if (initialRun.exitCode !== 1 || !hasExpectedSummary) {
       throw new Error(
-        `log-summary 初始 local experiment 应以 2 failed 返回 exit 1，实测 exit ${initialRun.exitCode}: ` +
-          `${initialRun.stderr.trim() || initialRun.stdout.trim() || "无输出"}`,
+        "log-summary 初始 local experiment 应完整得到 1 passed、2 failed、0 errored " +
+          `并返回 exit 1，实测 exit ${initialRun.exitCode}: ` +
+          `${initialOutput.trim() || "无输出"}`,
       );
     }
 
@@ -57,10 +67,6 @@ export default defineScoreEval({
     t.sandbox.noChanges()
       .key("harness.log-summary.no-changes")
       .label("工作区保持不变");
-    t.sandbox.noChanges()
-      .key("harness.log-summary.no-changes.score")
-      .label("没有越界修改")
-      .score(2);
 
     const turnMaterial = {
       input,
@@ -68,11 +74,11 @@ export default defineScoreEval({
     };
 
     t.judge.autoevals.closedQA(`【直接 show 与 classifier-debug 归因】local experiment 已由用户跑完。检查完整有序 Turn：Agent 的第一个 NiceEval 取证动作必须直接运行公开 compact niceeval show，不能重新运行 experiment，不能先读 INDEX、CLI 文档、package scripts、AGENTS/INIT、源码或 .niceeval 落盘文件来学习怎样查看结果，也不能误用 pnpm show。该 compact show 必须给出 terminal-bench/hello-world、terminal-bench/classifier-debug、terminal-bench/log-summary 的 current 结果为 1 passed、2 failed、0 errored，并给出 terminal-bench/classifier-debug 的动态 locator；后续 ${candidateVersion.startsWith("0.9.") ? "--eval" : "--source"} 与 --execution 必须在 compact show 之后使用同一个 locator。证据必须显示 agent 写入选项 B，而该题正确选项与断言要求都是 A；最终回复必须在下钻输出之后建议修正 agent 的选择或推理，不应修改 Eval。不能把 classifier-debug 归因为 Eval 过紧，也不能把 log-summary 归为 agent 结果错误。`, turnMaterial)
-      .score(6)
+      .score(7)
       .atLeast(1);
 
     t.judge.autoevals.closedQA(`【直接 show 与 log-summary 归因】local experiment 已由用户跑完。检查完整有序 Turn：Agent 必须直接从公开 compact niceeval show 取得 terminal-bench/log-summary 的动态 locator，不得重新运行 experiment，不得先读 NiceEval 文档、package scripts、项目指引、源码或私有结果文件，也不得误用 pnpm show；再让 ${candidateVersion.startsWith("0.9.") ? "--eval" : "--source"} 与 --execution 在 compact show 之后使用同一个 locator。证据必须显示 agent 生成的是四行合法 CSV，ERROR/WARNING/INFO 计数分别为 4/3/8，只是字段带有 CSV 允许的双引号；exact Assertion 却逐字要求无引号文本。最终回复必须在下钻输出之后建议改成 CSV 语义判定，不应要求 agent 输出唯一序列化。不能把 log-summary 归因为 agent 结果错误，也不能把 classifier-debug 归为 Eval 过紧。`, turnMaterial)
-      .score(6)
+      .score(7)
       .atLeast(1);
   },
 });

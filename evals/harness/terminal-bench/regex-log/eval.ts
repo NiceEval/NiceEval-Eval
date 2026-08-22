@@ -25,10 +25,6 @@ export default defineScoreEval({
 
     t.sandbox.changedPaths(["experiments/local.ts"])
       .key("harness.regex-log.changed-only-config");
-    t.sandbox.changedPaths(["experiments/local.ts"])
-      .key("harness.regex-log.changed-only-config.score")
-      .label("修改范围")
-      .score(3);
 
     t.sandbox.fileChanged("experiments/local.ts", {
       before: includes("runtime:node"),
@@ -40,7 +36,7 @@ export default defineScoreEval({
     })
       .key("harness.regex-log.runtime-repaired.score")
       .label("runtime 配置修复")
-      .score(2);
+      .score(5);
 
     const turnMaterial = {
       input: "把这次评估跑完，告诉我最终结果。",
