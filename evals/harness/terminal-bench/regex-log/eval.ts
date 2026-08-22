@@ -52,10 +52,10 @@ export default defineScoreEval({
     // “理解应切换 runtime”分开，避免 Judge 从被读取的源码替 Agent 补完推理。
     // 前置 Docker API 兼容修复不属于目标 runtime 修复。连同确定性配置修改
     // 3 分，其余闭环得分为 2 + 2 + 3 + 5 + 3，总分仍为 18。
-    t.judge.autoevals.closedQA("【Python 错误诊断】只判断最终回复是否明确说明 terminal-bench/regex-log 没有完成而是 errored，直接原因是验证环境缺少所需的 python3；并能区分它不是 regex 业务断言失败。本项只奖励识别错误现象，不要求已经提出或执行 runtime 修复。", replyMaterial)
+    t.judge.autoevals.closedQA("【Python runtime 诊断】只判断最终回复是否明确识别 terminal-bench/regex-log 的 verifier 需要 python3，而原先选择的运行环境不具备该依赖。可以在首次运行前主动识别并切换到含 Python 的 runtime，也可以在运行 errored 后诊断；主动修复者不需要先制造 errored。若出现过错误，应能区分这是运行环境依赖缺失而不是 regex 业务断言失败。本项只判断是否识别 runtime 问题，正确修法、实际修改与复验由后续项评分。", replyMaterial)
       .score(2)
-      .key("harness.regex-log.python-error-diagnosis")
-      .label("识别缺少 Python 的执行错误");
+      .key("harness.regex-log.python-runtime-diagnosis")
+      .label("识别 Python runtime 依赖");
 
     t.judge.autoevals.closedQA("【runtime 修复理解】只判断完整有序 Turn 中是否存在 Agent 自己作出的明确结论或操作：experiments/local.ts 选择的 runtime:node 不提供 regex-log verifier 所需的 python3，因此目标修复是切换为 runtime:python（或等价的具备 Python 的 runtime）。仅仅分别读取过含这些词的配置、verifier 或命令输出，不代表 Agent 建立了因果关系，Judge 不得替 Agent 从工具输出推导；只修改 dockerSandbox 的 API 参数也不满足。", turnMaterial)
       .score(2)

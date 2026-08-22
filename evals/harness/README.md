@@ -105,9 +105,9 @@ canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench �
   避免只复述差异便获得完整归因分。两题总分仍为 14 / 18。这里的
   `JSON.stringify()` 只是把公开 Turn 材料传给只接受 string 的现有入口，不匹配 `show` JSON
   形状，也不替 agent 重跑 experiment。
-- A 的 18 分按能力阶梯分为：错误诊断 2、runtime 修复理解 2、实际配置修改 3、修后真实运行并
+- A 的 18 分按能力阶梯分为：Python runtime 依赖诊断 2、runtime 修复理解 2、实际配置修改 3、修后真实运行并
   公开复验 3、公开 current 结果正确 5、最终回复正确 3。B 的两个失败各 7 分，均为公开证据 2、
-  最终任务事实 2、责任归因 3；权重不随候选版本变化。
+  最终任务事实 2、责任归因 3；主动诊断不要求先制造错误，责任归因也不要求固定措辞，权重不随候选版本变化。
 - canned agent 只用于稳定复现判分路径，不构成对真实模型智力的任何结论。
 
 ## 类型检查状态

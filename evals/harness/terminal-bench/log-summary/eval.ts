@@ -76,7 +76,7 @@ export default defineScoreEval({
       .key("harness.log-summary.classifier-answer-fact")
       .label("classifier-debug 最终事实正确");
 
-    t.judge.autoevals.closedQA("【classifier-debug 最终责任归因】只判断最终回复是否明确得出 terminal-bench/classifier-debug 的失败责任在 agent/canned answer 选错了 B，而不是 Eval 对 A 的要求过紧。仅仅复述‘实际 B、断言期望 A’或称业务断言不匹配而没有判断哪一方错，必须判为不满足。", replyMaterial)
+    t.judge.autoevals.closedQA("【classifier-debug 最终责任归因】只判断最终回复是否把 terminal-bench/classifier-debug 的失败解释为：题目正确要求或有效判据是 A，而 agent/canned answer 选择了 B，因此 agent 结果没有满足题目。明确作出这条因果对比即满足，不要求额外使用‘agent 错误’等固定措辞。若回复质疑 A 是正确要求、把责任归为 Eval 对 A 的要求过紧，或没有把 B 与题目要求 A 连接起来，则不满足。", replyMaterial)
       .score(3)
       .key("harness.log-summary.classifier-agent-attribution")
       .label("classifier-debug 最终归因 agent 答案错误");
