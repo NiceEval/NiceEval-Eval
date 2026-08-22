@@ -96,7 +96,7 @@ RUN set -eu \
 FROM base AS candidate
 
 # 候选 niceeval 版本由 harness experiment 经 buildArgs 传入；build key 包含它，因此
-# 0.9.0 / 0.12.0 / 每个解析后的 canary 都形成独立可缓存镜像。install 实验以 candidate
+# 0.9.0 / 0.12.0 / 0.13.3 / 每个解析后的 canary 都形成独立可缓存镜像。install 实验以 candidate
 # 为 target 且不传版本，保持「安装流程由被测 agent 完成」的测点；ARG 放到通用基线之后，
 # 版本变化可复用前层缓存。
 ARG NICEEVAL_VERSION=""

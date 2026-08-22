@@ -2,7 +2,7 @@
 
 这组题评估 coding agent 能否在一个已经接入 NiceEval 的项目里，自主完成“运行 → 用公开
 `niceeval show` 取证 → 形成因果判断 → 在正确层修改/给出归因”。两题共享运行基建，
-但各自维护独立项目与独立起始状态；完整矩阵为 3 版本 × 2 题 × 3 次，共 **18 个付费
+但各自维护独立项目与独立起始状态；完整矩阵为 4 版本 × 2 题 × 1 次，共 **8 个付费
 coding-agent attempt**。
 
 ## 当前两题
@@ -58,11 +58,11 @@ inner project 首跑 **1 passed / 2 failed / 0 errored**。agent 的任务是逐
 ## 共享基建，独立 repo
 
 Node、pnpm、Docker/Compose、精确候选 NiceEval、依赖和 `niceeval init` 产物在候选镜像中
-共享。0.9.0、0.12.0 与解析后的 canary 各有独立缓存镜像。每个候选镜像还物化两枚**完全离线**
+共享。0.9.0、0.12.0、0.13.3 与解析后的 canary 各有独立缓存镜像。每个候选镜像还物化两枚**完全离线**
 的 inner runtime 归档（node / python 变体），由 entrypoint 在 inner dockerd 就绪后
 `docker import` 成两个本地 tag，见 [`fixtures/harness/README.md`](../../fixtures/harness/README.md)。
-三个 Harness experiment 都把 `maxConcurrency` 固定为 `1`：单个 Attempt 已同时占用候选
-Sandbox 与内层 dockerd，串行口径避免宿主资源竞争和模型网关并发抖动混入候选差异。
+四个 Harness experiment 目前沿用项目的全局并发设置；单个 Attempt 已同时占用候选
+Sandbox 与内层 dockerd，运行时需留意宿主资源竞争和模型网关并发抖动。
 
 `fixtures/harness/<case>/repo/` 由每道题各自维护：起始状态直接写在所属 repo，不靠中央
 canonical fixture 加 evaluator overlay。两个 repo 都记录 Terminal-Bench 来源 commit，保留 task ID、
@@ -115,9 +115,9 @@ Fact / Match 作者面；全仓 `pnpm run typecheck` 必须通过，不能再用
 
 ## 运行成本
 
-每个版本选中 2 道题，每题运行 3 次，避免把 coding agent 的单次随机性误判成候选文档差异；
-因此完整 `niceeval exp harness` 是 3 版本 × 2 题 × 3 次，共 **18 个付费 coding-agent
-attempt**，且每次包含多个 judge 评分点。实现落地后必须运行 `niceeval list` 和各版本的 `--dry`
+每个版本选中 2 道题，每题运行 1 次；因此完整 `niceeval exp harness` 是 4 版本 × 2 题 × 1 次，
+共 **8 个付费 coding-agent attempt**，且每次包含多个 judge 评分点。实现落地后必须运行
+`niceeval list` 和各版本的 `--dry`
 验证。本机使用一次性 VM 或专用评测 runner；用户明确授权 install、roadmap 与 Harness 都使用
 `raw-privileged` DinD。该模式不提供不可信代码隔离；若迁移到共享宿主，必须恢复
 managed-rootless 并注册 execution profile。

@@ -26,7 +26,7 @@ Dockerfile，而由 canned sandbox agent 在预载 runtime 里确定性重放 ta
 - `candidate` 阶段在收到精确版本 build arg 时预装 NiceEval、依赖、lockfile 与该版本
   `niceeval init` 生成的 `AGENTS.md`；`harness-candidate` 在它之上只增加两枚离线 inner
   runtime 归档，install 实验不传版本并直接停在 `candidate`，不依赖 runtime 物化 stage；
-- 0.9.0、0.12.0 与解析后的 canary 由 build arg 形成独立缓存镜像；
+- 0.9.0、0.12.0、0.13.3 与解析后的 canary 由 build arg 形成独立缓存镜像；
 - attempt 启动后，各 outer eval 只上传自己几 KB 的 repo，覆盖到已准备的 workspace；不运行
   `pnpm add`、不运行 `niceeval init`，也不复制 `node_modules`。
 
