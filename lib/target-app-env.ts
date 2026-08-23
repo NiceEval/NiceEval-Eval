@@ -106,9 +106,9 @@ export function teardownTargetAppProxy(): SandboxHook {
 async function closeProxy(sandbox: Sandbox): Promise<void> {
   const handle = proxies.get(sandbox);
   if (!handle) return;
-  proxies.delete(sandbox);
   handle.detachAbort?.();
   await handle.close();
+  if (proxies.get(sandbox) === handle) proxies.delete(sandbox);
 }
 
 async function startProxySidecar(
@@ -176,10 +176,19 @@ function selectSandboxNetwork(parent: ContainerInspectInfo): string {
 }
 
 async function removeContainer(container: Container): Promise<void> {
-  await container.remove({ force: true }).catch((error: unknown) => {
+  try {
+    await container.remove({ force: true });
+  } catch (error) {
     const status = (error as { statusCode?: number }).statusCode;
-    if (status !== 404 && status !== 409) throw error;
-  });
+    if (status === 404) return;
+    if (status !== 409) throw error;
+
+    // AutoRemove 容器在极短的退出/删除窗口可能拒绝 remove；stop 后由 daemon 回收。
+    await container.stop({ t: 0 }).catch((stopError: unknown) => {
+      const stopStatus = (stopError as { statusCode?: number }).statusCode;
+      if (stopStatus !== 304 && stopStatus !== 404) throw stopError;
+    });
+  }
 }
 
 function shellQuote(value: string): string {
