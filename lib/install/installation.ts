@@ -1,41 +1,10 @@
 /**
- * 安装落点检查：候选包、配置、托管指引、发现、dry plan、实际执行过程与安装最佳实践都按项
- * 计分。对话澄清在 `interaction.ts`，其它检查阶段各自在同名模块。
+ * roadmap 题的安装落点软分：候选包、配置、托管指引、发现、dry plan 与安装实践。
  */
 
 import type { ScoreTestContext } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import { readCandidateManifest } from "../candidate.ts";
-import { INSTALL_OUTCOME_POINTS, isOutcomeWeighted, type InstallScoringMode } from "./scoring.ts";
-
-/**
- * Codex 的 command_execution 事件只提供 shell source，command projection 因而按协议标成
- * opaque。过程加分只需要三个布尔事实；先归约命令文本可避免 calledTool 为上百个候选持久化
- * 一棵数 MiB 的逐候选诊断树。
- */
-function shellCommands(t: ScoreTestContext): string[] {
-  return t.events.flatMap((event) => {
-    if (
-      event.type !== "operation.started" ||
-      event.operation.kind !== "tool" ||
-      event.operation.tool !== "shell"
-    ) {
-      return [];
-    }
-    const input = event.operation.input;
-    if (input === null || typeof input !== "object" || Array.isArray(input)) return [];
-    const command = input.command;
-    return typeof command === "string" ? [command] : [];
-  });
-}
-
-function ranNiceeval(commands: readonly string[], subcommand: "init" | "exp" | "show"): boolean {
-  const invocation = new RegExp(`\\bniceeval(?:@\\S+)?\\s+(?:--\\s+)?${subcommand}\\b`);
-  return commands.some((command) =>
-    invocation.test(command) &&
-    (subcommand !== "exp" || !/--dry\b|--help\b/.test(command)),
-  );
-}
 
 /**
  * `niceeval exp --dry --json` 的单文档形状（`docs/feature/experiments/cli.md#机器怎么读--json`）。
@@ -67,8 +36,7 @@ export interface ExpPlanDocument {
 
 /**
  * 解析 `niceeval exp --dry --json` 的 stdout。正常情况下整段 stdout 就是一个 JSON 文档；
- * `npx --no-install` 理论上不产生额外噪音，但为防御偶发的 npm 输出混入 stdout（stderr 已用
- * `2>/dev/null` 分流），兜底按 `format` marker 定位最后一个能闭合的 `{...}` 块再解析。
+ * 为兼容旧候选偶发的额外输出，兜底按 `format` marker 定位最后一个能闭合的 `{...}` 块。
  * 两条路径都失败时返回 null，交给调用方按 gate/软分各自的语义处理。
  */
 export function parseExpPlanDocument(stdout: string): ExpPlanDocument | null {
@@ -150,14 +118,10 @@ export async function checkInstallation(
   opts: {
     version: string;
     standaloneWorkspace?: boolean;
-    /** install 正式题使用：关键结果加权，失败时保留部分分并停止后续质量奖励。 */
-    scoring?: InstallScoringMode;
   },
 ): Promise<void> {
   const sandbox = t.sandbox;
   const candidate = readCandidateManifest(opts.version);
-  const outcomeWeighted = isOutcomeWeighted(opts.scoring);
-  const foundationPoints = outcomeWeighted ? INSTALL_OUTCOME_POINTS.foundation : 1;
 
   const root = await locateInstallRoot(sandbox);
   const at = root ?? ".";
@@ -178,12 +142,12 @@ export async function checkInstallation(
   // 加载成功的配置；配置文件存在但加载报错时 dry-run 非零退出、matrix 清零，数 .ts 文件骗不
   // 了它。stderr 分流到 /dev/null，只留 stdout 上纯净的 JSON 文档（解析兜底见
   // parseExpPlanDocument）。
-  const list = await sandbox.runShell(`npx --no-install niceeval list 2>&1`, { cwd: at });
-  const dry = await sandbox.runShell(`npx --no-install niceeval exp --dry --json 2>/dev/null`, { cwd: at });
+  const list = await sandbox.runCommand("./node_modules/.bin/niceeval", ["list"], { cwd: at });
+  const dry = await sandbox.runCommand("./node_modules/.bin/niceeval", ["exp", "--dry", "--json"], { cwd: at });
   const dryPlan = parseExpPlanDocument(dry.stdout);
   const hasTsconfig = await sandbox.pathExists(`${at === "." ? "" : at + "/"}tsconfig.json`);
   const tsc = hasTsconfig
-    ? await sandbox.runShell(`npx --no-install tsc --noEmit 2>&1`, { cwd: at })
+    ? await sandbox.runCommand("./node_modules/.bin/tsc", ["--noEmit"], { cwd: at })
     : null;
 
   // 最佳实践层的两个探针（判据见下面的 t.group）：装机落点那份 package.json，以及托管指引
@@ -196,56 +160,36 @@ export async function checkInstallation(
   ).stdout.trim();
 
   await t.group("评估安装", async () => {
-    // 结果优先模式把可运行闭环作为计分制的 stop barrier：前面挣到的部分分保留，后面的
-    // 源码姿势奖励不再掩盖基础安装或真实执行没有完成。roadmap 默认仍保持原来的纯加分行为。
-    const rootCheck = t.check(root !== null, isTrue("niceeval.config.ts 存在"))
-      .score(foundationPoints)
+    t.check(root !== null, isTrue("niceeval.config.ts 存在"))
+      .score(1)
       .key("install.foundation.config-exists")
       .label("niceeval.config.ts 存在");
-    if (outcomeWeighted) await rootCheck.orStop();
 
-    const versionCheck = t.check(
+    t.check(
       version,
       satisfies(`依赖解析到候选包 niceeval@${candidate.version}（实际：${version || "未安装"}）`, (v) => v === candidate.version),
-    ).score(foundationPoints).key("install.foundation.exact-version").label("候选版本正确");
-    if (outcomeWeighted) await versionCheck.orStop();
+    ).score(1).key("install.foundation.exact-version").label("候选版本正确");
 
-    const listCheck = t.check(list, commandSucceeded())
-      .score(foundationPoints)
+    t.check(list, commandSucceeded())
+      .score(1)
       .key("install.foundation.list-succeeded")
       .label("Eval 可发现");
-    if (outcomeWeighted) await listCheck.orStop();
 
-    const discoveredCheck = t.check(
+    t.check(
       list.stdout,
       satisfies<string>(
         "niceeval 能发现 agent 写出的 eval",
         (s) => s.split("\n").some((l) => /\S/.test(l) && !/^(NAME|ID|—|-{3,})/.test(l.trim())),
       ),
-    ).score(foundationPoints).key("install.foundation.eval-discovered").label("至少发现一个 Eval");
-    if (outcomeWeighted) await discoveredCheck.orStop();
+    ).score(1).key("install.foundation.eval-discovered").label("至少发现一个 Eval");
 
-    const dryCheck = t.check(
+    t.check(
       dryPlan,
       satisfies("exp --dry 能规划出至少一个 experiment", (v) => {
         const p = v as ExpPlanDocument | null;
         return p !== null && p.matrix.length > 0;
       }),
-    ).score(foundationPoints).key("install.foundation.dry-plan").label("实验 dry-run 可执行");
-    if (outcomeWeighted) await dryCheck.orStop();
-
-    const commands = shellCommands(t);
-    const ranExperiment = t.check(ranNiceeval(commands, "exp"), isTrue("实际运行过非 dry/help 的 niceeval exp"))
-      .score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.ranExperiment : 1)
-      .key("install.execution.ran-experiment")
-      .label("实际运行 niceeval exp");
-    if (outcomeWeighted) await ranExperiment.orStop();
-
-    const inspectedResults = t.check(ranNiceeval(commands, "show"), isTrue("运行过 niceeval show"))
-      .score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.inspectedResults : 1)
-      .key("install.execution.inspected-results")
-      .label("运行 niceeval show");
-    if (outcomeWeighted) await inspectedResults.orStop();
+    ).score(1).key("install.foundation.dry-plan").label("实验 dry-run 可执行");
 
     t.check(managed.length > 0, isTrue("AGENTS.md / CLAUDE.md 里有托管指引区块"))
       .score(1)
@@ -259,19 +203,6 @@ export async function checkInstallation(
       ).score(1).key("install.practice.typecheck-clean").label("TypeScript 检查通过");
     }
 
-    // 过程侧（加分，每条 1 分）：agent 该敲的命令敲没敲。上面是事后取证产物，这里回看 agent
-    // 自己的事件流；挣到才说明「是 agent 自己走完流程做对的」。
-    // 这里先把标准事件里的 shell command 归约成布尔事实，再登记紧凑断言。直接 calledTool(or(...))
-    // 会把每个 shell occurrence 的完整匹配诊断持久化；安装 agent 常有上百次调用，三条过程分就能
-    // 撑破 assertions 文档的 4 MiB 上限。我们仍只读取真实 operation.started，不扫回复或文件内容。
-    // `(?:@\S+)?\s+(?:--\s+)?`：CLI 的合法调用形态不止 `npx niceeval <cmd>`——canary.7 实跑里
-    // codex 全程用 `npm exec niceeval -- exp baseline`（`--` 分隔符卡在包名与子命令之间），
-    // `npx niceeval@<version> <cmd>` 也常见。旧正则 `niceeval\s+exp` 对不上这两种，把真跑过的
-    // 分误杀成 0（2026-07-24 canary.7 取证）。
-    t.check(ranNiceeval(commands, "init"), isTrue("运行过 niceeval init"))
-      .score(1)
-      .key("install.practice.ran-init")
-      .label("运行 niceeval init"); // 托管指引该由 CLI 写入，不是手抄
   });
 
   // ── 最佳实践（纯加分，每条 1 分）：装成了之后，装的姿势对不对。 ───────────────────

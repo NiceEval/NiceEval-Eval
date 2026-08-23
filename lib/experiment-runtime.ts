@@ -16,7 +16,7 @@
 import { codexAgent } from "niceeval/adapter";
 import { dockerSandbox } from "niceeval/sandbox";
 import type { SandboxHook } from "niceeval/sandbox";
-import { provisionTargetAppEnv } from "./target-app-env.ts";
+import { provisionTargetAppEnv, teardownTargetAppProxy } from "./target-app-env.ts";
 
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
@@ -172,5 +172,7 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
       timeoutMs: 30_000,
     },
   }).setup(prepareHarnessCandidate(candidateVersion)).setup(assertRuntime(candidateVersion));
-  return profile === "python" ? base.setup(provisionTargetAppEnv()) : base;
+  return profile === "python"
+    ? base.setup(provisionTargetAppEnv()).teardown(teardownTargetAppProxy())
+    : base;
 }

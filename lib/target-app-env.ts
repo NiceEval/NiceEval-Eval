@@ -1,77 +1,310 @@
 /**
- * 目标应用（DB-GPT / GPT Researcher）运行时环境。
+ * 目标应用的 LLM 出口。
  *
- * 这两条接入路径的被测宿主都是真实 Python 项目，Python 工具链（python3 / pip / venv /
- * build-essential / sqlite3 / uv）已经烘焙进统一 DinD Docker 镜像（见 sandbox/Dockerfile
- * 与 lib/experiment-runtime.ts），Python 实验只额外执行本文件的凭证准备钩子。
- * 这个钩子不再装系统依赖，只做每次 attempt
- * 都要重新写的动态内容——目标应用自己要连的 LLM 凭证。装 niceeval 三件套这件事跟
- * 「目标应用能不能被 agent 实际启动起来」是两层问题：前者由 checkInstallation 的 gate，
- * 后者只在「跑出过一次结果」那条软断言里体现（详见 lib/install/adapter.ts 的注释）。这个钩子补的
- * 是后者的地基——把「能连一个真 LLM」这个前提准备好，但不替 agent 决定要不要启动目标进程，
- * 也不做任何 gate。
+ * install sandbox 把 raw DinD 交给被测 coding agent；任何放进评估容器的长期凭证都能被它
+ * 通过内层 Docker daemon 读走，Unix 权限不是安全边界。因此真实 key/base URL 只进入宿主
+ * Docker daemon 管理的独立 sidecar，和 agent 控制的内层 daemon 完全隔离。沙箱里只有：
  *
- * 值不写进代码：从仓库根 `.env`（已加入 .gitignore）读，缺失就 fail-fast，避免「装完了但连不上
- * LLM」被误判成 agent 没写对 adapter。
+ * - 一个 Attempt 生命周期内有效的随机 Bearer token；
+ * - 只允许固定模型、固定接口和有限请求数的代理地址；
+ * - TARGET_APP_MODEL 这个非敏感配置。
  *
- * 凭证放在 workdir 之外（TARGET_APP_ENV_PATH），且不在 t.send() 的任务文案里提它——两条
- * 接入路径考的是 agent 能不能把 niceeval 接对，不是我们在旁边报答案。真实开发者接手一个
- * 项目时，密钥往往也是「找得到就有，找不到就得自己问/查」，不是任务描述里写好的。
- *
- * 验证时踩过的坑（供人读，不进 send，别复读给 agent）：
- * - GPT Researcher v3.6.0：注入的 DeepSeek 端点没有 embeddings API，默认 EMBEDDING 走同一个
- *   OPENAI_BASE_URL 会 404；`gpt_researcher/actions/query_processing.py` 在这个 tag 里还有个
- *   真实上游 bug（`Any`/`List` 在用到之后才 import，模块加载就炸）。都是目标仓库自身的问题，
- *   不是这个 provisioning 钩子能修的。
- * - DB-GPT v0.8.1：`[[models.embeddings]]` 默认打 `https://api.openai.com/v1/embeddings`（不是
- *   OPENAI_API_BASE 派生的），拿 DeepSeek key 会 401——但这只影响 db summary 的 RAG 增强，
- *   `chat_data` 走的是直接把 schema 灌进 prompt 这条路，embeddings 缺失只在日志里留一条
- *   warning，SQL 生成本身不受影响，端到端验证过是好的（含反幻觉分支）。三个目标里资源最重
- *   （`uv sync` 是唯一装出 300MB+ 依赖的），其余两个都轻。
- * - `scripts/examples/load_examples.sh` 需要 `sqlite3` CLI（不是 python 自带的 sqlite3 模块），
- *   已经烘焙进统一 Docker 镜像。
- *
- * FinRobot（原第四条接入路径）已移除：它的财务数据源打的是 FMP 已下线的 legacy 端点，
- * 上游停摆了近一年没修，不是这个钩子能解决的问题——见 README 里的说明。
+ * sidecar 加入当前 Sandbox 的外层 Docker network，避免依赖经常被宿主防火墙阻断的 host
+ * gateway 回连。setup 任一步失败都会删除 sidecar，teardown 再做幂等回收；AutoRemove 与
+ * 40 分钟硬生命周期用于进程异常退出时兜底。
  */
 
-import type { SandboxHook } from "niceeval/sandbox";
+import { randomBytes } from "node:crypto";
+import Docker from "dockerode";
+import type { Container, ContainerInspectInfo } from "dockerode";
+import type { Sandbox, SandboxHook } from "niceeval/sandbox";
 import { ENV_FILE, loadRepoEnv } from "./env.ts";
 
-/** 目标应用需要的 host 侧变量名 -> 沙箱内要写成的通用变量名（多数 Python 项目认这几个名字）。 */
-const REQUIRED_VARS = [
-  ["TARGET_APP_OPENAI_API_KEY", "OPENAI_API_KEY"],
-  ["TARGET_APP_OPENAI_BASE_URL", "OPENAI_BASE_URL"],
-  ["TARGET_APP_MODEL", "TARGET_APP_MODEL"],
+const REQUIRED_HOST_VARS = [
+  "TARGET_APP_OPENAI_API_KEY",
+  "TARGET_APP_OPENAI_BASE_URL",
+  "TARGET_APP_MODEL",
 ] as const;
 
-/** 沙箱内落点：放 workdir 之外，跟 candidate 的道理一样——不算进 agent 的 diff。 */
+const PROXY_PORT = 43129;
+const MAX_REQUESTS = 96;
+const MAX_CONCURRENCY = 8;
+const MAX_REQUEST_BYTES = 1024 * 1024;
+
+/** Agent 只会看到这份短期配置，不会看到宿主侧真实 key/base URL。 */
 export const TARGET_APP_ENV_PATH = "/opt/fixture-secrets/target-app.env";
 
-/**
- * 环境钩子：把目标应用要用的 LLM 凭证写成一份沙箱内可读的 env 文件。两条接入路径共用——
- * 给哪些变量是「这次实验的环境」这一层的事，跟具体读哪个宿主仓库无关，所以挂在 sandbox
- * spec 上（见 lib/experiment-runtime.ts 的 `.setup()` 链）。Python 工具链不在这里装，见上面
- * 文件头注释。
- */
+interface ProxyHandle {
+  token: string;
+  endpoint: string;
+  detachAbort?: () => void;
+  close(): Promise<void>;
+}
+
+const docker = new Docker();
+const proxies = new WeakMap<Sandbox, ProxyHandle>();
+
+/** 创建外层 sidecar，并把可安全泄漏的连接信息写进 sandbox。 */
 export function provisionTargetAppEnv(): SandboxHook {
   return async (sandbox, ctx) => {
     loadRepoEnv();
-    for (const [hostVar] of REQUIRED_VARS) {
-      if (!process.env[hostVar]) {
-        throw new Error(`${ENV_FILE} 里缺 ${hostVar}，目标应用没有可用的 LLM 凭证。`);
-      }
+    for (const name of REQUIRED_HOST_VARS) {
+      if (!process.env[name]) throw new Error(`${ENV_FILE} 里缺 ${name}，目标应用没有可用的 LLM 出口。`);
     }
 
-    ctx.progress({ message: "注入目标应用 LLM 凭证" });
-    const lines = REQUIRED_VARS.map(([hostVar, sandboxVar]) => `${sandboxVar}=${process.env[hostVar] ?? ""}`).join(
-      "\n",
-    );
-    await sandbox.writeText(TARGET_APP_ENV_PATH, `${lines}\n`);
+    ctx.progress({ message: "启动目标应用的 Attempt 级 LLM 代理" });
+    const handle = await startProxySidecar(sandbox, {
+      apiKey: process.env.TARGET_APP_OPENAI_API_KEY!,
+      baseUrl: process.env.TARGET_APP_OPENAI_BASE_URL!,
+      model: process.env.TARGET_APP_MODEL!,
+    });
+    proxies.set(sandbox, handle);
 
-    const check = await sandbox.runCommand("test", ["-s", TARGET_APP_ENV_PATH]);
-    if (check.exitCode !== 0) {
-      throw new Error(`目标应用凭证写入后不可读：${TARGET_APP_ENV_PATH}`);
+    const abort = () => { void closeProxy(sandbox); };
+    handle.detachAbort = () => ctx.signal.removeEventListener("abort", abort);
+    ctx.signal.addEventListener("abort", abort, { once: true });
+    try {
+      await sandbox.writeText(
+        TARGET_APP_ENV_PATH,
+        [
+          `OPENAI_API_KEY=${shellQuote(handle.token)}`,
+          `OPENAI_BASE_URL=${shellQuote(`${handle.endpoint}/v1`)}`,
+          `TARGET_APP_MODEL=${shellQuote(process.env.TARGET_APP_MODEL!)}`,
+          "",
+        ].join("\n"),
+      );
+
+      let health = await sandbox.runCommand(
+        "curl",
+        ["--max-time", "1", "--fail", "--silent", `${handle.endpoint}/__niceeval_health`],
+      );
+      for (let attempt = 1; health.exitCode !== 0 && attempt < 20; attempt++) {
+        await new Promise((done) => setTimeout(done, 100));
+        health = await sandbox.runCommand(
+          "curl",
+          ["--max-time", "1", "--fail", "--silent", `${handle.endpoint}/__niceeval_health`],
+        );
+      }
+      if (health.exitCode !== 0 || health.stdout.trim() !== "ok") {
+        throw new Error("目标应用短期代理 sidecar 无法从 Docker sandbox 访问；这是环境 setup 问题。");
+      }
+      ctx.progress({ message: "目标应用短期 LLM 代理已就绪" });
+    } catch (error) {
+      await closeProxy(sandbox);
+      throw error;
     }
   };
 }
+
+/** Sandbox 无论正常、失败或中断都撤销 token 并删除外层 sidecar。 */
+export function teardownTargetAppProxy(): SandboxHook {
+  return async (sandbox) => {
+    await closeProxy(sandbox);
+  };
+}
+
+async function closeProxy(sandbox: Sandbox): Promise<void> {
+  const handle = proxies.get(sandbox);
+  if (!handle) return;
+  proxies.delete(sandbox);
+  handle.detachAbort?.();
+  await handle.close();
+}
+
+async function startProxySidecar(
+  sandbox: Sandbox,
+  config: { apiKey: string; baseUrl: string; model: string },
+): Promise<ProxyHandle> {
+  const parent = await docker.getContainer(sandbox.sandboxId).inspect();
+  const networkName = selectSandboxNetwork(parent);
+  const token = randomBytes(32).toString("base64url");
+  let container: Container | undefined;
+  try {
+    container = await docker.createContainer({
+      Image: parent.Image,
+      Entrypoint: ["node"],
+      Cmd: ["-e", PROXY_PROGRAM],
+      Env: [
+        `PROXY_TOKEN=${token}`,
+        `UPSTREAM_API_KEY=${config.apiKey}`,
+        `UPSTREAM_BASE_URL=${config.baseUrl}`,
+        `TARGET_MODEL=${config.model}`,
+        `PROXY_PORT=${PROXY_PORT}`,
+        `MAX_REQUESTS=${MAX_REQUESTS}`,
+        `MAX_CONCURRENCY=${MAX_CONCURRENCY}`,
+        `MAX_REQUEST_BYTES=${MAX_REQUEST_BYTES}`,
+      ],
+      User: "node",
+      Labels: {
+        "niceeval.resource": "target-app-proxy",
+        "niceeval.parent-sandbox": sandbox.sandboxId,
+      },
+      HostConfig: {
+        AutoRemove: true,
+        NetworkMode: networkName,
+        ReadonlyRootfs: true,
+        CapDrop: ["ALL"],
+        SecurityOpt: ["no-new-privileges"],
+        Memory: 128 * 1024 * 1024,
+        NanoCpus: 250_000_000,
+        PidsLimit: 64,
+      },
+    });
+    await container.start();
+    const info = await container.inspect();
+    const address = info.NetworkSettings.Networks[networkName]?.IPAddress;
+    if (!address) throw new Error("目标应用代理 sidecar 没有取得 Sandbox network 地址");
+
+    let closing: Promise<void> | undefined;
+    return {
+      token,
+      endpoint: `http://${address}:${PROXY_PORT}`,
+      close: () => closing ??= removeContainer(container!),
+    };
+  } catch (error) {
+    if (container) await removeContainer(container);
+    throw new Error("创建目标应用短期代理 sidecar 失败", { cause: error });
+  }
+}
+
+function selectSandboxNetwork(parent: ContainerInspectInfo): string {
+  const names = Object.keys(parent.NetworkSettings.Networks);
+  if (names.length !== 1) {
+    throw new Error(`Sandbox 必须恰好连接一个外层 Docker network，实测 ${names.length} 个`);
+  }
+  return names[0]!;
+}
+
+async function removeContainer(container: Container): Promise<void> {
+  await container.remove({ force: true }).catch((error: unknown) => {
+    const status = (error as { statusCode?: number }).statusCode;
+    if (status !== 404 && status !== 409) throw error;
+  });
+}
+
+function shellQuote(value: string): string {
+  return `'${value.replaceAll("'", `'\\''`)}'`;
+}
+
+function assertEnvContracts(): void {
+  if (shellQuote("a'b # c") !== "'a'\\''b # c'") {
+    throw new Error("target proxy env quoting contract 失败");
+  }
+}
+
+assertEnvContracts();
+
+/**
+ * 在 sidecar 内运行；只从 sidecar env 读取真实凭证。程序不打印请求、响应、URL 或 key。
+ * Token、模型、接口、并发、请求体与调用次数全部在转发前收窄。
+ */
+const PROXY_PROGRAM = String.raw`
+const http = require("node:http");
+
+const port = Number(process.env.PROXY_PORT);
+const token = process.env.PROXY_TOKEN;
+const upstreamKey = process.env.UPSTREAM_API_KEY;
+const upstreamBase = new URL(process.env.UPSTREAM_BASE_URL);
+const targetModel = process.env.TARGET_MODEL;
+const maxRequests = Number(process.env.MAX_REQUESTS);
+const maxConcurrency = Number(process.env.MAX_CONCURRENCY);
+const maxRequestBytes = Number(process.env.MAX_REQUEST_BYTES);
+let requests = 0;
+let active = 0;
+
+function sendJson(response, status, value) {
+  response.writeHead(status, { "content-type": "application/json" });
+  response.end(JSON.stringify(value));
+}
+
+async function readBody(request) {
+  const chunks = [];
+  let bytes = 0;
+  for await (const chunk of request) {
+    bytes += chunk.length;
+    if (bytes > maxRequestBytes) throw new Error("request-too-large");
+    chunks.push(chunk);
+  }
+  return Buffer.concat(chunks).toString("utf8");
+}
+
+function upstreamUrl(incoming) {
+  const basePath = upstreamBase.pathname.replace(/\/$/, "");
+  const incomingPath = incoming.pathname;
+  const path = incomingPath === basePath || incomingPath.startsWith(basePath + "/")
+    ? incomingPath
+    : basePath.endsWith("/v1") && incomingPath.startsWith("/v1/")
+      ? basePath + incomingPath.slice(3)
+      : basePath + incomingPath;
+  return new URL(path + incoming.search, upstreamBase.origin);
+}
+
+const server = http.createServer(async (request, response) => {
+  try {
+    if (request.url === "/__niceeval_health") {
+      response.writeHead(200, { "content-type": "text/plain" });
+      response.end("ok");
+      return;
+    }
+    if (request.headers.authorization !== "Bearer " + token) {
+      sendJson(response, 401, { error: { message: "target proxy token is invalid" } });
+      return;
+    }
+    const url = new URL(request.url || "/", "http://sandbox.invalid");
+    if (request.method === "GET" && url.pathname === "/v1/models") {
+      sendJson(response, 200, {
+        object: "list",
+        data: [{ id: targetModel, object: "model", owned_by: "niceeval-target-proxy" }],
+      });
+      return;
+    }
+    if (request.method !== "POST" || url.pathname !== "/v1/chat/completions") {
+      sendJson(response, 404, { error: { message: "target proxy only permits /v1/chat/completions" } });
+      return;
+    }
+    if (requests >= maxRequests || active >= maxConcurrency) {
+      sendJson(response, 429, { error: { message: "target proxy attempt budget exhausted" } });
+      return;
+    }
+
+    const payload = JSON.parse(await readBody(request));
+    payload.model = targetModel;
+    requests += 1;
+    active += 1;
+    try {
+      const upstream = await fetch(upstreamUrl(url), {
+        method: "POST",
+        headers: {
+          authorization: "Bearer " + upstreamKey,
+          "content-type": "application/json",
+          accept: request.headers.accept || "application/json",
+        },
+        body: JSON.stringify(payload),
+        signal: AbortSignal.timeout(10 * 60 * 1000),
+      });
+      const headers = {};
+      for (const [name, value] of upstream.headers) {
+        if (!["connection", "content-length", "keep-alive", "transfer-encoding", "upgrade"].includes(name.toLowerCase())) {
+          headers[name] = value;
+        }
+      }
+      response.writeHead(upstream.status, headers);
+      if (upstream.body) {
+        for await (const chunk of upstream.body) response.write(Buffer.from(chunk));
+      }
+      response.end();
+    } finally {
+      active -= 1;
+    }
+  } catch {
+    if (!response.headersSent) sendJson(response, 502, { error: { message: "target proxy upstream request failed" } });
+    else response.end();
+  }
+});
+
+server.listen(port, "0.0.0.0");
+setTimeout(() => {
+  server.closeAllConnections();
+  server.close(() => process.exit(0));
+}, 40 * 60 * 1000).unref();
+`;

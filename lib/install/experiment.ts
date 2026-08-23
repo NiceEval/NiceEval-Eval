@@ -25,7 +25,7 @@ export async function checkExperimentDesign(t: ScoreTestContext): Promise<void> 
 
   // --dry --json 输出单个 ExpPlanDocument（见 installation.ts 的 parseExpPlanDocument）；
   // stderr 分流到 /dev/null，stdout 上只留纯净 JSON。
-  const dry = await sandbox.runShell(`npx --no-install niceeval exp --dry --json 2>/dev/null`, { cwd: at });
+  const dry = await sandbox.runCommand("./node_modules/.bin/niceeval", ["exp", "--dry", "--json"], { cwd: at });
   const dryPlan = parseExpPlanDocument(dry.stdout);
   const shared = (
     await sandbox.runShell(`find experiments agents adapters -maxdepth 2 -iname 'shared*.ts' 2>/dev/null`, {

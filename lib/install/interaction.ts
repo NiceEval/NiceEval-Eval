@@ -1,32 +1,14 @@
-/**
- * 安装题的对话阶段：先计分首轮澄清，再用固定用户答复让同一会话继续。
- *
- * 这里仅编排对话与通用 rubric；每道题的宿主事实、专属 rubric 和 HITL 答复留在对应
- * fixtures/install/<case>/ 中，避免反向把题目差异藏进万能 runner。
- */
+/** roadmap 预览题的通用澄清：正式 install 题已经收进 evals/install/eval.ts。 */
 
 import type { ScoreTestContext } from "niceeval";
 import { equals, isTrue } from "niceeval/expect";
 import { buildClarifyRubrics, type ClarifyFacts } from "./criteria/clarification.ts";
-import {
-  buildCreateEvalHandoffRubrics,
-  buildCreateEvalScopingRubrics,
-  type CreateEvalFacts,
-} from "./criteria/first-eval.ts";
-import { INSTALL_OUTCOME_POINTS, isOutcomeWeighted, type InstallScoringMode } from "./scoring.ts";
 
 type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
 
 export interface IntegrationConversationOptions {
   clarify: ClarifyFacts;
   turn: Turn;
-  /** 常见安装路径还要评「首次 Eval 定题」与「完成交接」。 */
-  createEval?: CreateEvalFacts;
-  /**
-   * install 正式题使用结果优先模式：完成轮本身计 3 分，未完成则保留此前部分分并停止后续评分。
-   * roadmap 题省略时保持原来的纯加分行为。
-   */
-  scoring?: InstallScoringMode;
 }
 
 /** 计分通用接入澄清，并以原有 Tier 1 答复继续同一会话。 */
@@ -34,8 +16,6 @@ export async function scoreIntegrationConversation(
   t: ScoreTestContext,
   opts: IntegrationConversationOptions,
 ): Promise<void> {
-  const createEval = opts.createEval;
-  const outcomeWeighted = isOutcomeWeighted(opts.scoring);
   await t.group("评估交互", async () => {
     t.check(opts.turn.status === "waiting", isTrue("首轮等待澄清"))
       .score(1)
@@ -49,55 +29,20 @@ export async function scoreIntegrationConversation(
     }
   });
 
-  if (createEval) {
-    await t.group("首次评估定题", async () => {
-      for (const [index, rubric] of buildCreateEvalScopingRubrics(createEval).entries()) {
-        opts.turn.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`)
-          .score(1)
-          .key(`install.interaction.eval-scope.${index + 1}`)
-          .label(rubric.key);
-      }
-    });
-  }
-
-  const experimentScope = createEval ? "先做最小实验矩阵" : "写两个实验";
-  const createEvalAnswer = createEval
-    ? "第一条 Eval 就测你从仓库确认的核心用例，用安全的本地 fixture / 测试数据；" +
-      "成功标准落在具体业务结果上，再加一条不在 prompt 里教标准答案的负例。" +
-      "候选只用系统实际接受的值，验证不了就先交一个可运行参照配置并说明。" +
-      "首跑每格一次、只跑最小矩阵，不扩大付费范围；"
-    : "";
+  // 只回答用户才有权决定的接入级别；用例、断言和实验设计继续由候选文档指导。
   const answer =
-    `简单接入——${experimentScope}、先不接 otel，也先不做 flag。` +
-    "接口就用你探到的那个；被测服务需要的话你自己起；judge 按文档处理，没有可用 key 就降级。" +
-    createEvalAnswer +
-    "其余你自行决定，不用再等我确认。";
+    "做简单的 Tier 1 接入，使用你刚才确认的接口；先不接 OTel，也不做 experiment flags。" +
+    "没有可用 Judge key 时，按文档选择不依赖 Judge 的验证方式。" +
+    "请继续完成接入，其余实现细节根据仓库和随包文档决定。";
   const pendingInputs = opts.turn.events.flatMap((event) =>
     event.type === "input.requested" ? [event.request] : []
   );
   // regression: Codex 可能在同一轮并列提出多个 request_user_input 问题；多个请求不能靠字符串
   // 顺序消歧，因此把这份覆盖全部决策的用户答复按稳定 request id 逐项对位。
-  const handoffTurn = opts.turn.status === "waiting"
-    ? await t.respond(...pendingInputs.map((request) => ({ request, text: answer })))
-    : await t.send(answer);
-
-  if (createEval) {
-    await t.group("完成交接", async () => {
-      for (const [index, rubric] of buildCreateEvalHandoffRubrics(createEval).entries()) {
-        handoffTurn.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`)
-          .score(1)
-          .key(`install.interaction.handoff.${index + 1}`)
-          .label(rubric.key);
-      }
-    });
-  }
-
-  if (outcomeWeighted) {
-    await handoffTurn.succeeded()
-      .score(INSTALL_OUTCOME_POINTS.completedTurn)
-      .key("install.interaction.completed")
-      .label("完成轮成功")
-      .orStop();
+  if (opts.turn.status === "waiting") {
+    await t.respond(...pendingInputs.map((request) => ({ request, text: answer })));
+  } else {
+    await t.send(answer);
   }
 }
 

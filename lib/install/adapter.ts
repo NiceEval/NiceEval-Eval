@@ -1,24 +1,9 @@
 /**
- * 评估 adapter：agent 写的 adapter 有没有真联上被测系统。roadmap 默认是软分；install 正式题
- * 使用 outcome-weighted 模式，把真实终态与执行事件作为计分制的 orStop barrier。
+ * 评估 adapter：roadmap 题对已发布结果与源码写法做软分观察。正式 install 题的结果状态机
+ * 已集中在 evals/install/eval.ts，这里不再维护第二套 outcome barrier。
  *
- * 只信 agent 自装的 CLI，不自己找/读 result.json——跑了几次不是这层关心的事（适配 live 系统
- * 的成本、稳不稳定各不相同，agent 跑几次都合理，不该被断言锁死），这里只看跑没跑通。
- * `niceeval show` 显示的 verdict 是 passed / failed 就说明请求真发出去、回应真回来，连不上会
- * 是 errored。起被测系统很重且波动大（见 lib/target-app-env.ts），因此 roadmap 只作软分计量；
- * 正式 install 题则把这两条轻量路径的真实终态当作高权重 stop barrier。
- *
- * 只被 db-gpt / gpt-researcher 两条 eval 调用。理由是**起被测系统的代价**，不是「任务没要求」
- * ——「真跑一次」本来就写在 INIT.md 的完成清单里（Actually run it once and get it green），
- * 五条路径都适用。但 Letta / Skyvern / OpenHands 要起的东西太重也太飘（Letta 要起服务、
- * Skyvern 还要拉浏览器、OpenHands 要起 app_server + sandbox 内的 agent server），断言它跑通
- * 测到的是环境波动而不是文档效果，所以那三条只保留产出质量层（judge 读源码，见
- * ./criteria/quality.ts——五条路径都有那层，与这里的活联通性不互斥：那边判「写出来的评估
- * 成不成立」，这边判「真联上了没」）。
- *
- * 本文件三个考项，按「拿什么当事实」分：checkAdapterConnection 判跑起来的事实（联上了没，两条轻路径），
- * checkExecutionEvidence 判落盘结果的事实（响应映射成事件流了没，五条路径），
- * checkAdapterPractice 判源码的事实（send 写没写成文档教的样子，五条自写 adapter 的路径）。
+ * 只信 agent 自装的项目内 CLI，不读 result.json。checkAdapterConnection 看公开结果，
+ * checkExecutionEvidence 看公开 execution，checkAdapterPractice 看源码；三者都是独立软分。
  *
  * 写法约定：判定一律用官方断言词汇，不发明领域 API；取证一律「一条命令或一个文件」。
  */
@@ -27,7 +12,6 @@ import type { ScoreTestContext } from "niceeval";
 import { commandSucceeded, satisfies } from "niceeval/expect";
 import { locateInstallRoot } from "./installation.ts";
 import { readAuthoredFiles } from "./fixture.ts";
-import { INSTALL_OUTCOME_POINTS, isOutcomeWeighted, type InstallScoringMode } from "./scoring.ts";
 
 /**
  * 评估执行取证：adapter 是否真把被测系统的响应映射成了标准事件流。
@@ -41,27 +25,22 @@ import { INSTALL_OUTCOME_POINTS, isOutcomeWeighted, type InstallScoringMode } fr
  *
  * 写法约定同文件头：只信 agent 自装的 CLI，取证一条命令，判定紧跟一条 t.check 配 matcher。
  */
-export async function checkExecutionEvidence(
-  t: ScoreTestContext,
-  opts: { scoring?: InstallScoringMode } = {},
-): Promise<void> {
+export async function checkExecutionEvidence(t: ScoreTestContext): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
-  const outcomeWeighted = isOutcomeWeighted(opts.scoring);
 
-  const execution = await sandbox.runShell(`npx --no-install niceeval show --execution 2>&1`, { cwd: at });
+  const execution = await sandbox.runCommand("./node_modules/.bin/niceeval", ["show", "--execution"], { cwd: at });
 
   await t.group("评估执行取证", async () => {
-    const assistantEvidence = t.check(
+    t.check(
       execution.stdout,
       satisfies(
         "show --execution 的执行树里有 ASSISTANT 消息（adapter 真把被测系统的响应映射成了事件流）",
         (s) => /^\s*ASSISTANT\b/m.test(s as string),
       ),
-    ).score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.assistantEvent : 1)
+    ).score(1)
       .key("install.execution.assistant-event")
       .label("执行记录映射助手消息");
-    if (outcomeWeighted) await assistantEvidence.orStop();
   });
 }
 
@@ -181,43 +160,34 @@ export async function checkAdapterPractice(t: ScoreTestContext): Promise<void> {
 }
 
 /**
- * 评估 adapter：只信 agent 自装的 CLI，不判跑了几次。正式 install 题使用结果优先 barrier，
- * roadmap 省略 scoring 参数时仍保持原来的纯加分语义。
+ * 评估 adapter：只信 agent 自装的项目内 CLI，不判跑了几次。
  */
-export async function checkAdapterConnection(
-  t: ScoreTestContext,
-  opts: { scoring?: InstallScoringMode } = {},
-): Promise<void> {
+export async function checkAdapterConnection(t: ScoreTestContext): Promise<void> {
   const sandbox = t.sandbox;
   const at = (await locateInstallRoot(sandbox)) ?? ".";
-  const outcomeWeighted = isOutcomeWeighted(opts.scoring);
 
   // 自装 CLI 能不能把跑出来的结果显示出来。show 没有 --output 这类 profile flag（两形态契约:
   // 不加 flag = 人读文本,非 TTY 自动降级为无框纯文本;--json 是机器面）,gate:show 尚未落地
   // --json,这里先用不带 flag 的默认人读文本;--json 落地后可把下面的字符串判定升级为结构化
   // 字段校验。
-  const show = await sandbox.runShell(`npx --no-install niceeval show 2>&1`, { cwd: at });
+  const show = await sandbox.runCommand("./node_modules/.bin/niceeval", ["show"], { cwd: at });
 
   await t.group("评估adapter", async () => {
-    // roadmap 保持原来的一分软观察；正式 install 题提高真实 show / terminal result 的权重，
-    // 并在失败时停止后续源码质量奖励。
-    const showSucceeded = t.check(show, commandSucceeded())
-      .score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.showSucceeded : 1)
+    t.check(show, commandSucceeded())
+      .score(1)
       .key("install.execution.show-succeeded")
       .label("niceeval show 命令成功");
-    if (outcomeWeighted) await showSucceeded.orStop();
     // 只要正向证据（出现 passed/failed = 请求真出去、回应真回来），不再排斥 errored 字样：
     // 「第一次跑挂、修好再跑通」是文件头明说合理的路径，历史里留着 errored 行不该连坐。
     // 连不上被测系统的 agent 本来就产不出任何 passed/failed。
-    const hasTerminalResult = t.check(
+    t.check(
       show.stdout,
       satisfies(
-        "niceeval show 显示的 verdict 有 passed/failed（真联上了被测系统；从没联上只会有 errored）",
+        "niceeval show 显示的候选 verdict 有 passed/failed（从没得到响应通常只会有 errored）",
         (s) => /\b(passed|failed)\b/i.test(s as string),
       ),
-    ).score(outcomeWeighted ? INSTALL_OUTCOME_POINTS.terminalResult : 1)
+    ).score(1)
       .key("install.execution.has-terminal-result")
       .label("show 有通过或失败结果");
-    if (outcomeWeighted) await hasTerminalResult.orStop();
   });
 }

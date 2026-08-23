@@ -1,27 +1,42 @@
-# install Eval 共享机制
+# install Eval 结构
 
-`evals/install/<case>/eval.ts` 与 `evals/roadmap/<case>/eval.ts` 只编排场景：校验候选、准备宿主、发送任务、按顺序调用检查阶段、归档。
+正式 install 题集中在 `evals/install/eval.ts`：两个稳定 Eval ID、题目事实、交互续轮、评分、
+fixture 准备和产物归档都在同一文件内，不再 import 本项目的 install helper。这样读一份文件就能看清
+被测流程和全部计分规则。
 
-| 模块 | 职责 |
-| --- | --- |
-| `installation.ts` | 安装落点、过程侧与安装最佳实践评分 |
-| `interaction.ts` | 首轮澄清、HITL 续轮与完成交接 |
-| `adapter.ts` / `experiment.ts` / `authoring.ts` / `sandbox.ts` | 各自独立的检查阶段 |
-| `quality.ts` / `documentation.ts` | 产出设计与文档路由的计分阶段 |
-| `criteria/` | 可跨题复用的 rubric 机制；不含宿主事实 |
-| `fixture.ts` / `archive.ts` | fixture clone、源码取证和 attempt 产物归档 |
+`lib/install/` 只保留 roadmap 题复用的辅助实现，不是正式 install 题的评分入口。
 
-题目特有的 repo、版本、协议、质量事实与文档落点在 `fixtures/install/<case>/case.ts`；只有该题独有的长 rubric 才放同目录 `rubrics.ts`。
+## 正式题流程
 
-## install 正式题的计分顺序
+1. 准备宿主 fixture，要求 Agent 按指定版本的 `INIT.md` 安装并阅读随包文档。
+2. 首轮检查 Agent 是否在写接入代码前确认接口、观测、实验变量、Tier 和核心业务边界。
+3. 用不泄露 rubric 的最小用户答复继续任务。
+4. 依次检查安装基础、真实 experiment、同一公开 locator 的 `show` 证据和源码质量。
+5. 在 `finally` 中归档 agent 输出，失败样本也可复审。
 
-`evals/install/` 使用 `outcome-weighted` 模式，仍然是纯计分制，不引入通过制 Verdict：
+全题是 52 分的纯计分制，不使用通过制 Verdict：
 
-1. 完成交互后，安装落点、精确候选版本、Eval discovery、dry plan、真实 `exp`、公开 `show`、
-   terminal result 与 `ASSISTANT` 执行证据依次形成 `orStop` barrier。
-2. barrier 失败时保留此前已得的部分分，但不再发放 experiment / adapter / authoring / 设计品味分。
-3. 关键结果按 3–8 分加权；文档路由与源码姿势仍各 1 分。无 `tsconfig` 时满分 93，存在且
-   typecheck 干净时额外得 1 分，不能再用大量软分掩盖未跑通。
-4. `orStop` 后仍在 `finally` 中归档 agent 产物，保证失败样本可人工复审。
+| 阶段 | 分值 | 结构性截断 |
+| --- | ---: | --- |
+| 首轮交互 | 8 | 无 |
+| 完成交接 | 4 | 无 |
+| 安装与 dry plan | 12 | `orStop` |
+| 已发布 attempt | 15 | `orStop` |
+| 源码与实践 | 13 | stand-in 命中后不再发放 |
 
-`evals/roadmap/` 没有显式选择该模式，继续使用原来的 additive 评分，避免未来题的预览语义被正式题改动连带改变。
+`orStop` 只停止后续计分，已得到的分数保留。正式题直接调用候选版本的本地
+`./node_modules/.bin/niceeval`，不从对话文本猜命令，也不通过 `npx` 绕过候选版本。
+overview、verdict、execution 和 source 必须绑定同一个公开 locator；如果执行证据明确显示 Agent 用
+stub / mock 代替被测服务，则分数封顶在该屏障之前。
+
+## 共享辅助
+
+roadmap 题仍可使用这些模块：
+
+- `interaction.ts`：路线澄清与不泄露 rubric 的续轮。
+- `installation.ts`：安装、discovery 和 dry plan 检查。
+- `adapter.ts` / `experiment.ts` / `authoring.ts` / `sandbox.ts`：各阶段检查。
+- `quality.ts` / `documentation.ts`：设计和文档路由评分。
+- `fixture.ts` / `archive.ts`：fixture clone、源码取证和 attempt 归档。
+
+roadmap 的题目事实仍放在 `fixtures/roadmap/<case>/case.ts`。
