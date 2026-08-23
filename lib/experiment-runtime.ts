@@ -122,7 +122,8 @@ function prepareHarnessCandidate(candidateVersion?: string): SandboxHook {
  * rootfs 只读；工作区等小型可写路径落到有大小上限的 tmpfs。inner `/var/lib/docker`
  * 由宿主 storage profile 授予磁盘 backed、project-quota 限额的私有分配，不再占用 shmem。
  * memoryBytes 同时禁止额外 swap，单 attempt 也无法把共享外层 data-root 写满。
- * 每 Attempt 限 1 CPU / 1536 MiB，使 12 并发可在 16 CPU / 18 GiB allocatable 的宿主 profile 中准入。
+ * 每 Attempt 限 1 CPU / 4 GiB。宿主 checkout 与 Codex session 都落在 tmpfs；原 1536 MiB 上限会在
+ * 长安装对话里把 app-server 以 exit 137 杀掉。整批吞吐另由仓库级并发上限约束。
  * 带 tmpfs 的 provider 能力是 DestroyOnly，NiceEval 会拒绝 --keep-sandbox。
  *
  * candidateVersion 可选：harness 实验传版本号触发共享基建预装（buildArgs NICEEVAL_VERSION）；
@@ -146,20 +147,20 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
     dockerAccess: { mode: "dind", isolation: "raw-privileged", storageProfile: "harness-raw" },
     resources: {
       cpus: 1,
-      memoryBytes: 1536 * MIB,
+      memoryBytes: 4 * GIB,
       pidsLimit: 2048,
       dockerDataBytes: 4 * GIB,
       readOnlyRootfs: true,
       tmpfs: {
         "/home/sandbox/workspace": {
-          sizeBytes: 2 * GIB,
+          sizeBytes: 4 * GIB,
           mode: 0o755,
           uid: 1000,
           gid: 1000,
           executable: true,
         },
-        "/home/node": { sizeBytes: 512 * MIB, mode: 0o700, uid: 1000, gid: 1000 },
-        "/tmp": { sizeBytes: 1024 * MIB, mode: 0o1777, uid: 0, gid: 0 },
+        "/home/node": { sizeBytes: 2 * GIB, mode: 0o700, uid: 1000, gid: 1000 },
+        "/tmp": { sizeBytes: 2 * GIB, mode: 0o1777, uid: 0, gid: 0 },
         "/run": { sizeBytes: 128 * MIB, mode: 0o755, uid: 0, gid: 0 },
         "/root": { sizeBytes: 64 * MIB, mode: 0o700, uid: 0, gid: 0 },
         "/opt/fixture-secrets": { sizeBytes: 16 * MIB, mode: 0o700, uid: 1000, gid: 1000 },

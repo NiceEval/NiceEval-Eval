@@ -72,8 +72,13 @@ export async function scoreIntegrationConversation(
     "接口就用你探到的那个；被测服务需要的话你自己起；judge 按文档处理，没有可用 key 就降级。" +
     createEvalAnswer +
     "其余你自行决定，不用再等我确认。";
+  const pendingInputs = opts.turn.events.flatMap((event) =>
+    event.type === "input.requested" ? [event.request] : []
+  );
+  // regression: Codex 可能在同一轮并列提出多个 request_user_input 问题；多个请求不能靠字符串
+  // 顺序消歧，因此把这份覆盖全部决策的用户答复按稳定 request id 逐项对位。
   const handoffTurn = opts.turn.status === "waiting"
-    ? await t.respond(answer)
+    ? await t.respond(...pendingInputs.map((request) => ({ request, text: answer })))
     : await t.send(answer);
 
   if (createEval) {

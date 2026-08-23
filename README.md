@@ -132,7 +132,9 @@ Harness 实验族也有三格：`harness/v0.9.0`、`harness/v0.12.0` 与
 `harness/canary`。它们运行相同的两道无历史快照反馈闭环题；差异只在镜像内预装的候选
 NiceEval、随包文档版本与 accept 契约（0.12+ 可 accept 缓存、0.9.x 全量重跑），不承担跨
 reader 的历史 report 兼容测试。`attempts` 使用 NiceEval 的默认值 1，完整矩阵共 **6 个
-coding-agent attempt**；只想检查计划时始终先用 `--dry`。
+coding-agent attempt**。全仓并发上限为 2：安装题的宿主 checkout、Codex session 与内层
+Docker 会同时占用大量内存和临时空间，Docker provider 的通用默认并发 10 不适合这组题。
+只想检查计划时始终先用 `--dry`。
 
 ## 安装评估如何计分
 

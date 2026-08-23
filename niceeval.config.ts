@@ -14,6 +14,9 @@ import { loadRepoEnv } from "./lib/env.ts";
 loadRepoEnv();
 
 export default defineConfig({
+  // 安装 Attempt 会同时 clone 大型宿主、运行内层 Docker，并把 Codex session 留在 tmpfs。
+  // Docker provider 的通用默认并发 10 会先耗尽本机资源，因此这里固定整仓吞吐上限。
+  maxConcurrency: 2,
   judge: {
     // 全仓产出质量统一交给 Sol 裁判。被测 Agent 由各 Experiment 单独选择；Harness 当前使用
     // Terra；裁判不再与被测模型混用。
