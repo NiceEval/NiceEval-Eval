@@ -8,10 +8,10 @@
  * 使用当前 niceeval/sandbox 的 Dockerfile source 构造：
  * `dockerSandbox({ source: { type: "dockerfile", ... } })`。
  *
- * context 是仓库根，.dockerignore 把 context 白名单收窄到 sandbox/。Harness 候选版本经
- * buildArgs 传入并参与镜像身份（buildKey），每个版本一个可缓存、互不覆盖的共享基建镜像；
- * install 使用不含候选依赖的专用 target。case repo 不进 build context，由所属 Eval 的
- * fixture action 写入准备链。
+ * context 是仓库根，.dockerignore 把 context 白名单收窄到 sandbox/。Harness 镜像只携带
+ * 固定 seed 与离线 runtime；精确候选版本由下方声明式 action 安装并物化到 attempt tmpfs。
+ * install 使用不含 Harness seed 与候选依赖的专用 target。case repo 不进 build context，
+ * 由所属 Eval 的 fixture action 写入准备链。
  */
 
 import { codexAgent } from "niceeval/adapter";
@@ -33,7 +33,7 @@ const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
 
 const HARNESS_RUNTIME_IMPORT_ACTION_ID = "niceeval-eval.import-inner-runtimes";
-const HARNESS_WORKSPACE_ACTION_ID = "niceeval-eval.prepare-workspace-and-home";
+const HARNESS_CANDIDATE_ACTION_ID = "niceeval-eval.install-candidate-and-prepare-workspace";
 const RUNTIME_CONTRACT_ACTION_ID = "niceeval-eval.runtime-contract";
 
 /**
@@ -86,22 +86,54 @@ printf '%s\n' 'inner runtime 就绪：offline.invalid/niceeval-harness/runtime:{
 }
 
 /**
- * 候选 workspace 与 node home 都位于 attempt 私有 tmpfs，必须在 runtime 导入满足后逐次恢复。
- * 省略 cache.state 即保留默认 all，不能并入只捕获 Docker data-root 的前缀。
+ * 候选安装、init、生成物清理、只读依赖树和 workspace/home 物化都由 Harness 的 TS layer
+ * 明确拥有。它们位于 attempt 私有 tmpfs，必须在 runtime 导入满足后逐次执行；省略
+ * cache.state 即保留默认 all，不能并入只捕获 Docker data-root 的前缀。
  */
-function prepareHarnessWorkspaceAndHome() {
+function installCandidateAndPrepareWorkspace(candidateVersion: string) {
   return shell({
-    id: HARNESS_WORKSPACE_ACTION_ID,
+    id: HARNESS_CANDIDATE_ACTION_ID,
     command: `set -eu
+candidate_version=${shellQuote(candidateVersion)}
+seed=/opt/niceeval-harness-seed
+scratch=/tmp/niceeval-harness
+project="$scratch/project"
+modules="$scratch/node_modules"
+store="$scratch/pnpm-store"
+workspace=/home/sandbox/workspace
+
+test -d "$seed"
+rm -rf "$scratch"
+mkdir -p "$project" "$store"
+cp -a "$seed/." "$project/"
+
+# pnpm 11 的 minimumReleaseAge 默认策略会拦截刚发布的候选；被评对象不受包年龄限制。
+export npm_config_minimum_release_age=0
+printf '安装 harness 候选 niceeval@%s…\n' "$candidate_version"
+(cd "$project" && pnpm add -D --store-dir "$store" "niceeval@$candidate_version" && pnpm exec niceeval init)
+
+# init 只提供候选版本的项目指引；题目源码、agent、eval 与 experiment 由 case fixture 上传。
+rm -rf "$project/agents" "$project/config" "$project/docs" "$project/evals" \
+  "$project/experiments" "$project/src"
+mkdir -p "$project/evals" "$project/experiments"
+
+# 保留绝对 symlink 和 root 拥有的只读依赖树；清空仅供安装使用的 pnpm store 后，pnpm exec
+# 仍能完全离线运行候选 CLI。
+mv "$project/node_modules" "$modules"
+ln -s "$modules" "$project/node_modules"
+rm -rf "$store"
+mkdir -p "$store/v11"
+chmod -R a+rX "$modules" "$store"
+chmod 0700 "$project"
+
 cp -a /opt/niceeval-node-home/. /home/node/
 chown -R node:node /home/node
 
-fixture_project=/opt/niceeval-harness/project
-workspace=/home/sandbox/workspace
-test -d "$fixture_project"
 mkdir -p "$workspace"
-cp -a "$fixture_project/." "$workspace/"
-chown -R node:node "$workspace"`,
+cp -a "$project/." "$workspace/"
+chown -R node:node "$workspace"
+
+printf 'harness 候选就绪：niceeval@%s\n' "$candidate_version"`,
     user: "root",
     changeFrequency: changeFrequency.rare + 1,
     dependsOn: [actionRef(HARNESS_RUNTIME_IMPORT_ACTION_ID)],
@@ -119,7 +151,7 @@ function assertRuntime(candidateVersion?: string) {
       : {}),
     ...(candidateVersion === undefined
       ? {}
-      : { dependsOn: [actionRef(HARNESS_WORKSPACE_ACTION_ID)] }),
+      : { dependsOn: [actionRef(HARNESS_CANDIDATE_ACTION_ID)] }),
   });
 }
 
@@ -129,7 +161,7 @@ function runtimeContractScript(candidateVersion?: string): string {
     : `
 candidate_version=${shellQuote(candidateVersion)}
 test -f package.json && test -L node_modules && test -f AGENTS.md || \
-  fail "workspace 缺预装项目基建、候选版 AGENTS 或 node_modules symlink：niceeval@$candidate_version 镜像没有完成 build/action 准备。"
+  fail "workspace 缺候选项目基建、候选版 AGENTS 或 node_modules symlink：niceeval@$candidate_version action 没有完成安装/物化。"
 installed_version="$(node -p "require('./node_modules/niceeval/package.json').version" 2>&1)" || \
   fail "workspace 候选版本不可读：niceeval@$candidate_version"
 [ "$installed_version" = "$candidate_version" ] || \
@@ -138,7 +170,7 @@ project_cli_version="$(pnpm exec niceeval --version 2>&1)" || \
   fail "workspace 项目内 niceeval 命令不可用：niceeval@$candidate_version"
 [ "$project_cli_version" = "$candidate_version" ] || \
   fail "workspace 项目内 niceeval 命令版本不符：期望 $candidate_version，实测 $project_cli_version"
-[ ! -e src ] || fail "候选镜像错误地烘入了 case 源码（niceeval@$candidate_version）"`;
+[ ! -e src ] || fail "候选准备 action 错误地物化了 case 源码（niceeval@$candidate_version）"`;
 
   return `set -eu
 fail() { printf '%s\\n' "$1" >&2; exit 1; }
@@ -199,7 +231,6 @@ function shellQuote(value: string): string {
  */
 function rawDindBase(source: {
   target: "install" | "harness-candidate";
-  buildArgs?: Readonly<Record<string, string>>;
 }) {
   return dockerSandbox({
     source: {
@@ -207,7 +238,6 @@ function rawDindBase(source: {
       context: new URL("../", import.meta.url),
       file: "sandbox/Dockerfile",
       target: source.target,
-      ...(source.buildArgs === undefined ? {} : { buildArgs: source.buildArgs }),
     },
     user: "node",
     dockerAccess: { mode: "dind", isolation: "raw-privileged", storageProfile: "harness-raw" },
@@ -251,13 +281,10 @@ export function installSandbox() {
     .before(provisionTargetAppCommand);
 }
 
-/** Harness 保留候选基建、两枚离线 runtime、workspace/home all barrier 与 runtime contract。 */
+/** Harness 保留候选安装、两枚离线 runtime、workspace/home all barrier 与 runtime contract。 */
 export function harnessSandbox(candidateVersion: string) {
-  return rawDindBase({
-    target: "harness-candidate",
-    buildArgs: { NICEEVAL_VERSION: candidateVersion },
-  })
+  return rawDindBase({ target: "harness-candidate" })
     .before(importHarnessRuntimes())
-    .before(prepareHarnessWorkspaceAndHome())
+    .before(installCandidateAndPrepareWorkspace(candidateVersion))
     .before(assertRuntime(candidateVersion));
 }

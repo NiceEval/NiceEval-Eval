@@ -42,7 +42,7 @@ RUN apt-get update \
 
 # -------------------------------------------------------------------------------------
 # 离线 inner runtime 的两枚固定 digest 物化源。内层被测项目（terminal-bench/regex-log）
-# 需要 inner dockerd 本地就有 node / python 两个 tag；两枚 rootfs 归档只在候选镜像物化，
+# 需要 inner dockerd 本地就有 node / python 两个 tag；两枚 rootfs 归档只在 Harness 镜像物化，
 # 由 Experiment 的 TS action 做本地 docker import。这里**不**经过 base 的 apt 层：物化零安装，
 # rootfs 内容完全由固定 digest 镜像决定，不存在随时间漂移的 unpinned 包安装。
 #
@@ -94,21 +94,14 @@ COPY --from=runtime-python /out/runtime-python.tar.gz /out/runtime-python.tar.gz
 RUN chmod 0700 /opt/niceeval-install/runtime \
   && chmod 0400 /opt/niceeval-install/runtime/*
 
-# Harness 专用候选层才物化候选 NiceEval 基建。
+# Harness 专用层只携带候选项目 seed 与两枚离线 runtime。候选 NiceEval 的精确版本、依赖、
+# lockfile 和 init 指引由 Experiment 的声明式 TS action 物化到 attempt tmpfs。
 FROM base AS harness-candidate
 
-# 候选 niceeval 版本由 harness experiment 经 buildArgs 传入；build key 包含它，因此
-# 0.9.0 / 0.12.0 / 0.13.3 / 每个解析后的 canary 都形成独立可缓存镜像。ARG 放到通用基线之后，
-# 版本变化可复用前层缓存。Harness build 脚本与 seed 不进入 install target。
-ARG NICEEVAL_VERSION
-COPY sandbox/niceeval-harness-build.sh /usr/local/bin/niceeval-harness-build
-RUN chmod 0755 /usr/local/bin/niceeval-harness-build
-
-# 这里只预装共享基建，不把任何 case repo 烘进镜像。各 Eval 的 fixture action 写入自己的小 repo；
-# fixture 迭代不会让候选依赖层失效，也不会产生运行时安装。
+# 不把任何 case repo 烘进镜像。seed 仅供 root 准备 action 读取；各 Eval 的 fixture action 随后
+# 写入自己的小 repo，fixture 迭代不会让通用 Harness 镜像失效。
 COPY sandbox/harness-project/ /opt/niceeval-harness-seed/
-RUN test -n "$NICEEVAL_VERSION" \
-  && /usr/local/bin/niceeval-harness-build
+RUN chmod 0700 /opt/niceeval-harness-seed
 
 COPY --from=runtime-node /out/runtime-node.tar.gz /out/runtime-node.tar.gz.sha256 /opt/niceeval-harness/runtime/
 COPY --from=runtime-python /out/runtime-python.tar.gz /out/runtime-python.tar.gz.sha256 /opt/niceeval-harness/runtime/
