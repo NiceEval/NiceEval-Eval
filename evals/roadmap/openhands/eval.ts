@@ -1,4 +1,5 @@
 import { defineScoreEval } from "niceeval";
+import { actionRef, command, gitCheckout, sandboxLayer } from "niceeval/sandbox";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
 import {
   archiveAgentOutput,
@@ -8,7 +9,6 @@ import {
   checkExperimentDesign,
   checkInstallation,
   collectAgentSource,
-  fixtureSandbox,
   scoreDocumentationRouting,
   scoreEvalDesign,
   scoreIntegrationConversation,
@@ -20,12 +20,25 @@ export default defineScoreEval({
   description: "把 niceeval 接入 OpenHands（自主编码 agent）",
   judge: true,
   timeoutMs: 35 * 60 * 1000,
-  sandbox: fixtureSandbox(openhandsCase.fixture),
+  sandbox: sandboxLayer()
+    .before(gitCheckout({
+      id: "niceeval-eval.install-fixture.openhands-1.11.0.checkout",
+      repository: "https://github.com/OpenHands/OpenHands.git",
+      ref: "11ca68ab2e15dcd85c21e4d7d3409e7a259369ac",
+      to: ".",
+      sparse: { include: ["/*"], exclude: ["/docs/", "/frontend/", "/evaluation/"] },
+      changeFrequency: 20,
+    }))
+    .before(command("rm", ["-rf", ".git"], {
+      id: "niceeval-eval.install-fixture.openhands-1.11.0.detach",
+      changeFrequency: 21,
+      dependsOn: [actionRef("niceeval-eval.install-fixture.openhands-1.11.0.checkout")],
+    })),
   async test(t) {
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
 
-    // Setup：候选文档落点；锁定的真实宿主已由 fixture sandbox 放进基线。
+    // Setup：候选文档落点；锁定的真实宿主已由本 Eval 的 fixture action 放进基线。
     assertPagesInCandidate(openhandsCase.expectedPages, version);
 
     // 任务：只给安装引导与版本约束，实施内容由候选文档决定。

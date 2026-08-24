@@ -36,11 +36,8 @@ RUN apt-get update \
   && cp -a /home/node /opt/niceeval-node-home
 
 COPY sandbox/niceeval-harness-build.sh /usr/local/bin/niceeval-harness-build
-COPY sandbox/niceeval-harness-prepare.sh /usr/local/bin/niceeval-harness-prepare
-COPY sandbox/niceeval-runtime-import.sh /usr/local/bin/niceeval-runtime-import
 
-RUN chmod 0755 /usr/local/bin/niceeval-harness-build /usr/local/bin/niceeval-harness-prepare \
-  /usr/local/bin/niceeval-runtime-import
+RUN chmod 0755 /usr/local/bin/niceeval-harness-build
 
 # NiceEval 的 DinD provider 会覆盖 Entrypoint/Cmd 为自己的 TTL/log supervisor，并通过默认
 # /var/run/docker.sock 暴露同容器 daemon；不要设置 DOCKER_HOST/DOCKER_CONTEXT，避免
@@ -50,7 +47,7 @@ RUN chmod 0755 /usr/local/bin/niceeval-harness-build /usr/local/bin/niceeval-har
 # -------------------------------------------------------------------------------------
 # 离线 inner runtime 的两枚固定 digest 物化源。内层被测项目（terminal-bench/regex-log）
 # 需要 inner dockerd 本地就有 node / python 两个 tag；两枚 rootfs 归档只在候选镜像物化，
-# 由 entrypoint 做本地 docker import。这里**不**经过 base 的 apt 层：物化零安装，
+# 由 Experiment 的 TS action 做本地 docker import。这里**不**经过 base 的 apt 层：物化零安装，
 # rootfs 内容完全由固定 digest 镜像决定，不存在随时间漂移的 unpinned 包安装。
 #
 # 物化方式：对 stage 完整 rootfs 打确定性 tar/gzip（条目排序、固定 mtime、numeric owner、gzip -n），
@@ -101,7 +98,7 @@ FROM base AS candidate
 # 版本变化可复用前层缓存。
 ARG NICEEVAL_VERSION=""
 
-# 这里只预装共享基建，不把任何 case repo 烘进镜像。各 eval 在 send 前上传自己的小 repo；
+# 这里只预装共享基建，不把任何 case repo 烘进镜像。各 Eval 的 fixture action 写入自己的小 repo；
 # fixture 迭代不会让候选依赖层失效，也不会产生运行时安装。
 COPY sandbox/harness-project/ /opt/niceeval-harness-seed/
 RUN if [ -n "$NICEEVAL_VERSION" ]; then /usr/local/bin/niceeval-harness-build; else rm -rf /opt/niceeval-harness-seed; fi
@@ -115,7 +112,7 @@ RUN test -n "$NICEEVAL_VERSION"
 COPY --from=runtime-node /out/runtime-node.tar.gz /out/runtime-node.tar.gz.sha256 /opt/niceeval-harness/runtime/
 COPY --from=runtime-python /out/runtime-python.tar.gz /out/runtime-python.tar.gz.sha256 /opt/niceeval-harness/runtime/
 
-# 运行期由 entrypoint 先 sha256sum -c，再本地 import 与 --pull=never smoke。
+# 运行期由 Experiment 的 TS action 先 sha256sum -c，再本地 import 与 --pull=never smoke。
 # Agent 遵循随包指引用 pnpm exec 调用 workspace 中的精确候选版本。
 RUN chmod 0700 /opt/niceeval-harness/runtime \
   && chmod 0400 /opt/niceeval-harness/runtime/*

@@ -15,18 +15,20 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineScoreEval, type ScoreTestContext } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
-import { fixtureSandbox } from "../../lib/install/fixture.ts";
+import {
+  actionRef,
+  command,
+  gitCheckout,
+  sandboxLayer,
+  type SandboxLayer,
+} from "niceeval/sandbox";
 
 type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
 
 interface InstallCase {
   id: "db-gpt" | "gpt-researcher";
   description: string;
-  fixture: {
-    repoUrl: string;
-    ref: string;
-    excludeDirs?: readonly string[];
-  };
+  sandbox: SandboxLayer<"command-only">;
   expectedPages: RegExp;
   clarification: {
     transport: string;
@@ -46,11 +48,20 @@ interface InstallCase {
 const DB_GPT: InstallCase = {
   id: "db-gpt",
   description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
-  fixture: {
-    repoUrl: "https://github.com/eosphoros-ai/DB-GPT.git",
-    ref: "v0.8.1",
-    excludeDirs: ["docs", "assets"],
-  },
+  sandbox: sandboxLayer()
+    .before(gitCheckout({
+      id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout",
+      repository: "https://github.com/eosphoros-ai/DB-GPT.git",
+      ref: "177bfc84f77e7f7760c055a748b0e4bb82d9fa47",
+      to: ".",
+      sparse: { include: ["/*"], exclude: ["/docs/", "/assets/"] },
+      changeFrequency: 20,
+    }))
+    .before(command("rm", ["-rf", ".git"], {
+      id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.detach",
+      changeFrequency: 21,
+      dependsOn: [actionRef("niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout")],
+    })),
   expectedPages:
     /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/,
   clarification: {
@@ -77,10 +88,19 @@ const DB_GPT: InstallCase = {
 const GPT_RESEARCHER: InstallCase = {
   id: "gpt-researcher",
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
-  fixture: {
-    repoUrl: "https://github.com/assafelovic/gpt-researcher.git",
-    ref: "v3.6.0",
-  },
+  sandbox: sandboxLayer()
+    .before(gitCheckout({
+      id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout",
+      repository: "https://github.com/assafelovic/gpt-researcher.git",
+      ref: "5d84d2f5553e70a2765a8ff3a0d2672d60437ce8",
+      to: ".",
+      changeFrequency: 20,
+    }))
+    .before(command("rm", ["-rf", ".git"], {
+      id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.detach",
+      changeFrequency: 21,
+      dependsOn: [actionRef("niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout")],
+    })),
   expectedPages:
     /docs-site\/zh\/(how-to|tutorials)\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/,
   clarification: {
@@ -110,7 +130,7 @@ function createInstallEval(installCase: InstallCase) {
     description: installCase.description,
     judge: true,
     timeoutMs: 35 * 60 * 1000,
-    sandbox: fixtureSandbox(installCase.fixture),
+    sandbox: installCase.sandbox,
     async test(t) {
       const version = t.flags.candidateVersion;
       if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");

@@ -1,6 +1,7 @@
 import { defineScoreEval } from "niceeval";
 import { commandSucceeded, equals, referencesAnyPath, toolMatch } from "niceeval/expect";
 import { loadCriteria, loadText } from "niceeval/loaders";
+import { changeFrequency, sandboxLayer, uploadDirectory } from "niceeval/sandbox";
 
 const TARGET_EVAL = "evals/terminal-bench/cancel-async-tasks.eval.ts";
 const FIXTURE_ROOT = "../../../../fixtures/harness/terminal-bench/cancel-async-authoring/repo/";
@@ -51,9 +52,13 @@ export default defineScoreEval({
   tags: ["harness", "terminal-bench", "authoring", "hidden-tests", "deterministic", "single-turn"],
   timeoutMs: 30 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
+  sandbox: sandboxLayer().before(uploadDirectory({
+    id: "niceeval-eval.harness.cancel-async-authoring.fixture",
+    source: new URL(FIXTURE_ROOT, import.meta.url),
+    to: ".",
+    changeFrequency: changeFrequency.normal,
+  })),
   async test(t) {
-    await t.sandbox.uploadDirectory(new URL(FIXTURE_ROOT, import.meta.url), ".");
-
     const input = `仓库里有一份从 Terminal-Bench 裁出的 cancel-async-tasks 原始题包，但还没有接入 NiceEval。
 
 请只创建 ${TARGET_EVAL}，把它做成正式 Eval：保持 task/task.yaml 的官方题意，使用 task/fixture/Dockerfile，并把未经修改的官方 tests 作为唯一业务判据。tests、run-tests 脚本和 solution 都是隐藏判据或参考答案，必须在被测 agent 收工以后才进入 task sandbox，不能进入 Docker build context，也不能提前出现在 agent 可见的文件系统里。隐藏测试及 runner 还必须进入这条 Eval 的 fingerprint，判据内容改变后不能复用旧结果。

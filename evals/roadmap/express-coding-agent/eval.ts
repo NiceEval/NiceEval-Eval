@@ -1,4 +1,5 @@
 import { defineScoreEval } from "niceeval";
+import { actionRef, command, gitCheckout, sandboxLayer } from "niceeval/sandbox";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
 import {
   archiveAgentOutput,
@@ -9,7 +10,6 @@ import {
   checkSandboxProvisioning,
   collectAgentSource,
   continueSandboxClarification,
-  fixtureSandbox,
   scoreDocumentationRouting,
   scoreEvalDesign,
   scoreSandboxClarification,
@@ -22,12 +22,24 @@ export default defineScoreEval({
   description: "为 Express 仓库搭一套评 coding agent 的沙箱评估（考 sandbox/template 创建）",
   judge: true,
   timeoutMs: 35 * 60 * 1000,
-  sandbox: fixtureSandbox(expressCodingAgentCase.fixture),
+  sandbox: sandboxLayer()
+    .before(gitCheckout({
+      id: "niceeval-eval.install-fixture.express-4.21.2.checkout",
+      repository: "https://github.com/expressjs/express.git",
+      ref: "1faf228935aa0a13111f92c28ee795be64ce3f0f",
+      to: ".",
+      changeFrequency: 20,
+    }))
+    .before(command("rm", ["-rf", ".git"], {
+      id: "niceeval-eval.install-fixture.express-4.21.2.detach",
+      changeFrequency: 21,
+      dependsOn: [actionRef("niceeval-eval.install-fixture.express-4.21.2.checkout")],
+    })),
   async test(t) {
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
 
-    // Setup：候选文档落点；锁定的真实 Express 宿主已由 fixture sandbox 放进基线。
+    // Setup：候选文档落点；锁定的真实 Express 宿主已由本 Eval 的 fixture action 放进基线。
     assertPagesInCandidate(expressCodingAgentCase.expectedPages, version);
 
     // 任务：表达隔离、可复现的用户意图，不预告 provider 或模板解法。

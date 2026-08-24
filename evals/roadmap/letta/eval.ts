@@ -1,4 +1,5 @@
 import { defineScoreEval } from "niceeval";
+import { actionRef, command, gitCheckout, sandboxLayer } from "niceeval/sandbox";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
 import {
   archiveAgentOutput,
@@ -8,7 +9,6 @@ import {
   checkExperimentDesign,
   checkInstallation,
   collectAgentSource,
-  fixtureSandbox,
   scoreDocumentationRouting,
   scoreEvalDesign,
   scoreIntegrationConversation,
@@ -20,12 +20,24 @@ export default defineScoreEval({
   description: "把 niceeval 接入 Letta（有状态记忆对话 agent / MemGPT）",
   judge: true,
   timeoutMs: 35 * 60 * 1000,
-  sandbox: fixtureSandbox(lettaCase.fixture),
+  sandbox: sandboxLayer()
+    .before(gitCheckout({
+      id: "niceeval-eval.install-fixture.letta-0.16.8.checkout",
+      repository: "https://github.com/letta-ai/letta.git",
+      ref: "1131535716e8a31c9a437f8695e25ac98f203a24",
+      to: ".",
+      changeFrequency: 20,
+    }))
+    .before(command("rm", ["-rf", ".git"], {
+      id: "niceeval-eval.install-fixture.letta-0.16.8.detach",
+      changeFrequency: 21,
+      dependsOn: [actionRef("niceeval-eval.install-fixture.letta-0.16.8.checkout")],
+    })),
   async test(t) {
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
 
-    // Setup：候选文档落点；锁定的真实宿主已由 fixture sandbox 放进基线。
+    // Setup：候选文档落点；锁定的真实宿主已由本 Eval 的 fixture action 放进基线。
     assertPagesInCandidate(lettaCase.expectedPages, version);
 
     // 任务：只给安装引导与版本约束，实施内容由候选文档决定。

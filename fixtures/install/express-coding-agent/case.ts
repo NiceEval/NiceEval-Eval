@@ -1,13 +1,8 @@
 import type { QualityFacts } from "../../../lib/install/criteria/quality.ts";
 import type { DocumentationRoutingFacts } from "../../../lib/install/documentation.ts";
-import type { FixtureRepo } from "../../../lib/install/fixture.ts";
 
 /** Express 4.21.2 sandbox 路径的宿主事实与固定 HITL 答复。 */
 export const expressCodingAgentCase = {
-  fixture: {
-    repoUrl: "https://github.com/expressjs/express.git",
-    ref: "4.21.2",
-  } satisfies FixtureRepo,
   expectedPages:
     /docs-site\/zh\/(how-to|tutorials)\/(sandbox-providers|fixtures|sandbox-agent)\.mdx/,
   quality: {

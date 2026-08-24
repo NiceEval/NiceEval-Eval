@@ -79,7 +79,7 @@ agent 可见文件系统，若提前看到 tests、runner 或 solution 就写入
 
 Node、pnpm、Docker/Compose、精确候选 NiceEval、依赖和 `niceeval init` 产物在候选镜像中
 共享。0.9.0、0.12.0、0.13.3 与解析后的 canary 各有独立缓存镜像。每个候选镜像还物化两枚**完全离线**
-的 inner runtime 归档（node / python 变体），由 entrypoint 在 inner dockerd 就绪后
+的 inner runtime 归档（node / python 变体），由 Experiment 的 TS action 在 inner dockerd 就绪后
 `docker import` 成两个本地 tag，见 [`fixtures/harness/README.md`](../../fixtures/harness/README.md)。
 四个 Harness experiment 目前沿用项目的全局并发设置；单个 Attempt 已同时占用候选
 Sandbox 与内层 dockerd，运行时需留意宿主资源竞争和模型网关并发抖动。

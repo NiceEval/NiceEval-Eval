@@ -1,7 +1,6 @@
 import type { ClarifyFacts } from "../../../lib/install/criteria/clarification.ts";
 import type { QualityFacts } from "../../../lib/install/criteria/quality.ts";
 import type { DocumentationRoutingFacts } from "../../../lib/install/documentation.ts";
-import type { FixtureRepo } from "../../../lib/install/fixture.ts";
 
 /** OpenHands 1.11.0 的宿主事实；eval 只负责按阶段编排。 */
 const coreUseCase =
@@ -18,11 +17,6 @@ const transport =
   "非 OpenAI 形状；旧版 Socket.IO oh_event/oh_user_action 已删除，别用）";
 
 export const openhandsCase = {
-  fixture: {
-    repoUrl: "https://github.com/OpenHands/OpenHands.git",
-    ref: "1.11.0",
-    excludeDirs: ["docs", "frontend", "evaluation"],
-  } satisfies FixtureRepo,
   expectedPages:
     /docs-site\/zh\/(how-to|tutorials)\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/,
   quality: {

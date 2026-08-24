@@ -10,14 +10,13 @@
  *
  * context 是仓库根，.dockerignore 把 context 白名单收窄到 sandbox/。候选版本经
  * buildArgs 传入并参与镜像身份（buildKey），每个版本一个可缓存、互不覆盖的共享基建镜像；
- * case repo 不进 build context，由所属 eval 在 send 前上传。
+ * case repo 不进 build context，由所属 Eval 的 fixture action 写入准备链。
  */
 
 import { codexAgent } from "niceeval/adapter";
 import {
   actionRef,
   changeFrequency,
-  command,
   defineSandboxCommand,
   dockerSandbox,
   sandboxState,
@@ -50,8 +49,35 @@ export function installCodexAgent() {
  * profile setup-prefix 才能安全复用导入结果而不假装同时捕获 workspace、home 或其它 tmpfs。
  */
 function importHarnessRuntimes() {
-  return command("/usr/local/bin/niceeval-runtime-import", [], {
+  return shell({
     id: HARNESS_RUNTIME_IMPORT_ACTION_ID,
+    command: `set -eu
+runtime_dir=/opt/niceeval-harness/runtime
+
+if [ ! -d "$runtime_dir" ]; then
+  printf '%s\n' "没有离线 runtime 归档目录（$runtime_dir），跳过导入" >&2
+  exit 0
+fi
+
+cd "$runtime_dir"
+sha256sum -c runtime-node.tar.gz.sha256
+sha256sum -c runtime-python.tar.gz.sha256
+
+for variant in node python; do
+  archive="runtime-$variant.tar.gz"
+  tag="offline.invalid/niceeval-harness/runtime:$variant"
+  printf '导入 inner runtime:%s（%s）…\n' "$variant" "$archive"
+  docker import "$archive" "$tag"
+done
+
+docker run --pull=never --rm --entrypoint /bin/sh \
+  offline.invalid/niceeval-harness/runtime:node \
+  -c 'node -v && git --version && ! command -v python3'
+docker run --pull=never --rm --entrypoint /bin/sh \
+  offline.invalid/niceeval-harness/runtime:python \
+  -c 'node -v && git --version && python3 --version'
+
+printf '%s\n' 'inner runtime 就绪：offline.invalid/niceeval-harness/runtime:{node,python}'`,
     user: "root",
     changeFrequency: changeFrequency.rare,
     cache: { state: sandboxState.dockerData },
@@ -63,8 +89,18 @@ function importHarnessRuntimes() {
  * 省略 cache.state 即保留默认 all，不能并入只捕获 Docker data-root 的前缀。
  */
 function prepareHarnessWorkspaceAndHome() {
-  return command("niceeval-harness-prepare", [], {
+  return shell({
     id: HARNESS_WORKSPACE_ACTION_ID,
+    command: `set -eu
+cp -a /opt/niceeval-node-home/. /home/node/
+chown -R node:node /home/node
+
+fixture_project=/opt/niceeval-harness/project
+workspace=/home/sandbox/workspace
+test -d "$fixture_project"
+mkdir -p "$workspace"
+cp -a "$fixture_project/." "$workspace/"
+chown -R node:node "$workspace"`,
     user: "root",
     changeFrequency: changeFrequency.rare + 1,
     dependsOn: [actionRef(HARNESS_RUNTIME_IMPORT_ACTION_ID)],
@@ -89,7 +125,7 @@ function runtimeContractScript(candidateVersion?: string): string {
     : `
 candidate_version=${shellQuote(candidateVersion)}
 test -f package.json && test -L node_modules && test -f AGENTS.md || \
-  fail "workspace 缺预装项目基建、候选版 AGENTS 或 node_modules symlink：niceeval@$candidate_version 镜像没有完成 build/entrypoint 准备。"
+  fail "workspace 缺预装项目基建、候选版 AGENTS 或 node_modules symlink：niceeval@$candidate_version 镜像没有完成 build/action 准备。"
 installed_version="$(node -p "require('./node_modules/niceeval/package.json').version" 2>&1)" || \
   fail "workspace 候选版本不可读：niceeval@$candidate_version"
 [ "$installed_version" = "$candidate_version" ] || \

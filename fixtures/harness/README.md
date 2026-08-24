@@ -30,7 +30,7 @@ sandbox agent 在预载 runtime 里确定性重放 task 产出；authoring 题�
   `niceeval init` 生成的 `AGENTS.md`；`harness-candidate` 在它之上只增加两枚离线 inner
   runtime 归档，install 实验不传版本并直接停在 `candidate`，不依赖 runtime 物化 stage；
 - 0.9.0、0.12.0、0.13.3 与解析后的 canary 由 build arg 形成独立缓存镜像；
-- attempt 启动后，各 outer eval 只上传自己几 KB 的 repo，覆盖到已准备的 workspace；不运行
+- attempt 准备链中，各 Eval 自己的 fixture action 只上传几 KB 的 repo，覆盖到已准备的 workspace；不运行
   `pnpm add`、不运行 `niceeval init`，也不复制 `node_modules`。
 
 case repo 不进入 Docker build context，所以改题目不会使候选依赖镜像失效。镜像内也没有任何
@@ -63,8 +63,8 @@ offline.invalid/niceeval-harness/runtime:python
 - Harness 阶段：专用 `harness-candidate` target 用 `COPY --from=runtime-*` 把归档与校验
   文件放到 `/opt/niceeval-harness/runtime/`；普通 `candidate` 不引用这两个 stage，install
   镜像不构建也不携带归档；
-- 启动期：`niceeval-dind-entrypoint.sh` 在 inner dockerd 就绪后调用
-  `niceeval-runtime-import.sh`，先对两枚归档做 `sha256sum -c` 校验，再做本地
+- 启动期：Experiment 的低频 `dockerData` action 在 inner dockerd 就绪后，先对两枚归档做
+  `sha256sum -c` 校验，再做本地
   `docker import`，最后用 `docker run --pull=never` 冒烟：node 变体 node/git 可用且
   python3 不可执行，python 变体 node/git/python3 全可用；任一步失败即整体退出，
   Sandbox 直接 errored；

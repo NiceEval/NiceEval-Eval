@@ -163,7 +163,7 @@ sparse checkout 排除与接入无关的大型文档和资源目录。agent 写�
 `fixtures/harness/<case>/repo/`。
 它们共享候选镜像基建，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果，也不在
 attempt 内安装候选依赖或运行 `niceeval init`。离线 inner runtime 的 node / python 变体
-在构建期从固定 digest 的物化 stage 打成归档（全程零包安装），entrypoint 先 `sha256sum -c`
+在构建期从固定 digest 的物化 stage 打成归档（全程零包安装），Experiment 的 TS action 先 `sha256sum -c`
 校验再本地 `docker import`，随后用 `--pull=never` 真实冒烟 node/git/python3；attempt 启动期
 的导入和冒烟不联网，`.invalid` 保留域与 `--pull=never` 保证缺镜像时立即失败。构建机首次
 物化固定 digest stage 时仍可能从 registry 拉取对应基础镜像。

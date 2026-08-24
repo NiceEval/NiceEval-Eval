@@ -1,7 +1,6 @@
 import type { ClarifyFacts } from "../../../lib/install/criteria/clarification.ts";
 import type { QualityFacts } from "../../../lib/install/criteria/quality.ts";
 import type { DocumentationRoutingFacts } from "../../../lib/install/documentation.ts";
-import type { FixtureRepo } from "../../../lib/install/fixture.ts";
 
 /** Skyvern v1.0.47 的宿主事实；eval 只负责按阶段编排。 */
 const coreUseCase =
@@ -16,11 +15,6 @@ const transport =
   "只等 completed/failed 会永久轮询），从结果的 output 字段取抽取产物。非流式、非 OpenAI 形状";
 
 export const skyvernCase = {
-  fixture: {
-    repoUrl: "https://github.com/Skyvern-AI/skyvern.git",
-    ref: "v1.0.47",
-    excludeDirs: ["skyvern-frontend", "docs"],
-  } satisfies FixtureRepo,
   expectedPages:
     /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/,
   quality: {

@@ -1,5 +1,6 @@
 import { defineScoreEval } from "niceeval";
 import { referencesAnyPath, toolMatch } from "niceeval/expect";
+import { changeFrequency, sandboxLayer, uploadDirectory } from "niceeval/sandbox";
 
 export default defineScoreEval({
   description: "只凭公开结果区分 Terminal-Bench agent 产出错误与过紧 eval",
@@ -7,12 +8,13 @@ export default defineScoreEval({
   timeoutMs: 20 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
   judge: true,
+  sandbox: sandboxLayer().before(uploadDirectory({
+    id: "niceeval-eval.harness.log-summary.fixture",
+    source: new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url),
+    to: ".",
+    changeFrequency: changeFrequency.normal,
+  })),
   async test(t) {
-    await t.sandbox.uploadDirectory(
-      new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url),
-      ".",
-    );
-
     // 先由 fixture 跑完 experiment，再让 agent 接手已经停稳的 Record。Agent 可以从安装版本的
     // bundled docs 学公开命令，但历史事实仍必须来自 compact show 与 locator 证据切片。
     // 不开 stream：0.9.x 的多行 agent handoff 经流式 tee 后可能只在返回值里留下首行，

@@ -1,9 +1,9 @@
 #!/bin/sh
 # 在 Docker build 阶段把「候选 niceeval + pnpm + niceeval init」一次性物化成共享项目基建。
-# 三个 case 的小 repo 不进镜像，由各自 eval 在首轮 send 前上传；见 fixtures/harness/README.md。
+# 三个 case 的小 repo 不进镜像，由各自 Eval 的 fixture action 写入；见 fixtures/harness/README.md。
 #
 # 运行条件：NICEEVAL_VERSION 非空（Dockerfile 只在 ARG 有值时调用本脚本）。
-# 产物分两层：root-only 的项目基建由 entrypoint 复制进 workspace；node_modules 单独留在
+# 产物分两层：root-only 的项目基建由 Experiment action 复制进 workspace；node_modules 单独留在
 # node 可读的只读目录，project 只保留绝对 symlink。每个 attempt 只再覆盖一份几 KB 的 repo。
 set -eu
 
@@ -44,7 +44,7 @@ rm -rf "$store"
 mkdir -p "$store/v11"
 chmod -R a+rX "$modules" "$store"
 
-# 只有 PID 1 的 root entrypoint 读取项目基建；这里没有任何 case 的业务源码或答案。
+# 只有 root 权限的准备 action 读取项目基建；这里没有任何 case 的业务源码或答案。
 chmod 0700 "$project"
 
 # seed 只服务 build 阶段，构建完即清。
