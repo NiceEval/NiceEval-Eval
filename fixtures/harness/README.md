@@ -26,9 +26,9 @@ sandbox agent 在预载 runtime 里确定性重放 task 产出；authoring 题�
 共享的是运行基建，不是题目内容：
 
 - `sandbox/Dockerfile` 的 `base` 阶段提供 Node、pnpm、Docker/Compose；
-- `candidate` 阶段在收到精确版本 build arg 时预装 NiceEval、依赖、lockfile 与该版本
-  `niceeval init` 生成的 `AGENTS.md`；`harness-candidate` 在它之上只增加两枚离线 inner
-  runtime 归档，install 实验不传版本并直接停在 `candidate`，不依赖 runtime 物化 stage；
+- `harness-candidate` target 在收到精确版本 build arg 时预装 NiceEval、依赖、lockfile、
+  `niceeval init` 生成的 `AGENTS.md` 与两枚离线 inner runtime 归档；独立 `install` target
+  只引用 Python runtime stage，不携带 Harness 的 Node archive 或候选基建；
 - 0.9.0、0.12.0、0.13.3 与解析后的 canary 由 build arg 形成独立缓存镜像；
 - attempt 准备链中，各 Eval 自己的 fixture action 只上传几 KB 的 repo，覆盖到已准备的 workspace；不运行
   `pnpm add`、不运行 `niceeval init`，也不复制 `node_modules`。

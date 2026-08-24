@@ -126,7 +126,11 @@ Judge 使用现有 `turn.judge.autoevals.closedQA()`，通过 `{ on }` 显式传
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
 
 三格都跑普通安装题与 roadmap 中已实现的复杂安装题。
-安装实验统一使用带 Python 凭证准备的 DinD sandbox；它同时满足 Node 题的运行基线。
+安装实验统一使用真实 raw DinD sandbox。专用 install target 只携带固定 digest 物化的通用
+Node/git/Python runtime 归档；DB-GPT 与 GPT Researcher 各自的 Eval action 校验后导入
+`offline.invalid/niceeval-install/runtime:python`，形成只覆盖 inner Docker data-root 的可缓存前缀。
+该镜像不含 NiceEval、应用依赖、服务、Eval 答案或历史结果；被测 agent 仍须自行安装候选与
+应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 
 Harness 实验族也有三格：`harness/v0.9.0`、`harness/v0.12.0` 与
 `harness/canary`。它们运行相同的两道无历史快照反馈闭环题；差异只在镜像内预装的候选

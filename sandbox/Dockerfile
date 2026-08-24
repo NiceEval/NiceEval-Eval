@@ -35,10 +35,6 @@ RUN apt-get update \
   && usermod --append --groups docker node \
   && cp -a /home/node /opt/niceeval-node-home
 
-COPY sandbox/niceeval-harness-build.sh /usr/local/bin/niceeval-harness-build
-
-RUN chmod 0755 /usr/local/bin/niceeval-harness-build
-
 # NiceEval 的 DinD provider 会覆盖 Entrypoint/Cmd 为自己的 TTL/log supervisor，并通过默认
 # /var/run/docker.sock 暴露同容器 daemon；不要设置 DOCKER_HOST/DOCKER_CONTEXT，避免
 # 把 Agent 的裸 docker 命令导向另一套 endpoint。受管命令仍由 factory 的 user: "node"
@@ -89,25 +85,30 @@ RUN set -eu \
   && (cd /out && sha256sum runtime-python.tar.gz > runtime-python.tar.gz.sha256)
 
 # -------------------------------------------------------------------------------------
-# 以上是所有实验复用的 runtime base；以下候选层只在 build arg 非空时物化 Harness 基建。
-FROM base AS candidate
+# install 专用 target 只携带通用 Python runtime；不携带 Harness 的 Node runtime、候选
+# NiceEval、预装依赖、init 产物或构建脚本。归档由所属 Eval 的 TS action 导入 inner dockerd。
+FROM base AS install
+
+COPY --from=runtime-python /out/runtime-python.tar.gz /out/runtime-python.tar.gz.sha256 /opt/niceeval-install/runtime/
+
+RUN chmod 0700 /opt/niceeval-install/runtime \
+  && chmod 0400 /opt/niceeval-install/runtime/*
+
+# Harness 专用候选层才物化候选 NiceEval 基建。
+FROM base AS harness-candidate
 
 # 候选 niceeval 版本由 harness experiment 经 buildArgs 传入；build key 包含它，因此
-# 0.9.0 / 0.12.0 / 0.13.3 / 每个解析后的 canary 都形成独立可缓存镜像。install 实验以 candidate
-# 为 target 且不传版本，保持「安装流程由被测 agent 完成」的测点；ARG 放到通用基线之后，
-# 版本变化可复用前层缓存。
-ARG NICEEVAL_VERSION=""
+# 0.9.0 / 0.12.0 / 0.13.3 / 每个解析后的 canary 都形成独立可缓存镜像。ARG 放到通用基线之后，
+# 版本变化可复用前层缓存。Harness build 脚本与 seed 不进入 install target。
+ARG NICEEVAL_VERSION
+COPY sandbox/niceeval-harness-build.sh /usr/local/bin/niceeval-harness-build
+RUN chmod 0755 /usr/local/bin/niceeval-harness-build
 
 # 这里只预装共享基建，不把任何 case repo 烘进镜像。各 Eval 的 fixture action 写入自己的小 repo；
 # fixture 迭代不会让候选依赖层失效，也不会产生运行时安装。
 COPY sandbox/harness-project/ /opt/niceeval-harness-seed/
-RUN if [ -n "$NICEEVAL_VERSION" ]; then /usr/local/bin/niceeval-harness-build; else rm -rf /opt/niceeval-harness-seed; fi
-
-# Harness 才选择这个专用 target；普通 install 直接停在 candidate，因而不依赖、不构建、
-# 也不携带两枚大 runtime 归档。
-FROM candidate AS harness-candidate
-ARG NICEEVAL_VERSION
-RUN test -n "$NICEEVAL_VERSION"
+RUN test -n "$NICEEVAL_VERSION" \
+  && /usr/local/bin/niceeval-harness-build
 
 COPY --from=runtime-node /out/runtime-node.tar.gz /out/runtime-node.tar.gz.sha256 /opt/niceeval-harness/runtime/
 COPY --from=runtime-python /out/runtime-python.tar.gz /out/runtime-python.tar.gz.sha256 /opt/niceeval-harness/runtime/

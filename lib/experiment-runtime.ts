@@ -8,9 +8,10 @@
  * 使用当前 niceeval/sandbox 的 Dockerfile source 构造：
  * `dockerSandbox({ source: { type: "dockerfile", ... } })`。
  *
- * context 是仓库根，.dockerignore 把 context 白名单收窄到 sandbox/。候选版本经
+ * context 是仓库根，.dockerignore 把 context 白名单收窄到 sandbox/。Harness 候选版本经
  * buildArgs 传入并参与镜像身份（buildKey），每个版本一个可缓存、互不覆盖的共享基建镜像；
- * case repo 不进 build context，由所属 Eval 的 fixture action 写入准备链。
+ * install 使用不含候选依赖的专用 target。case repo 不进 build context，由所属 Eval 的
+ * fixture action 写入准备链。
  */
 
 import { codexAgent } from "niceeval/adapter";
@@ -114,6 +115,9 @@ function assertRuntime(candidateVersion?: string) {
     command: runtimeContractScript(candidateVersion),
     changeFrequency: changeFrequency.rare + (candidateVersion === undefined ? 1 : 2),
     ...(candidateVersion === undefined
+      ? { cache: { state: sandboxState.dockerData } }
+      : {}),
+    ...(candidateVersion === undefined
       ? {}
       : { dependsOn: [actionRef(HARNESS_WORKSPACE_ACTION_ID)] }),
   });
@@ -191,22 +195,19 @@ function shellQuote(value: string): string {
  * 长安装对话里把 app-server 以 exit 137 杀掉。整批吞吐另由仓库级并发上限约束。
  * 带 tmpfs 的 provider 能力是 DestroyOnly，NiceEval 会拒绝 --keep-sandbox。
  *
- * candidateVersion 可选：harness 实验传版本号触发共享基建预装（buildArgs NICEEVAL_VERSION）；
- * install 实验不传，保持「安装流程由被测 agent 在沙箱内完成」的测点。
+ * 两类正式运行复用同一份 raw DinD 资源与 readiness 契约，但选择不同 Dockerfile target。
  */
-export function sandboxWith(profile: "node" | "python" = "node", candidateVersion?: string) {
-  const harnessCandidate = candidateVersion !== undefined;
-  const base = dockerSandbox({
+function rawDindBase(source: {
+  target: "install" | "harness-candidate";
+  buildArgs?: Readonly<Record<string, string>>;
+}) {
+  return dockerSandbox({
     source: {
       type: "dockerfile",
       context: new URL("../", import.meta.url),
       file: "sandbox/Dockerfile",
-      ...(harnessCandidate
-        ? {
-            buildArgs: { NICEEVAL_VERSION: candidateVersion },
-            target: "harness-candidate",
-          }
-        : { target: "candidate" }),
+      target: source.target,
+      ...(source.buildArgs === undefined ? {} : { buildArgs: source.buildArgs }),
     },
     user: "node",
     dockerAccess: { mode: "dind", isolation: "raw-privileged", storageProfile: "harness-raw" },
@@ -237,13 +238,26 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
       timeoutMs: 30_000,
     },
   });
-  const runtime = candidateVersion === undefined
-    ? base.before(assertRuntime())
-    : base
-        .before(importHarnessRuntimes())
-        .before(prepareHarnessWorkspaceAndHome())
-        .before(assertRuntime(candidateVersion));
-  return profile === "python"
-    ? runtime.before(provisionTargetAppCommand)
-    : runtime;
+}
+
+/**
+ * 从零安装题保留真实 DinD。Eval 拥有的 runtime import 会先形成 dockerData 前缀；这里的
+ * 只读 runtime contract 不打断该前缀，checkout 才是第一个 all barrier。短期凭证 callback
+ * 仍以频率 1000 最后执行并登记 cleanup。
+ */
+export function installSandbox() {
+  return rawDindBase({ target: "install" })
+    .before(assertRuntime())
+    .before(provisionTargetAppCommand);
+}
+
+/** Harness 保留候选基建、两枚离线 runtime、workspace/home all barrier 与 runtime contract。 */
+export function harnessSandbox(candidateVersion: string) {
+  return rawDindBase({
+    target: "harness-candidate",
+    buildArgs: { NICEEVAL_VERSION: candidateVersion },
+  })
+    .before(importHarnessRuntimes())
+    .before(prepareHarnessWorkspaceAndHome())
+    .before(assertRuntime(candidateVersion));
 }

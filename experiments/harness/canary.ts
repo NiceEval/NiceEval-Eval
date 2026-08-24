@@ -1,7 +1,7 @@
 import { defineExperiment } from "niceeval";
 import { codexAgent } from "niceeval/adapter";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { sandboxWith } from "../../lib/experiment-runtime.ts";
+import { harnessSandbox } from "../../lib/experiment-runtime.ts";
 
 const NICEEVAL_VERSION = await ensureCandidate("canary");
 
@@ -10,6 +10,6 @@ export default defineExperiment({
   agent: codexAgent(),
   model: "gpt-5.6-terra",
   flags: { candidateVersion: NICEEVAL_VERSION },
-  sandbox: sandboxWith("node", NICEEVAL_VERSION),
+  sandbox: harnessSandbox(NICEEVAL_VERSION),
   evals: (evalDef) => evalDef.tags.includes("harness"),
 });

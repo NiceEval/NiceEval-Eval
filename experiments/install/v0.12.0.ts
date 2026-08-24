@@ -1,6 +1,6 @@
 import { defineExperiment } from "niceeval";
 import { ensureCandidate } from "../../lib/candidate.ts";
-import { installCodexAgent, sandboxWith } from "../../lib/experiment-runtime.ts";
+import { installCodexAgent, installSandbox } from "../../lib/experiment-runtime.ts";
 
 /**
  * npm latest（0.12.0）的安装基线：覆盖普通项目与复杂宿主的从零接入。
@@ -12,7 +12,7 @@ export default defineExperiment({
   agent: installCodexAgent(),
   model: "gpt-5.6-terra",
   flags: { candidateVersion: NICEEVAL_VERSION },
-  sandbox: sandboxWith("python"),
+  sandbox: installSandbox(),
   evals: ["install/"],
   attempts: 1,
 });
