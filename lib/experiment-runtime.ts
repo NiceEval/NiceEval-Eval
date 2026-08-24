@@ -20,6 +20,7 @@ import {
   command,
   defineSandboxCommand,
   dockerSandbox,
+  sandboxState,
   shell,
 } from "niceeval/sandbox";
 import {
@@ -31,7 +32,8 @@ import {
 const GIB = 1024 ** 3;
 const MIB = 1024 ** 2;
 
-const HARNESS_RUNTIME_ACTION_ID = "niceeval-eval.harness-runtime";
+const HARNESS_RUNTIME_IMPORT_ACTION_ID = "niceeval-eval.import-inner-runtimes";
+const HARNESS_WORKSPACE_ACTION_ID = "niceeval-eval.prepare-workspace-and-home";
 const RUNTIME_CONTRACT_ACTION_ID = "niceeval-eval.runtime-contract";
 
 /**
@@ -44,28 +46,40 @@ export function installCodexAgent() {
 }
 
 /**
- * 当前 NiceEval DinD provider 接管容器启动命令；候选镜像不能再依赖自身 ENTRYPOINT 做
- * attempt 级初始化。固定归档导入与候选 workspace 准备是低频声明式 action：输入只有精确
- * candidate 版本，执行只改变可捕获的 Sandbox 状态。
+ * 两枚固定 inner runtime 只写 inner Docker data-root；把它单独声明成 dockerData action，
+ * profile setup-prefix 才能安全复用导入结果而不假装同时捕获 workspace、home 或其它 tmpfs。
  */
-function prepareHarnessCandidate(candidateVersion: string) {
-  return command("niceeval-harness-prepare", [], {
-    id: HARNESS_RUNTIME_ACTION_ID,
+function importHarnessRuntimes() {
+  return command("/usr/local/bin/niceeval-runtime-import", [], {
+    id: HARNESS_RUNTIME_IMPORT_ACTION_ID,
     user: "root",
     changeFrequency: changeFrequency.rare,
-    cache: { fingerprint: { candidateVersion } },
+    cache: { state: sandboxState.dockerData },
   });
 }
 
-/** DinD、Node/pnpm 与候选 workspace 的既有 fail-fast 契约，保留为紧随 runtime 的 action。 */
+/**
+ * 候选 workspace 与 node home 都位于 attempt 私有 tmpfs，必须在 runtime 导入满足后逐次恢复。
+ * 省略 cache.state 即保留默认 all，不能并入只捕获 Docker data-root 的前缀。
+ */
+function prepareHarnessWorkspaceAndHome() {
+  return command("niceeval-harness-prepare", [], {
+    id: HARNESS_WORKSPACE_ACTION_ID,
+    user: "root",
+    changeFrequency: changeFrequency.rare + 1,
+    dependsOn: [actionRef(HARNESS_RUNTIME_IMPORT_ACTION_ID)],
+  });
+}
+
+/** DinD、Node/pnpm 与候选 workspace 的既有 fail-fast 契约，保留为紧随准备流程的 action。 */
 function assertRuntime(candidateVersion?: string) {
   return shell({
     id: RUNTIME_CONTRACT_ACTION_ID,
     command: runtimeContractScript(candidateVersion),
-    changeFrequency: changeFrequency.rare + 1,
+    changeFrequency: changeFrequency.rare + (candidateVersion === undefined ? 1 : 2),
     ...(candidateVersion === undefined
       ? {}
-      : { dependsOn: [actionRef(HARNESS_RUNTIME_ACTION_ID)] }),
+      : { dependsOn: [actionRef(HARNESS_WORKSPACE_ACTION_ID)] }),
   });
 }
 
@@ -190,7 +204,8 @@ export function sandboxWith(profile: "node" | "python" = "node", candidateVersio
   const runtime = candidateVersion === undefined
     ? base.before(assertRuntime())
     : base
-        .before(prepareHarnessCandidate(candidateVersion))
+        .before(importHarnessRuntimes())
+        .before(prepareHarnessWorkspaceAndHome())
         .before(assertRuntime(candidateVersion));
   return profile === "python"
     ? runtime.before(provisionTargetAppCommand)

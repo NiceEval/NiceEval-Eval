@@ -1,6 +1,7 @@
 #!/bin/sh
-# NiceEval 的 DinD provider 已完成 daemon readiness 后，物化 Harness attempt 的可写状态。
-# 这不是镜像 ENTRYPOINT：provider 接管容器启动，Experiment 通过显式 setup hook 调用本脚本。
+# NiceEval 的 DinD provider 已完成 daemon readiness 和固定 runtime 导入后，准备 Harness
+# attempt 的 workspace/home 可写状态。这不是镜像 ENTRYPOINT：provider 接管容器启动，
+# Experiment 通过显式后置 action 调用本脚本。
 set -eu
 
 # /home/node 是有界 tmpfs；把镜像里的只读初始 home 恢复进去，再交回 node。
@@ -15,6 +16,3 @@ test -d "$fixture_project"
 mkdir -p "$workspace"
 cp -a "$fixture_project/." "$workspace/"
 chown -R node:node "$workspace"
-
-# 两枚离线 inner runtime 归档由候选镜像提供；导入 provider 的 canonical 默认 socket。
-NICEEVAL_DOCKER_SOCKET=/var/run/docker.sock /usr/local/bin/niceeval-runtime-import

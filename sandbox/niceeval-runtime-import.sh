@@ -4,9 +4,10 @@
 #   runtime-node.tar.gz   → offline.invalid/niceeval-harness/runtime:node
 #   runtime-python.tar.gz → offline.invalid/niceeval-harness/runtime:python
 #
-# 由 Experiment setup hook 在 NiceEval DinD readiness 通过后调用；全程只碰本地 socket 与本地
-# 文件，不联网。失败即非零退出，整个 Sandbox 直接 errored，不把一台缺运行时的环境交给
-# 被测 agent。
+# 由 Experiment 的 rare dockerData action 在 NiceEval DinD readiness 通过后调用；全程只读
+# 镜像内归档，并通过本地 socket 改变 inner Docker data-root，不写 workspace、home、outer marker
+# 或外部资源，也不联网。失败即非零退出，整个 Sandbox 直接 errored，不把一台缺运行时的环境
+# 交给被测 agent。
 set -eu
 
 socket=${NICEEVAL_DOCKER_SOCKET:-/var/run/docker.sock}
