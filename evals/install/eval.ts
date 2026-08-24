@@ -15,7 +15,7 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineScoreEval, type ScoreTestContext } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
-import { sandboxLayer } from "niceeval/sandbox";
+import { fixtureSandbox } from "../../lib/install/fixture.ts";
 
 type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
 
@@ -623,42 +623,6 @@ function assertCandidatePages(version: string, expected: RegExp): void {
   if (!pages.includes("INDEX.md")) return;
   if (pages.some((page) => expected.test(page))) return;
   throw new Error(`候选 niceeval@${version} 的随包文档没有题库要求的页面：${expected.source}`);
-}
-
-// ── fixture 与归档（仍在同一文件，避免正式 install eval 追项目内部 helper） ───────────
-
-function fixtureSandbox(repo: InstallCase["fixture"]) {
-  return sandboxLayer().setup(async (sandbox, ctx) => {
-    ctx.progress({ message: `准备宿主 fixture：${repo.repoUrl}@${repo.ref}` });
-    const result = await sandbox.runShell(cloneFixtureScript(repo));
-    if (result.exitCode !== 0) {
-      throw new Error(`clone fixture 失败：${result.stderr || result.stdout}`);
-    }
-  });
-}
-
-function cloneFixtureScript(repo: InstallCase["fixture"]): string {
-  if (!repo.excludeDirs?.length) {
-    return `set -e
-fixture_dir="$(mktemp -d)"
-trap 'rm -rf "$fixture_dir"' EXIT
-git clone --quiet --depth 1 --branch '${repo.ref}' --single-branch '${repo.repoUrl}' "$fixture_dir"
-rm -rf "$fixture_dir/.git"
-cp -a "$fixture_dir"/. .
-rm -rf "$fixture_dir"
-trap - EXIT`;
-  }
-  const sparse = ["/*", ...repo.excludeDirs.map((dir) => `!/${dir}/`)].join("\n");
-  return `set -e
-git init -q
-git remote add origin '${repo.repoUrl}'
-git sparse-checkout init --no-cone
-cat > .git/info/sparse-checkout <<'EOF'
-${sparse}
-EOF
-git fetch --quiet --depth 1 --filter=blob:none origin 'refs/tags/${repo.ref}'
-git checkout --quiet FETCH_HEAD
-rm -rf .git`;
 }
 
 const AGENT_OUTPUT_ROOT = resolve(import.meta.dirname, "../../.agent-output");

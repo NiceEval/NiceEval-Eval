@@ -17,7 +17,10 @@
 import { randomBytes } from "node:crypto";
 import Docker from "dockerode";
 import type { Container, ContainerInspectInfo } from "dockerode";
-import type { Sandbox, SandboxHook } from "niceeval/sandbox";
+import type {
+  SandboxCommandContext,
+  SandboxCommandTarget,
+} from "niceeval/sandbox";
 import { ENV_FILE, loadRepoEnv } from "./env.ts";
 
 const REQUIRED_HOST_VARS = [
@@ -42,68 +45,72 @@ interface ProxyHandle {
 }
 
 const docker = new Docker();
-const proxies = new WeakMap<Sandbox, ProxyHandle>();
+const proxies = new WeakMap<SandboxCommandTarget, ProxyHandle>();
+
+type TargetAppContext = Pick<
+  Omit<SandboxCommandContext, "onCleanup">,
+  "signal" | "progress"
+>;
 
 /** 创建外层 sidecar，并把可安全泄漏的连接信息写进 sandbox。 */
-export function provisionTargetAppEnv(): SandboxHook {
-  return async (sandbox, ctx) => {
-    loadRepoEnv();
-    for (const name of REQUIRED_HOST_VARS) {
-      if (!process.env[name]) throw new Error(`${ENV_FILE} 里缺 ${name}，目标应用没有可用的 LLM 出口。`);
-    }
+export async function provisionTargetAppEnv(
+  sandbox: SandboxCommandTarget,
+  ctx: TargetAppContext,
+): Promise<void> {
+  loadRepoEnv();
+  for (const name of REQUIRED_HOST_VARS) {
+    if (!process.env[name]) throw new Error(`${ENV_FILE} 里缺 ${name}，目标应用没有可用的 LLM 出口。`);
+  }
 
-    ctx.progress({ message: "启动目标应用的 Attempt 级 LLM 代理" });
-    const handle = await startProxySidecar(sandbox, {
-      apiKey: process.env.TARGET_APP_OPENAI_API_KEY!,
-      baseUrl: process.env.TARGET_APP_OPENAI_BASE_URL!,
-      model: process.env.TARGET_APP_MODEL!,
-    });
-    proxies.set(sandbox, handle);
+  ctx.progress({ message: "启动目标应用的 Attempt 级 LLM 代理" });
+  const handle = await startProxySidecar(sandbox, {
+    apiKey: process.env.TARGET_APP_OPENAI_API_KEY!,
+    baseUrl: process.env.TARGET_APP_OPENAI_BASE_URL!,
+    model: process.env.TARGET_APP_MODEL!,
+  });
+  proxies.set(sandbox, handle);
 
-    const abort = () => { void closeProxy(sandbox); };
-    handle.detachAbort = () => ctx.signal.removeEventListener("abort", abort);
-    ctx.signal.addEventListener("abort", abort, { once: true });
-    try {
-      await sandbox.writeText(
-        TARGET_APP_ENV_PATH,
-        [
-          `OPENAI_API_KEY=${shellQuote(handle.token)}`,
-          `OPENAI_BASE_URL=${shellQuote(`${handle.endpoint}/v1`)}`,
-          `TARGET_APP_MODEL=${shellQuote(process.env.TARGET_APP_MODEL!)}`,
-          "",
-        ].join("\n"),
-      );
+  const abort = () => { void closeProxy(sandbox); };
+  handle.detachAbort = () => ctx.signal.removeEventListener("abort", abort);
+  ctx.signal.addEventListener("abort", abort, { once: true });
+  try {
+    await sandbox.writeText(
+      TARGET_APP_ENV_PATH,
+      [
+        `OPENAI_API_KEY=${shellQuote(handle.token)}`,
+        `OPENAI_BASE_URL=${shellQuote(`${handle.endpoint}/v1`)}`,
+        `TARGET_APP_MODEL=${shellQuote(process.env.TARGET_APP_MODEL!)}`,
+        "",
+      ].join("\n"),
+    );
 
-      let health = await sandbox.runCommand(
+    let health = await sandbox.runCommand(
+      "curl",
+      ["--max-time", "1", "--fail", "--silent", `${handle.endpoint}/__niceeval_health`],
+    );
+    for (let attempt = 1; health.exitCode !== 0 && attempt < 20; attempt++) {
+      await new Promise((done) => setTimeout(done, 100));
+      health = await sandbox.runCommand(
         "curl",
         ["--max-time", "1", "--fail", "--silent", `${handle.endpoint}/__niceeval_health`],
       );
-      for (let attempt = 1; health.exitCode !== 0 && attempt < 20; attempt++) {
-        await new Promise((done) => setTimeout(done, 100));
-        health = await sandbox.runCommand(
-          "curl",
-          ["--max-time", "1", "--fail", "--silent", `${handle.endpoint}/__niceeval_health`],
-        );
-      }
-      if (health.exitCode !== 0 || health.stdout.trim() !== "ok") {
-        throw new Error("目标应用短期代理 sidecar 无法从 Docker sandbox 访问；这是环境 setup 问题。");
-      }
-      ctx.progress({ message: "目标应用短期 LLM 代理已就绪" });
-    } catch (error) {
-      await closeProxy(sandbox);
-      throw error;
     }
-  };
+    if (health.exitCode !== 0 || health.stdout.trim() !== "ok") {
+      throw new Error("目标应用短期代理 sidecar 无法从 Docker sandbox 访问；这是环境 setup 问题。");
+    }
+    ctx.progress({ message: "目标应用短期 LLM 代理已就绪" });
+  } catch (error) {
+    await closeProxy(sandbox);
+    throw error;
+  }
 }
 
 /** Sandbox 无论正常、失败或中断都撤销 token 并删除外层 sidecar。 */
-export function teardownTargetAppProxy(): SandboxHook {
-  return async (sandbox) => {
-    await closeProxy(sandbox);
-  };
+export async function teardownTargetAppProxy(sandbox: SandboxCommandTarget): Promise<void> {
+  await closeProxy(sandbox);
 }
 
-async function closeProxy(sandbox: Sandbox): Promise<void> {
+async function closeProxy(sandbox: SandboxCommandTarget): Promise<void> {
   const handle = proxies.get(sandbox);
   if (!handle) return;
   handle.detachAbort?.();
@@ -112,7 +119,7 @@ async function closeProxy(sandbox: Sandbox): Promise<void> {
 }
 
 async function startProxySidecar(
-  sandbox: Sandbox,
+  sandbox: SandboxCommandTarget,
   config: { apiKey: string; baseUrl: string; model: string },
 ): Promise<ProxyHandle> {
   const parent = await docker.getContainer(sandbox.sandboxId).inspect();

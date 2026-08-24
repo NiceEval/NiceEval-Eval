@@ -6,4 +6,4 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - niceeval@0.12.0
 overrides:
-  niceeval: link:/home/ctrdh/.herdr/worktrees/NiceEval/dind-fix
+  niceeval: link:../../NiceEval/docker-cache-more/packages/niceeval
