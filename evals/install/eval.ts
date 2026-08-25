@@ -19,11 +19,23 @@ import {
   actionRef,
   command,
   gitCheckout,
-  sandboxLayer,
-  sandboxState,
+  sandboxRequirements,
   shell,
   type SandboxLayer,
 } from "niceeval/sandbox";
+
+const GIB = 1024 ** 3;
+
+function dockerCapability() {
+  return sandboxRequirements({
+    docker: {
+      api: "docker/v1",
+      compose: "v2",
+      isolation: "dedicated-kernel/v1",
+      minimumDataBytes: 4 * GIB,
+    },
+  });
+}
 
 type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
 
@@ -50,7 +62,7 @@ interface InstallCase {
 const DB_GPT: InstallCase = {
   id: "db-gpt",
   description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
-  sandbox: sandboxLayer()
+  sandbox: dockerCapability()
     .before(installRuntimeImport("db-gpt-v0.8.1"))
     .before(gitCheckout({
       id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout",
@@ -92,7 +104,7 @@ const DB_GPT: InstallCase = {
 const GPT_RESEARCHER: InstallCase = {
   id: "gpt-researcher",
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
-  sandbox: sandboxLayer()
+  sandbox: dockerCapability()
     .before(installRuntimeImport("gpt-researcher-v3.6.0"))
     .before(gitCheckout({
       id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout",
@@ -136,8 +148,9 @@ function installRuntimeActionId(owner: string): string {
 }
 
 /**
- * 每个正式 install Eval 都拥有一枚可审计的 dockerData action。它只校验并导入镜像；
- * checkout、workspace、home、凭证和答案都不进入可缓存前缀。
+ * 每个正式 install Eval 都拥有一枚可审计的 inner-runtime 导入 action。它只校验并导入
+ * guest 镜像；checkout、workspace、home、凭证和答案都留在后续 action。V1 DestroyOnly
+ * 不发布 sandboxState.dockerData。
  */
 function installRuntimeImport(owner: string) {
   return shell({
@@ -153,7 +166,6 @@ docker run --pull=never --rm --entrypoint /bin/sh \\
 printf '%s\\n' 'install runtime 就绪：offline.invalid/niceeval-install/runtime:python'`,
     user: "root",
     changeFrequency: 10,
-    cache: { state: sandboxState.dockerData },
   });
 }
 

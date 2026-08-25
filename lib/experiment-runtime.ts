@@ -1,17 +1,22 @@
 /**
- * 各实验共用的 Docker-in-Docker sandbox 装配。
+ * 各实验共用的 Incus VM sandbox 装配。
  *
- * 单个评估容器同时承载 coding agent 和内层 dockerd；agent 以 node 身份执行，但能通过
- * 同容器 Unix socket 使用 docker / docker compose。全部实验显式授权 raw privileged DinD，
- * 只适用于一次性 VM 或专用 runner，不把外层宿主当作不可信代码的安全隔离边界。
+ * 单个评估 Attempt 得到一台一次性 Incus VM：guest 工作空间跑 coding agent 与 Eval，
+ * guest 内普通 dockerd 提供 Docker-in-disposable-VM。V1 是 DestroyOnly，不发布
+ * sandboxState.dockerData，NiceEval 会拒绝 --keep-sandbox。
  *
- * 使用当前 niceeval/sandbox 的 Dockerfile source 构造：
- * `dockerSandbox({ source: { type: "dockerfile", ... } })`。
+ * Experiment 使用 `incusSandbox({ image, project, storagePool, resources,
+ * acceptDevelopmentDomain })`。本机 dogfood 默认 development exact pair
+ * `niceeval-eval-dev` / `niceeval-sandbox-dev`，并显式 `acceptDevelopmentDomain: true`；
+ * 结果 non-comparable，不能当成 reference 通过。reference exact pair 是
+ * `niceeval-eval` / `niceeval-evals`。
  *
- * context 是仓库根，.dockerignore 把 context 白名单收窄到 sandbox/。Harness 镜像只携带
- * 固定 seed 与离线 runtime；精确候选版本由下方声明式 action 安装并物化到 attempt tmpfs。
- * install 使用不含 Harness seed 与候选依赖的专用 target。case repo 不进 build context，
- * 由所属 Eval 的 fixture action 写入准备链。
+ * 镜像 locator 必须是 `name@sha256:<64 lowercase hex>`。本轮不 build / import / pull。
+ * 未配置时使用全零 digest 的 unconfigured locator，只为让 Experiment 定义可加载，
+ * `niceeval list` 可以成功；planning / dry 因镜像未受信而 fail-closed。用
+ * `NICEEVAL_INCUS_INSTALL_IMAGE` / `NICEEVAL_INCUS_HARNESS_IMAGE` 覆盖为真实受信 digest。
+ * install 与 harness 使用各自 digest-pinned locator。精确候选版本由下方声明式 action
+ * 安装并物化；case repo 由所属 Eval 的 fixture action 写入准备链。
  */
 
 import { codexAgent } from "niceeval/adapter";
@@ -19,10 +24,10 @@ import {
   actionRef,
   changeFrequency,
   defineSandboxCommand,
-  dockerSandbox,
-  sandboxState,
+  incusSandbox,
   shell,
 } from "niceeval/sandbox";
+import { loadRepoEnv } from "./env.ts";
 import {
   TARGET_APP_ENV_PATH,
   provisionTargetAppEnv,
@@ -30,24 +35,46 @@ import {
 } from "./target-app-env.ts";
 
 const GIB = 1024 ** 3;
-const MIB = 1024 ** 2;
 
 const HARNESS_RUNTIME_IMPORT_ACTION_ID = "niceeval-eval.import-inner-runtimes";
 const HARNESS_CANDIDATE_ACTION_ID = "niceeval-eval.install-candidate-and-prepare-workspace";
 const RUNTIME_CONTRACT_ACTION_ID = "niceeval-eval.runtime-contract";
 
+const UNCONFIGURED_IMAGE_DIGEST = "0".repeat(64);
+const DIGEST_PINNED_IMAGE =
+  /^[A-Za-z0-9](?:[A-Za-z0-9._/-]*[A-Za-z0-9])?@sha256:[a-f0-9]{64}$/u;
+
+const DEVELOPMENT_PROJECT = "niceeval-eval-dev";
+const DEVELOPMENT_STORAGE_POOL = "niceeval-sandbox-dev";
+
 /**
- * 安装题只根据对话、工具调用和最终工作区判分，不消费 Codex 的 OTLP trace。Docker 的只读
- * rootfs 会让 collector 通过 shell/base64 搬运 trace；长会话能产生上百 MiB，反而挤占 attempt
- * deadline。保留官方 adapter 的安装、setup、send 和证据采集，只关闭这条非判分遥测通道。
+ * 安装题只根据对话、工具调用和最终工作区判分，不消费 Codex 的 OTLP trace。
+ * 长会话能产生上百 MiB，反而挤占 attempt deadline。保留官方 adapter 的安装、
+ * setup、send 和证据采集，只关闭这条非判分遥测通道。
  */
 export function installCodexAgent() {
   return { ...codexAgent(), tracing: undefined };
 }
 
+function digestPinnedImage(
+  envName: "NICEEVAL_INCUS_INSTALL_IMAGE" | "NICEEVAL_INCUS_HARNESS_IMAGE",
+  unconfiguredName: string,
+): string {
+  const configured = process.env[envName]?.trim();
+  const locator = configured === undefined || configured === ""
+    ? `${unconfiguredName}@sha256:${UNCONFIGURED_IMAGE_DIGEST}`
+    : configured;
+  if (!DIGEST_PINNED_IMAGE.test(locator)) {
+    throw new Error(
+      `${envName} 必须是 digest-pinned locator name@sha256:<64 lowercase hex>，实际 ${JSON.stringify(locator)}`,
+    );
+  }
+  return locator;
+}
+
 /**
- * 两枚固定 inner runtime 只写 inner Docker data-root；把它单独声明成 dockerData action，
- * profile setup-prefix 才能安全复用导入结果而不假装同时捕获 workspace、home 或其它 tmpfs。
+ * 两枚固定 inner runtime 只写入 guest 私有 Docker data disk。V1 DestroyOnly，
+ * 不把 dockerData 发布成可缓存前缀；导入仍由这条声明式 action 在 Attempt 内完成。
  */
 function importHarnessRuntimes() {
   return shell({
@@ -81,14 +108,12 @@ docker run --pull=never --rm --entrypoint /bin/sh \
 printf '%s\n' 'inner runtime 就绪：offline.invalid/niceeval-harness/runtime:{node,python}'`,
     user: "root",
     changeFrequency: changeFrequency.rare,
-    cache: { state: sandboxState.dockerData },
   });
 }
 
 /**
  * 候选安装、init、生成物清理、只读依赖树和 workspace/home 物化都由 Harness 的 TS layer
- * 明确拥有。它们位于 attempt 私有 tmpfs，必须在 runtime 导入满足后逐次执行；省略
- * cache.state 即保留默认 all，不能并入只捕获 Docker data-root 的前缀。
+ * 明确拥有。它们必须在 runtime 导入满足后逐次执行。
  */
 function installCandidateAndPrepareWorkspace(candidateVersion: string) {
   return shell({
@@ -140,15 +165,12 @@ printf 'harness 候选就绪：niceeval@%s\n' "$candidate_version"`,
   });
 }
 
-/** DinD、Node/pnpm 与候选 workspace 的既有 fail-fast 契约，保留为紧随准备流程的 action。 */
+/** guest Docker、Node/pnpm 与候选 workspace 的既有 fail-fast 契约，保留为紧随准备流程的 action。 */
 function assertRuntime(candidateVersion?: string) {
   return shell({
     id: RUNTIME_CONTRACT_ACTION_ID,
     command: runtimeContractScript(candidateVersion),
     changeFrequency: changeFrequency.rare + (candidateVersion === undefined ? 1 : 2),
-    ...(candidateVersion === undefined
-      ? { cache: { state: sandboxState.dockerData } }
-      : {}),
     ...(candidateVersion === undefined
       ? {}
       : { dependsOn: [actionRef(HARNESS_CANDIDATE_ACTION_ID)] }),
@@ -184,8 +206,8 @@ user_id="$(id -u 2>&1)" || fail "无法读取受管命令 uid"
 pnpm_version="$(pnpm --version 2>&1)" || fail "sandbox pnpm 不可用"
 [ "$pnpm_version" = "11.12.0" ] || fail "sandbox pnpm 必须是 11.12.0，实测 $pnpm_version"
 
-docker_version="$(docker info --format '{{.ServerVersion}}' 2>&1)" || fail "同容器 inner dockerd 不可用：$docker_version"
-[ -n "$docker_version" ] || fail "同容器 inner dockerd 不可用：docker info 无输出"
+docker_version="$(docker info --format '{{.ServerVersion}}' 2>&1)" || fail "guest dockerd 不可用：$docker_version"
+[ -n "$docker_version" ] || fail "guest dockerd 不可用：docker info 无输出"
 
 compose_version="$(docker compose version --short 2>&1)" || fail "docker compose 不可用：$compose_version"
 [ -n "$compose_version" ] || fail "docker compose 不可用：compose version 无输出"
@@ -202,8 +224,8 @@ printf '运行基线通过：Node %s · pnpm %s · Docker %s · Compose %s\\n' \
 const provisionTargetAppCommand = defineSandboxCommand(
   {
     id: "niceeval-eval.target-app-env",
-    revision: "2",
-    inputs: { path: TARGET_APP_ENV_PATH, proxyProtocol: "target-app-loopback-sidecar/v2" },
+    revision: "3",
+    inputs: { path: TARGET_APP_ENV_PATH, proxyProtocol: "target-app-incus-gateway-proxy/v3" },
     changeFrequency: changeFrequency.frequent,
   },
   async (sandbox, context) => {
@@ -220,77 +242,39 @@ function shellQuote(value: string): string {
 }
 
 /**
- * rootfs 只读；工作区等小型可写路径落到有大小上限的 tmpfs。`/tmp`
- * 允许执行 package-manager postinstall 物化的本地工具，仍由 2 GiB 容量限制控制写入。inner `/var/lib/docker`
- * 由宿主 storage profile 授予磁盘 backed、project-quota 限额的私有分配，不再占用 shmem。
- * memoryBytes 同时禁止额外 swap，单 attempt 也无法把共享外层 data-root 写满。
- * 每 Attempt 限 1 CPU / 4 GiB。宿主 checkout 与 Codex session 都落在 tmpfs；原 1536 MiB 上限会在
- * 长安装对话里把 app-server 以 exit 137 杀掉。整批吞吐另由仓库级并发上限约束。
- * 带 tmpfs 的 provider 能力是 DestroyOnly，NiceEval 会拒绝 --keep-sandbox。
- *
- * 两类正式运行复用同一份 raw DinD 资源与 readiness 契约，但选择不同 Dockerfile target。
+ * 每 Attempt 限 1 CPU / 4 GiB 内存 / 4 GiB Docker data。V1 DestroyOnly。
+ * 本机 dogfood 固定 development domain，并显式接受 non-comparable。
  */
-function rawDindBase(source: {
-  target: "install" | "harness-candidate";
-}) {
-  return dockerSandbox({
-    source: {
-      type: "dockerfile",
-      context: new URL("../", import.meta.url),
-      file: "sandbox/Dockerfile",
-      target: source.target,
-    },
-    user: "node",
-    dockerAccess: { mode: "dind", isolation: "raw-privileged", storageProfile: "harness-raw" },
+function incusAttemptSandbox(image: string) {
+  return incusSandbox({
+    image,
+    project: DEVELOPMENT_PROJECT,
+    storagePool: DEVELOPMENT_STORAGE_POOL,
     resources: {
       cpus: 1,
       memoryBytes: 4 * GIB,
-      pidsLimit: 2048,
       dockerDataBytes: 4 * GIB,
-      readOnlyRootfs: true,
-      tmpfs: {
-        "/home/sandbox/workspace": {
-          sizeBytes: 4 * GIB,
-          mode: 0o755,
-          uid: 1000,
-          gid: 1000,
-          executable: true,
-        },
-        "/home/node": { sizeBytes: 2 * GIB, mode: 0o700, uid: 1000, gid: 1000 },
-        "/tmp": {
-          sizeBytes: 2 * GIB,
-          mode: 0o1777,
-          uid: 0,
-          gid: 0,
-          executable: true,
-        },
-        "/run": { sizeBytes: 128 * MIB, mode: 0o755, uid: 0, gid: 0 },
-        "/root": { sizeBytes: 64 * MIB, mode: 0o700, uid: 0, gid: 0 },
-        "/opt/fixture-secrets": { sizeBytes: 16 * MIB, mode: 0o700, uid: 1000, gid: 1000 },
-      },
     },
-    readiness: {
-      command: ["docker", "info"],
-      user: "node",
-      timeoutMs: 30_000,
-    },
+    acceptDevelopmentDomain: true,
   });
 }
 
-/**
- * 从零安装题保留真实 DinD。Eval 拥有的 runtime import 会先形成 dockerData 前缀；这里的
- * 只读 runtime contract 不打断该前缀，checkout 才是第一个 all barrier。短期凭证 callback
- * 仍以频率 1000 最后执行并登记 cleanup。
- */
+/** 从零安装题保留 guest Docker。短期凭证 callback 仍以频率 1000 最后执行并登记 cleanup。 */
 export function installSandbox() {
-  return rawDindBase({ target: "install" })
+  loadRepoEnv();
+  return incusAttemptSandbox(
+    digestPinnedImage("NICEEVAL_INCUS_INSTALL_IMAGE", "niceeval-eval-install"),
+  )
     .before(assertRuntime())
     .before(provisionTargetAppCommand);
 }
 
-/** Harness 保留候选安装、两枚离线 runtime、workspace/home all barrier 与 runtime contract。 */
+/** Harness 保留候选安装、两枚离线 runtime、workspace/home 准备与 runtime contract。 */
 export function harnessSandbox(candidateVersion: string) {
-  return rawDindBase({ target: "harness-candidate" })
+  loadRepoEnv();
+  return incusAttemptSandbox(
+    digestPinnedImage("NICEEVAL_INCUS_HARNESS_IMAGE", "niceeval-eval-harness"),
+  )
     .before(importHarnessRuntimes())
     .before(installCandidateAndPrepareWorkspace(candidateVersion))
     .before(assertRuntime(candidateVersion));

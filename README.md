@@ -115,6 +115,25 @@ Judge 使用现有 `turn.judge.autoevals.closedQA()`，通过 `{ on }` 显式传
 `toolCalls + message`；材料的 JSON string 只是现有 string 入口的传输编码，不匹配
 `show` JSON，也不替 agent 重跑 experiment。canned agent 只用于稳定复现，不代表真实模型智力。
 
+## 本地 Incus dogfood
+
+本机默认走 development Incus domain：`project` `niceeval-eval-dev`、`storagePool`
+`niceeval-sandbox-dev`，并显式 `acceptDevelopmentDomain: true`。这条路径的结果
+**non-comparable**，不能当成 reference 通过。digest-pinned 镜像由宿主环境注入，
+本仓库不 build / import / pull：
+
+```sh
+export NICEEVAL_INCUS_INSTALL_IMAGE='niceeval-eval-install@sha256:<64 lowercase hex>'
+export NICEEVAL_INCUS_HARNESS_IMAGE='niceeval-eval-harness@sha256:<64 lowercase hex>'
+```
+
+未配置时 Experiment 使用全零 digest 的 unconfigured locator，让定义可加载，
+`niceeval list` 可以成功。planning / `exp --dry` 会因镜像未受信而 fail-closed。
+reference domain（`niceeval-eval` / `niceeval-evals`）若未部署，
+`niceeval sandbox provider doctor incus` 与未接受 development 的 dry plan 会给出 typed
+red（例如 `incus-undeployed`）。本机开发检查用
+`niceeval sandbox provider doctor incus --development`。
+
 ## 候选版本与实验矩阵
 
 安装实验族当前有三格：
@@ -127,9 +146,10 @@ Judge 使用现有 `turn.judge.autoevals.closedQA()`，通过 `{ on }` 显式传
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
 
 三格都跑普通安装题与 roadmap 中已实现的复杂安装题。
-安装实验统一使用真实 raw DinD sandbox。专用 install target 只携带固定 digest 物化的通用
-Node/git/Python runtime 归档；DB-GPT 与 GPT Researcher 各自的 Eval action 校验后导入
-`offline.invalid/niceeval-install/runtime:python`，形成只覆盖 inner Docker data-root 的可缓存前缀。
+安装实验统一使用一次性 Incus VM（Docker-in-disposable-VM，V1 DestroyOnly）。专用
+install 镜像只携带固定 digest 物化的通用 Node/git/Python runtime 归档；DB-GPT 与
+GPT Researcher 各自的 Eval action 校验后导入
+`offline.invalid/niceeval-install/runtime:python`。
 该镜像不含 NiceEval、应用依赖、服务、Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 
@@ -137,9 +157,8 @@ Harness 实验族也有三格：`harness/v0.9.0`、`harness/v0.12.0` 与
 `harness/canary`。它们运行相同的两道无历史快照反馈闭环题；差异只在 TS action 安装的候选
 NiceEval、随包文档版本与 accept 契约（0.12+ 可 accept 缓存、0.9.x 全量重跑），不承担跨
 reader 的历史 report 兼容测试。`attempts` 使用 NiceEval 的默认值 1，完整矩阵共 **6 个
-coding-agent attempt**。全仓并发上限为 2：安装题的宿主 checkout、Codex session 与内层
-Docker 会同时占用大量内存和临时空间，Docker provider 的通用默认并发 10 不适合这组题。
-只想检查计划时始终先用 `--dry`。
+coding-agent attempt**。全仓并发上限为 2：安装题的宿主 checkout、Codex session 与
+guest Docker 会同时占用大量内存和临时空间。只想检查计划时始终先用 `--dry`。
 
 ## 安装评估如何计分
 

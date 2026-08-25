@@ -1,6 +1,8 @@
 import { defineScoreEval } from "niceeval";
 import { referencesAnyPath, toolMatch } from "niceeval/expect";
-import { changeFrequency, sandboxLayer, uploadDirectory } from "niceeval/sandbox";
+import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+
+const GIB = 1024 ** 3;
 
 export default defineScoreEval({
   description: "只凭公开结果区分 Terminal-Bench agent 产出错误与过紧 eval",
@@ -8,7 +10,14 @@ export default defineScoreEval({
   timeoutMs: 20 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
   judge: true,
-  sandbox: sandboxLayer().before(uploadDirectory({
+  sandbox: sandboxRequirements({
+    docker: {
+      api: "docker/v1",
+      compose: "v2",
+      isolation: "dedicated-kernel/v1",
+      minimumDataBytes: 4 * GIB,
+    },
+  }).before(uploadDirectory({
     id: "niceeval-eval.harness.log-summary.fixture",
     source: new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url),
     to: ".",

@@ -1,6 +1,8 @@
 import { defineScoreEval } from "niceeval";
 import { includes, referencesAnyPath, toolMatch } from "niceeval/expect";
-import { changeFrequency, sandboxLayer, uploadDirectory } from "niceeval/sandbox";
+import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+
+const GIB = 1024 ** 3;
 
 export default defineScoreEval({
   description: "修复 Terminal-Bench task slice 的局部 runtime 缺失，并保留可信结果",
@@ -8,7 +10,14 @@ export default defineScoreEval({
   timeoutMs: 25 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
   judge: true,
-  sandbox: sandboxLayer().before(uploadDirectory({
+  sandbox: sandboxRequirements({
+    docker: {
+      api: "docker/v1",
+      compose: "v2",
+      isolation: "dedicated-kernel/v1",
+      minimumDataBytes: 4 * GIB,
+    },
+  }).before(uploadDirectory({
     id: "niceeval-eval.harness.regex-log.fixture",
     source: new URL("../../../../fixtures/harness/terminal-bench/regex-log/repo/", import.meta.url),
     to: ".",
