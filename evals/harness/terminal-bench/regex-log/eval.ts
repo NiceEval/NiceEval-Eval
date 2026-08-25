@@ -1,5 +1,6 @@
 import { defineScoreEval } from "niceeval";
 import { includes, referencesAnyPath, toolMatch } from "niceeval/expect";
+import { changeFrequency, sandboxLayer, uploadDirectory } from "niceeval/sandbox";
 
 export default defineScoreEval({
   description: "修复 Terminal-Bench task slice 的局部 runtime 缺失，并保留可信结果",
@@ -7,12 +8,13 @@ export default defineScoreEval({
   timeoutMs: 25 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
   judge: true,
+  sandbox: sandboxLayer().before(uploadDirectory({
+    id: "niceeval-eval.harness.regex-log.fixture",
+    source: new URL("../../../../fixtures/harness/terminal-bench/regex-log/repo/", import.meta.url),
+    to: ".",
+    changeFrequency: changeFrequency.normal,
+  })),
   async test(t) {
-    await t.sandbox.uploadDirectory(
-      new URL("../../../../fixtures/harness/terminal-bench/regex-log/repo/", import.meta.url),
-      ".",
-    );
-
     // 题面刻意不预告 error 或根因：测的就是 agent 能否把 errored
     // 识别为“还没跑完”，自主修复基础设施后复验，同时保留已完成的合法 failed。
     const turn = await t.send("把这次评估跑完，告诉我最终结果。");

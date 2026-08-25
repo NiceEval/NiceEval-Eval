@@ -1,4 +1,5 @@
 import { defineScoreEval } from "niceeval";
+import { actionRef, command, gitCheckout, sandboxLayer } from "niceeval/sandbox";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
 import {
   archiveAgentOutput,
@@ -8,7 +9,6 @@ import {
   checkExperimentDesign,
   checkInstallation,
   collectAgentSource,
-  fixtureSandbox,
   scoreDocumentationRouting,
   scoreEvalDesign,
   scoreIntegrationConversation,
@@ -20,12 +20,25 @@ export default defineScoreEval({
   description: "把 niceeval 接入 Skyvern（浏览器操作自动化 agent）",
   judge: true,
   timeoutMs: 35 * 60 * 1000,
-  sandbox: fixtureSandbox(skyvernCase.fixture),
+  sandbox: sandboxLayer()
+    .before(gitCheckout({
+      id: "niceeval-eval.install-fixture.skyvern-v1.0.47.checkout",
+      repository: "https://github.com/Skyvern-AI/skyvern.git",
+      ref: "9fc0b2aee079ee34ae3cdb578ca346f06c733218",
+      to: ".",
+      sparse: { include: ["/*"], exclude: ["/skyvern-frontend/", "/docs/"] },
+      changeFrequency: 20,
+    }))
+    .before(command("rm", ["-rf", ".git"], {
+      id: "niceeval-eval.install-fixture.skyvern-v1.0.47.detach",
+      changeFrequency: 21,
+      dependsOn: [actionRef("niceeval-eval.install-fixture.skyvern-v1.0.47.checkout")],
+    })),
   async test(t) {
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
 
-    // Setup：候选文档落点；锁定的真实宿主已由 fixture sandbox 放进基线。
+    // Setup：候选文档落点；锁定的真实宿主已由本 Eval 的 fixture action 放进基线。
     assertPagesInCandidate(skyvernCase.expectedPages, version);
 
     // 任务：只给安装引导与版本约束，实施内容由候选文档决定。

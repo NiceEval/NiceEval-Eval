@@ -77,17 +77,17 @@ agent 可见文件系统，若提前看到 tests、runner 或 solution 就写入
 
 ## 共享基建，独立 repo
 
-Node、pnpm、Docker/Compose、精确候选 NiceEval、依赖和 `niceeval init` 产物在候选镜像中
-共享。0.9.0、0.12.0、0.13.3 与解析后的 canary 各有独立缓存镜像。每个候选镜像还物化两枚**完全离线**
-的 inner runtime 归档（node / python 变体），由 entrypoint 在 inner dockerd 就绪后
-`docker import` 成两个本地 tag，见 [`fixtures/harness/README.md`](../../fixtures/harness/README.md)。
+Node、pnpm、Docker/Compose、项目 seed 与两枚**完全离线**的 inner runtime 归档（node / python
+变体）由通用 Harness 镜像共享。Experiment 的 TS layer 先导入并冒烟离线 runtime，再按解析后的
+精确版本安装候选 NiceEval、运行 `niceeval init`、清理示例并物化只读依赖树；随后各题 fixture
+才覆盖自己的 repo。完整顺序见 [`fixtures/harness/README.md`](../../fixtures/harness/README.md)。
 四个 Harness experiment 目前沿用项目的全局并发设置；单个 Attempt 已同时占用候选
 Sandbox 与内层 dockerd，运行时需留意宿主资源竞争和模型网关并发抖动。
 
 `fixtures/harness/<case>/repo/` 由每道题各自维护：起始状态直接写在所属 repo，不靠中央
 canonical fixture 加 evaluator overlay。三个 repo 都记录 Terminal-Bench 来源 commit，保留 task ID、
-题面、所需初始资产及官方判据副本。Attempt 启动时只上传所属 repo；不改扩展名、
-不安装依赖、不执行 init。fixture 修改也不会使 Docker 依赖层失效。
+题面、所需初始资产及官方判据副本。Attempt 启动时 fixture 只上传所属 repo；不改扩展名，
+也不重复安装依赖或执行 init。fixture 修改不会使通用 Docker 基线失效。
 
 ## 题面原则
 

@@ -1,1 +1,0 @@
-{"attribution-data":{"kind":"agent-send-window-endpoints","policy":{"defaultPolicy":"niceeval.sandbox-ledger/default-excludes/v1","ignore":[],"include":[]}},"collection-data":{"limitations":[{"atWindowId":null,"code":"capture-interrupted","stage":"finalizer-export"}],"state":"partial"},"windows-data":[]}

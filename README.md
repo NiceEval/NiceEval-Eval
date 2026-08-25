@@ -37,9 +37,10 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 ## harness/ 的共享基建与独立 repo
 
-三个候选版本各自形成预装 Node、pnpm、候选 NiceEval、init 产物与**两枚离线 inner runtime
-归档**的缓存镜像；两道题则分别维护 `fixtures/harness/<case>/repo/`。Attempt 只把所属小
-repo 复制进已准备 workspace，不在镜像里共享业务 fixture，也不运行安装或 init。项目不携带
+Harness 使用一份预装 Node、pnpm、项目 seed 与**两枚离线 inner runtime 归档**的通用镜像；
+Experiment 的声明式 TS action 再按版本安装候选 NiceEval、运行 `niceeval init` 并物化 workspace。
+两道题分别维护 `fixtures/harness/<case>/repo/`，fixture action 只把所属小 repo 覆盖进已准备
+workspace，不在镜像里共享业务 fixture。项目不携带
 `.niceeval`，结果仍由被测 agent 当场运行产生。完整设计见
 [`evals/harness/README.md`](evals/harness/README.md) 与
 [`fixtures/harness/README.md`](fixtures/harness/README.md)。
@@ -126,10 +127,14 @@ Judge 使用现有 `turn.judge.autoevals.closedQA()`，通过 `{ on }` 显式传
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
 
 三格都跑普通安装题与 roadmap 中已实现的复杂安装题。
-安装实验统一使用带 Python 凭证准备的 DinD sandbox；它同时满足 Node 题的运行基线。
+安装实验统一使用真实 raw DinD sandbox。专用 install target 只携带固定 digest 物化的通用
+Node/git/Python runtime 归档；DB-GPT 与 GPT Researcher 各自的 Eval action 校验后导入
+`offline.invalid/niceeval-install/runtime:python`，形成只覆盖 inner Docker data-root 的可缓存前缀。
+该镜像不含 NiceEval、应用依赖、服务、Eval 答案或历史结果；被测 agent 仍须自行安装候选与
+应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 
 Harness 实验族也有三格：`harness/v0.9.0`、`harness/v0.12.0` 与
-`harness/canary`。它们运行相同的两道无历史快照反馈闭环题；差异只在镜像内预装的候选
+`harness/canary`。它们运行相同的两道无历史快照反馈闭环题；差异只在 TS action 安装的候选
 NiceEval、随包文档版本与 accept 契约（0.12+ 可 accept 缓存、0.9.x 全量重跑），不承担跨
 reader 的历史 report 兼容测试。`attempts` 使用 NiceEval 的默认值 1，完整矩阵共 **6 个
 coding-agent attempt**。全仓并发上限为 2：安装题的宿主 checkout、Codex session 与内层
@@ -161,9 +166,10 @@ sparse checkout 排除与接入无关的大型文档和资源目录。agent 写�
 
 `terminal-bench/regex-log` 与 `terminal-bench/log-summary` 各有自己的
 `fixtures/harness/<case>/repo/`。
-它们共享候选镜像基建，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果，也不在
-attempt 内安装候选依赖或运行 `niceeval init`。离线 inner runtime 的 node / python 变体
-在构建期从固定 digest 的物化 stage 打成归档（全程零包安装），entrypoint 先 `sha256sum -c`
+它们共享通用 Harness 镜像，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果。
+候选依赖安装、`niceeval init`、生成物清理与只读依赖树物化由 Experiment 的 TS action 在
+fixture 上传前完成。离线 inner runtime 的 node / python 变体
+在构建期从固定 digest 的物化 stage 打成归档（全程零包安装），Experiment 的 TS action 先 `sha256sum -c`
 校验再本地 `docker import`，随后用 `--pull=never` 真实冒烟 node/git/python3；attempt 启动期
 的导入和冒烟不联网，`.invalid` 保留域与 `--pull=never` 保证缺镜像时立即失败。构建机首次
 物化固定 digest stage 时仍可能从 registry 拉取对应基础镜像。

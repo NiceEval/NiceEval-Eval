@@ -15,18 +15,22 @@ import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineScoreEval, type ScoreTestContext } from "niceeval";
 import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
-import { sandboxLayer } from "niceeval/sandbox";
+import {
+  actionRef,
+  command,
+  gitCheckout,
+  sandboxLayer,
+  sandboxState,
+  shell,
+  type SandboxLayer,
+} from "niceeval/sandbox";
 
 type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
 
 interface InstallCase {
   id: "db-gpt" | "gpt-researcher";
   description: string;
-  fixture: {
-    repoUrl: string;
-    ref: string;
-    excludeDirs?: readonly string[];
-  };
+  sandbox: SandboxLayer<"command-only">;
   expectedPages: RegExp;
   clarification: {
     transport: string;
@@ -46,11 +50,22 @@ interface InstallCase {
 const DB_GPT: InstallCase = {
   id: "db-gpt",
   description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
-  fixture: {
-    repoUrl: "https://github.com/eosphoros-ai/DB-GPT.git",
-    ref: "v0.8.1",
-    excludeDirs: ["docs", "assets"],
-  },
+  sandbox: sandboxLayer()
+    .before(installRuntimeImport("db-gpt-v0.8.1"))
+    .before(gitCheckout({
+      id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout",
+      repository: "https://github.com/eosphoros-ai/DB-GPT.git",
+      ref: "177bfc84f77e7f7760c055a748b0e4bb82d9fa47",
+      to: ".",
+      sparse: { include: ["/*"], exclude: ["/docs/", "/assets/"] },
+      changeFrequency: 20,
+      dependsOn: [actionRef(installRuntimeActionId("db-gpt-v0.8.1"))],
+    }))
+    .before(command("rm", ["-rf", ".git"], {
+      id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.detach",
+      changeFrequency: 21,
+      dependsOn: [actionRef("niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout")],
+    })),
   expectedPages:
     /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/,
   clarification: {
@@ -77,10 +92,21 @@ const DB_GPT: InstallCase = {
 const GPT_RESEARCHER: InstallCase = {
   id: "gpt-researcher",
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
-  fixture: {
-    repoUrl: "https://github.com/assafelovic/gpt-researcher.git",
-    ref: "v3.6.0",
-  },
+  sandbox: sandboxLayer()
+    .before(installRuntimeImport("gpt-researcher-v3.6.0"))
+    .before(gitCheckout({
+      id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout",
+      repository: "https://github.com/assafelovic/gpt-researcher.git",
+      ref: "5d84d2f5553e70a2765a8ff3a0d2672d60437ce8",
+      to: ".",
+      changeFrequency: 20,
+      dependsOn: [actionRef(installRuntimeActionId("gpt-researcher-v3.6.0"))],
+    }))
+    .before(command("rm", ["-rf", ".git"], {
+      id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.detach",
+      changeFrequency: 21,
+      dependsOn: [actionRef("niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout")],
+    })),
   expectedPages:
     /docs-site\/zh\/(how-to|tutorials)\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/,
   clarification: {
@@ -105,12 +131,38 @@ export default {
   "gpt-researcher": createInstallEval(GPT_RESEARCHER),
 };
 
+function installRuntimeActionId(owner: string): string {
+  return `niceeval-eval.install-fixture.${owner}.import-runtime-python`;
+}
+
+/**
+ * 每个正式 install Eval 都拥有一枚可审计的 dockerData action。它只校验并导入镜像；
+ * checkout、workspace、home、凭证和答案都不进入可缓存前缀。
+ */
+function installRuntimeImport(owner: string) {
+  return shell({
+    id: installRuntimeActionId(owner),
+    command: `set -eu
+runtime_dir=/opt/niceeval-install/runtime
+cd "$runtime_dir"
+sha256sum -c runtime-python.tar.gz.sha256
+docker import runtime-python.tar.gz offline.invalid/niceeval-install/runtime:python
+docker run --pull=never --rm --entrypoint /bin/sh \\
+  offline.invalid/niceeval-install/runtime:python \\
+  -c 'node -v && git --version && python3 --version'
+printf '%s\\n' 'install runtime 就绪：offline.invalid/niceeval-install/runtime:python'`,
+    user: "root",
+    changeFrequency: 10,
+    cache: { state: sandboxState.dockerData },
+  });
+}
+
 function createInstallEval(installCase: InstallCase) {
   return defineScoreEval({
     description: installCase.description,
     judge: true,
     timeoutMs: 35 * 60 * 1000,
-    sandbox: fixtureSandbox(installCase.fixture),
+    sandbox: installCase.sandbox,
     async test(t) {
       const version = t.flags.candidateVersion;
       if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
@@ -119,6 +171,10 @@ function createInstallEval(installCase: InstallCase) {
       const prompt =
         `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
         `This machine must end up with niceeval@${version} exactly — not whatever version is latest.\n` +
+        "The first minimal experiment must use the provided offline.invalid/niceeval-install/runtime:python image. " +
+        "It is a digest-pinned generic Node/git/Python base only: it contains no NiceEval, application dependencies, " +
+        "running service, Eval answers, or historical results. You must still install candidate NiceEval and application " +
+        "dependencies, start the real target service, author the adapter/Eval/experiment, and actually run the first niceeval exp.\n" +
         "Target-app runtime credentials are available in /opt/fixture-secrets/target-app.env. " +
         "Source that file only into the target service process; never print it or copy its values into the workspace.";
       const firstTurn = await t.send(prompt);
@@ -623,42 +679,6 @@ function assertCandidatePages(version: string, expected: RegExp): void {
   if (!pages.includes("INDEX.md")) return;
   if (pages.some((page) => expected.test(page))) return;
   throw new Error(`候选 niceeval@${version} 的随包文档没有题库要求的页面：${expected.source}`);
-}
-
-// ── fixture 与归档（仍在同一文件，避免正式 install eval 追项目内部 helper） ───────────
-
-function fixtureSandbox(repo: InstallCase["fixture"]) {
-  return sandboxLayer().setup(async (sandbox, ctx) => {
-    ctx.progress({ message: `准备宿主 fixture：${repo.repoUrl}@${repo.ref}` });
-    const result = await sandbox.runShell(cloneFixtureScript(repo));
-    if (result.exitCode !== 0) {
-      throw new Error(`clone fixture 失败：${result.stderr || result.stdout}`);
-    }
-  });
-}
-
-function cloneFixtureScript(repo: InstallCase["fixture"]): string {
-  if (!repo.excludeDirs?.length) {
-    return `set -e
-fixture_dir="$(mktemp -d)"
-trap 'rm -rf "$fixture_dir"' EXIT
-git clone --quiet --depth 1 --branch '${repo.ref}' --single-branch '${repo.repoUrl}' "$fixture_dir"
-rm -rf "$fixture_dir/.git"
-cp -a "$fixture_dir"/. .
-rm -rf "$fixture_dir"
-trap - EXIT`;
-  }
-  const sparse = ["/*", ...repo.excludeDirs.map((dir) => `!/${dir}/`)].join("\n");
-  return `set -e
-git init -q
-git remote add origin '${repo.repoUrl}'
-git sparse-checkout init --no-cone
-cat > .git/info/sparse-checkout <<'EOF'
-${sparse}
-EOF
-git fetch --quiet --depth 1 --filter=blob:none origin 'refs/tags/${repo.ref}'
-git checkout --quiet FETCH_HEAD
-rm -rf .git`;
 }
 
 const AGENT_OUTPUT_ROOT = resolve(import.meta.dirname, "../../.agent-output");

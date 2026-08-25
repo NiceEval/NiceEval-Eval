@@ -26,15 +26,16 @@ sandbox agent 在预载 runtime 里确定性重放 task 产出；authoring 题�
 共享的是运行基建，不是题目内容：
 
 - `sandbox/Dockerfile` 的 `base` 阶段提供 Node、pnpm、Docker/Compose；
-- `candidate` 阶段在收到精确版本 build arg 时预装 NiceEval、依赖、lockfile 与该版本
-  `niceeval init` 生成的 `AGENTS.md`；`harness-candidate` 在它之上只增加两枚离线 inner
-  runtime 归档，install 实验不传版本并直接停在 `candidate`，不依赖 runtime 物化 stage；
-- 0.9.0、0.12.0、0.13.3 与解析后的 canary 由 build arg 形成独立缓存镜像；
-- attempt 启动后，各 outer eval 只上传自己几 KB 的 repo，覆盖到已准备的 workspace；不运行
-  `pnpm add`、不运行 `niceeval init`，也不复制 `node_modules`。
+- `harness-candidate` target 只携带项目 seed 与两枚离线 inner runtime 归档；独立 `install`
+  target 只引用 Python runtime stage，不携带 Harness 的 Node archive 或 seed；
+- Experiment 的声明式 TS action 以解析后的精确版本为输入，在 attempt tmpfs 中运行
+  `pnpm add`、`niceeval init`、生成物清理并物化只读 `node_modules` symlink；版本与完整命令
+  自动进入 action fingerprint；
+- 准备顺序固定为离线 runtime 导入 → 候选安装/物化 → runtime contract → 各 Eval 的 fixture
+  action。fixture 只上传几 KB 的 repo，覆盖到已准备的 workspace，不重复安装或 init。
 
-case repo 不进入 Docker build context，所以改题目不会使候选依赖镜像失效。镜像内也没有任何
-case 的正确或错误业务源码；只有共享 package/lock、候选版指引和只读 `node_modules`。
+case repo 不进入 Docker build context，所以改题目不会使通用 Harness 镜像失效。镜像内也没有
+任何 case 的正确或错误业务源码、候选版指引或 `node_modules`；只有项目 seed 与离线归档。
 
 ## 离线 inner runtime 镜像
 
@@ -63,16 +64,16 @@ offline.invalid/niceeval-harness/runtime:python
 - Harness 阶段：专用 `harness-candidate` target 用 `COPY --from=runtime-*` 把归档与校验
   文件放到 `/opt/niceeval-harness/runtime/`；普通 `candidate` 不引用这两个 stage，install
   镜像不构建也不携带归档；
-- 启动期：`niceeval-dind-entrypoint.sh` 在 inner dockerd 就绪后调用
-  `niceeval-runtime-import.sh`，先对两枚归档做 `sha256sum -c` 校验，再做本地
+- 启动期：Experiment 的低频 `dockerData` action 在 inner dockerd 就绪后，先对两枚归档做
+  `sha256sum -c` 校验，再做本地
   `docker import`，最后用 `docker run --pull=never` 冒烟：node 变体 node/git 可用且
   python3 不可执行，python 变体 node/git/python3 全可用；任一步失败即整体退出，
   Sandbox 直接 errored；
 - 镜像准备期：导入只读本地归档，冒烟固定 `--pull=never`，两步均不访问网络；`.invalid`
   保留域防止本地 tag 与真实 registry 名冲突。
 
-这层基建与候选预装、`node` 用户、DinD socket 生命周期互不影响：归档只在镜像层，不进入
-build context，也不进入 git。
+这层基建与候选安装 action、`node` 用户、DinD socket 生命周期互不影响：归档只在镜像层，
+不进入 build context，也不进入 git；其校验、导入和 `--pull=never` 冒烟仍完全离线。
 
 ### 被测 agent 的唯一修改面
 

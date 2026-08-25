@@ -1,7 +1,6 @@
 import type { ClarifyFacts } from "../../../lib/install/criteria/clarification.ts";
 import type { QualityFacts } from "../../../lib/install/criteria/quality.ts";
 import type { DocumentationRoutingFacts } from "../../../lib/install/documentation.ts";
-import type { FixtureRepo } from "../../../lib/install/fixture.ts";
 
 /** Letta 0.16.8 的宿主事实；eval 只负责按阶段编排。 */
 const coreUseCase =
@@ -18,10 +17,6 @@ const transport =
   "--secure 时才校验 Authorization: Bearer LETTA_SERVER_PASSWORD";
 
 export const lettaCase = {
-  fixture: {
-    repoUrl: "https://github.com/letta-ai/letta.git",
-    ref: "0.16.8",
-  } satisfies FixtureRepo,
   expectedPages:
     /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/,
   quality: {

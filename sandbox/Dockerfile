@@ -35,13 +35,6 @@ RUN apt-get update \
   && usermod --append --groups docker node \
   && cp -a /home/node /opt/niceeval-node-home
 
-COPY sandbox/niceeval-harness-build.sh /usr/local/bin/niceeval-harness-build
-COPY sandbox/niceeval-harness-prepare.sh /usr/local/bin/niceeval-harness-prepare
-COPY sandbox/niceeval-runtime-import.sh /usr/local/bin/niceeval-runtime-import
-
-RUN chmod 0755 /usr/local/bin/niceeval-harness-build /usr/local/bin/niceeval-harness-prepare \
-  /usr/local/bin/niceeval-runtime-import
-
 # NiceEval 的 DinD provider 会覆盖 Entrypoint/Cmd 为自己的 TTL/log supervisor，并通过默认
 # /var/run/docker.sock 暴露同容器 daemon；不要设置 DOCKER_HOST/DOCKER_CONTEXT，避免
 # 把 Agent 的裸 docker 命令导向另一套 endpoint。受管命令仍由 factory 的 user: "node"
@@ -49,8 +42,8 @@ RUN chmod 0755 /usr/local/bin/niceeval-harness-build /usr/local/bin/niceeval-har
 
 # -------------------------------------------------------------------------------------
 # 离线 inner runtime 的两枚固定 digest 物化源。内层被测项目（terminal-bench/regex-log）
-# 需要 inner dockerd 本地就有 node / python 两个 tag；两枚 rootfs 归档只在候选镜像物化，
-# 由 entrypoint 做本地 docker import。这里**不**经过 base 的 apt 层：物化零安装，
+# 需要 inner dockerd 本地就有 node / python 两个 tag；两枚 rootfs 归档只在 Harness 镜像物化，
+# 由 Experiment 的 TS action 做本地 docker import。这里**不**经过 base 的 apt 层：物化零安装，
 # rootfs 内容完全由固定 digest 镜像决定，不存在随时间漂移的 unpinned 包安装。
 #
 # 物化方式：对 stage 完整 rootfs 打确定性 tar/gzip（条目排序、固定 mtime、numeric owner、gzip -n），
@@ -92,30 +85,28 @@ RUN set -eu \
   && (cd /out && sha256sum runtime-python.tar.gz > runtime-python.tar.gz.sha256)
 
 # -------------------------------------------------------------------------------------
-# 以上是所有实验复用的 runtime base；以下候选层只在 build arg 非空时物化 Harness 基建。
-FROM base AS candidate
+# install 专用 target 只携带通用 Python runtime；不携带 Harness 的 Node runtime、候选
+# NiceEval、预装依赖、init 产物或构建脚本。归档由所属 Eval 的 TS action 导入 inner dockerd。
+FROM base AS install
 
-# 候选 niceeval 版本由 harness experiment 经 buildArgs 传入；build key 包含它，因此
-# 0.9.0 / 0.12.0 / 0.13.3 / 每个解析后的 canary 都形成独立可缓存镜像。install 实验以 candidate
-# 为 target 且不传版本，保持「安装流程由被测 agent 完成」的测点；ARG 放到通用基线之后，
-# 版本变化可复用前层缓存。
-ARG NICEEVAL_VERSION=""
+COPY --from=runtime-python /out/runtime-python.tar.gz /out/runtime-python.tar.gz.sha256 /opt/niceeval-install/runtime/
 
-# 这里只预装共享基建，不把任何 case repo 烘进镜像。各 eval 在 send 前上传自己的小 repo；
-# fixture 迭代不会让候选依赖层失效，也不会产生运行时安装。
+RUN chmod 0700 /opt/niceeval-install/runtime \
+  && chmod 0400 /opt/niceeval-install/runtime/*
+
+# Harness 专用层只携带候选项目 seed 与两枚离线 runtime。候选 NiceEval 的精确版本、依赖、
+# lockfile 和 init 指引由 Experiment 的声明式 TS action 物化到 attempt tmpfs。
+FROM base AS harness-candidate
+
+# 不把任何 case repo 烘进镜像。seed 仅供 root 准备 action 读取；各 Eval 的 fixture action 随后
+# 写入自己的小 repo，fixture 迭代不会让通用 Harness 镜像失效。
 COPY sandbox/harness-project/ /opt/niceeval-harness-seed/
-RUN if [ -n "$NICEEVAL_VERSION" ]; then /usr/local/bin/niceeval-harness-build; else rm -rf /opt/niceeval-harness-seed; fi
-
-# Harness 才选择这个专用 target；普通 install 直接停在 candidate，因而不依赖、不构建、
-# 也不携带两枚大 runtime 归档。
-FROM candidate AS harness-candidate
-ARG NICEEVAL_VERSION
-RUN test -n "$NICEEVAL_VERSION"
+RUN chmod 0700 /opt/niceeval-harness-seed
 
 COPY --from=runtime-node /out/runtime-node.tar.gz /out/runtime-node.tar.gz.sha256 /opt/niceeval-harness/runtime/
 COPY --from=runtime-python /out/runtime-python.tar.gz /out/runtime-python.tar.gz.sha256 /opt/niceeval-harness/runtime/
 
-# 运行期由 entrypoint 先 sha256sum -c，再本地 import 与 --pull=never smoke。
+# 运行期由 Experiment 的 TS action 先 sha256sum -c，再本地 import 与 --pull=never smoke。
 # Agent 遵循随包指引用 pnpm exec 调用 workspace 中的精确候选版本。
 RUN chmod 0700 /opt/niceeval-harness/runtime \
   && chmod 0400 /opt/niceeval-harness/runtime/*

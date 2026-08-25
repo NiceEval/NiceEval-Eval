@@ -8,7 +8,7 @@ export {
 export { checkAuthoringPractice } from "./authoring.ts";
 export { scoreDocumentationRouting } from "./documentation.ts";
 export { checkExperimentDesign } from "./experiment.ts";
-export { collectAgentSource, fixtureSandbox } from "./fixture.ts";
+export { collectAgentSource } from "./fixture.ts";
 export {
   continueSandboxClarification,
   scoreIntegrationConversation,

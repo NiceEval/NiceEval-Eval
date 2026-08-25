@@ -37,6 +37,6 @@ roadmap 题仍可使用这些模块：
 - `installation.ts`：安装、discovery 和 dry plan 检查。
 - `adapter.ts` / `experiment.ts` / `authoring.ts` / `sandbox.ts`：各阶段检查。
 - `quality.ts` / `documentation.ts`：设计和文档路由评分。
-- `fixture.ts` / `archive.ts`：fixture clone、源码取证和 attempt 归档。
+- `fixture.ts` / `archive.ts`：fixture 精确 commit checkout、源码取证和 attempt 归档。
 
 roadmap 的题目事实仍放在 `fixtures/roadmap/<case>/case.ts`。
