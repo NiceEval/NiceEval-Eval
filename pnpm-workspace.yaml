@@ -6,4 +6,4 @@ allowBuilds:
 minimumReleaseAgeExclude:
   - niceeval@0.12.0
 overrides:
-  niceeval: link:../../NiceEval/docker-cache-more/packages/niceeval
+  niceeval: link:../NiceEval/packages/niceeval
