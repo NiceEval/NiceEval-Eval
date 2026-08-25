@@ -1,4 +1,0 @@
-import { codexAgent } from "niceeval/adapter";
-
-// The built-in adapter maps Codex's JSONL transcript and file diff faithfully.
-export const expressCodex = codexAgent();
