@@ -14,7 +14,7 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineScoreEval, type ScoreTestContext } from "niceeval";
-import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
+import { closedQA, commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import {
   actionRef,
   command,
@@ -209,8 +209,9 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: Inst
       ],
     ] as const;
     for (const [key, label, criteria] of clarificationRubrics) {
-      turn.judge.autoevals.closedQA(
-        `只判断 agent 写代码前的第一条回复是否做到【${label}】。${criteria} 不要因为其它维度缺失而判 N。`,
+      turn.check(
+        { input: turn.input, output: turn.message },
+        closedQA(`只判断 agent 写代码前的第一条回复是否做到【${label}】。${criteria} 不要因为其它维度缺失而判 N。`),
       ).score(1).key(`install.interaction.${key}`).label(label);
     }
 
@@ -234,8 +235,9 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: Inst
       ],
     ] as const;
     for (const [key, label, criteria] of scopeRubrics) {
-      turn.judge.autoevals.closedQA(
-        `只判断第一条回复是否做到【${label}】。${criteria} 仓库可确认的事实应由 agent 先提出，不应甩给用户。`,
+      turn.check(
+        { input: turn.input, output: turn.message },
+        closedQA(`只判断第一条回复是否做到【${label}】。${criteria} 仓库可确认的事实应由 agent 先提出，不应甩给用户。`),
       ).score(1).key(`install.interaction.scope.${key}`).label(label);
     }
   });
@@ -264,12 +266,16 @@ async function scoreHandoff(t: ScoreTestContext, handoff: Turn, installCase: Ins
       .score(2)
       .key("install.handoff.completed-turn")
       .label("完成轮正常结束");
-    handoff.judge.autoevals.closedQA(
-      `只判断 ${installCase.quality.system} 接入的最终回复是否交代：三件套文件位置、复现用 exp/show 命令，` +
-        "以及实际 verdict 或阻塞。若只跑了 stub/mock，必须明确说明它不是目标宿主结果；不能把 errored/failed 包装成全绿。",
+    handoff.check(
+      { input: handoff.input, output: handoff.message },
+      closedQA(
+        `只判断 ${installCase.quality.system} 接入的最终回复是否交代：三件套文件位置、复现用 exp/show 命令，` +
+          "以及实际 verdict 或阻塞。若只跑了 stub/mock，必须明确说明它不是目标宿主结果；不能把 errored/failed 包装成全绿。",
+      ),
     ).score(1).key("install.handoff.reported-result").label("如实交代首跑结果");
-    handoff.judge.autoevals.closedQA(
-      "只判断最终回复是否把继续投入的决定交还用户，并给出至少一个具体升级选项及收益；不能未经同意扩大付费范围。",
+    handoff.check(
+      { input: handoff.input, output: handoff.message },
+      closedQA("只判断最终回复是否把继续投入的决定交还用户，并给出至少一个具体升级选项及收益；不能未经同意扩大付费范围。"),
     ).score(1).key("install.handoff.next-step").label("交还下一步选择");
   });
 }
@@ -477,24 +483,30 @@ async function scoreSourceQuality(
     output: source || "（无）",
   };
   await t.group("Eval 设计质量 · 4 分", async () => {
-    t.judge.autoevals.closedQA(
-      `【核心用例】Eval 输入是否贴着 ${quality.coreUseCase}？合格形状是：${quality.useCaseShape}` +
-        `${quality.bypass ?? ""}。hello、自我介绍或无关常识不合格。`,
+    t.check(
       material,
+      closedQA(
+        `【核心用例】Eval 输入是否贴着 ${quality.coreUseCase}？合格形状是：${quality.useCaseShape}` +
+          `${quality.bypass ?? ""}。hello、自我介绍或无关常识不合格。`,
+      ),
     ).score(1).key("install.quality.core-use-case").label("核心用例");
-    t.judge.autoevals.closedQA(
-      `【具体断言】是否${quality.assertionShape}，且开放措辞使用 judge、结构检查或宽容 matcher？` +
-        "只有 succeeded、非空或单一脆弱短语不合格。",
+    t.check(
       material,
+      closedQA(
+        `【具体断言】是否${quality.assertionShape}，且开放措辞使用 judge、结构检查或宽容 matcher？` +
+          "只有 succeeded、非空或单一脆弱短语不合格。",
+      ),
     ).score(1).key("install.quality.assertion").label("具体且稳健的断言");
-    t.judge.autoevals.closedQA(
-      `【负例】是否覆盖“${quality.negativeRisk}”，且 prompt 没有直接教被测系统标准拒答？`,
+    t.check(
       material,
+      closedQA(`【负例】是否覆盖“${quality.negativeRisk}”，且 prompt 没有直接教被测系统标准拒答？`),
     ).score(1).key("install.quality.negative").label("真实负例");
-    t.judge.autoevals.closedQA(
-      `【实验耦合】experiment 是否使用同一个 ${quality.system} adapter，Eval 测的也是该系统，` +
-        "而不是 echo/通用占位 agent？",
+    t.check(
       material,
+      closedQA(
+        `【实验耦合】experiment 是否使用同一个 ${quality.system} adapter，Eval 测的也是该系统，` +
+          "而不是 echo/通用占位 agent？",
+      ),
     ).score(1).key("install.quality.coupling").label("Experiment 与 Eval 耦合");
   });
 }

@@ -112,9 +112,10 @@ status? })` 本身就是匹配同一笔 logical tool occurrence 的 `ToolMatch`�
 `pnpm --silent exec` 与无 runner option 的 `npx` 由 Observation Protocol 统一投影，Eval
 不枚举 wrapper。禁区检查复用
 `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`，不另造 scoped negative 方法。
-Judge 使用现有 `turn.judge.autoevals.closedQA()`，通过 `{ on }` 显式传入本轮
-`toolCalls + message`；材料的 JSON string 只是现有 string 入口的传输编码，不匹配
-`show` JSON，也不替 agent 重跑 experiment。canned agent 只用于稳定复现，不代表真实模型智力。
+Judge 使用 `turn.check({ input, output }, closedQA(criteria))` 或
+`t.check(material, closedQA(criteria))`，显式传入本轮 `toolCalls + message` 或最终回复；
+材料只是公开 Turn 的传输形状，不匹配 `show` JSON，也不替 agent 重跑 experiment。
+canned agent 只用于稳定复现，不代表真实模型智力。
 
 ## 本地 Incus dogfood
 
