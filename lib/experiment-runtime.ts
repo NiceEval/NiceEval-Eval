@@ -220,7 +220,8 @@ function shellQuote(value: string): string {
 }
 
 /**
- * rootfs 只读；工作区等小型可写路径落到有大小上限的 tmpfs。inner `/var/lib/docker`
+ * rootfs 只读；工作区等小型可写路径落到有大小上限的 tmpfs。`/tmp`
+ * 允许执行 package-manager postinstall 物化的本地工具，仍由 2 GiB 容量限制控制写入。inner `/var/lib/docker`
  * 由宿主 storage profile 授予磁盘 backed、project-quota 限额的私有分配，不再占用 shmem。
  * memoryBytes 同时禁止额外 swap，单 attempt 也无法把共享外层 data-root 写满。
  * 每 Attempt 限 1 CPU / 4 GiB。宿主 checkout 与 Codex session 都落在 tmpfs；原 1536 MiB 上限会在
@@ -256,7 +257,13 @@ function rawDindBase(source: {
           executable: true,
         },
         "/home/node": { sizeBytes: 2 * GIB, mode: 0o700, uid: 1000, gid: 1000 },
-        "/tmp": { sizeBytes: 2 * GIB, mode: 0o1777, uid: 0, gid: 0 },
+        "/tmp": {
+          sizeBytes: 2 * GIB,
+          mode: 0o1777,
+          uid: 0,
+          gid: 0,
+          executable: true,
+        },
         "/run": { sizeBytes: 128 * MIB, mode: 0o755, uid: 0, gid: 0 },
         "/root": { sizeBytes: 64 * MIB, mode: 0o700, uid: 0, gid: 0 },
         "/opt/fixture-secrets": { sizeBytes: 16 * MIB, mode: 0o700, uid: 1000, gid: 1000 },
