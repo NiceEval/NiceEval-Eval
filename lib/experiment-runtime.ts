@@ -202,8 +202,8 @@ printf '运行基线通过：Node %s · pnpm %s · Docker %s · Compose %s\\n' \
 const provisionTargetAppCommand = defineSandboxCommand(
   {
     id: "niceeval-eval.target-app-env",
-    revision: "1",
-    inputs: { path: TARGET_APP_ENV_PATH, proxyProtocol: "target-app-sidecar/v1" },
+    revision: "2",
+    inputs: { path: TARGET_APP_ENV_PATH, proxyProtocol: "target-app-loopback-sidecar/v2" },
     changeFrequency: changeFrequency.frequent,
   },
   async (sandbox, context) => {

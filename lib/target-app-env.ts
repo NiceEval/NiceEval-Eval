@@ -9,14 +9,15 @@
  * - 只允许固定模型、固定接口和有限请求数的代理地址；
  * - TARGET_APP_MODEL 这个非敏感配置。
  *
- * sidecar 加入当前 Sandbox 的外层 Docker network，避免依赖经常被宿主防火墙阻断的 host
- * gateway 回连。setup 任一步失败都会删除 sidecar，teardown 再做幂等回收；AutoRemove 与
- * 40 分钟硬生命周期用于进程异常退出时兜底。
+ * sidecar 与当前 Sandbox 共享外层 network namespace，只在 loopback 上提供代理；这与
+ * Sandbox network 的 ICC 隔离相容，也不依赖经常被宿主防火墙阻断的 host gateway 回连。
+ * setup 任一步失败都会删除 sidecar，teardown 再做幂等回收；AutoRemove 与 40 分钟硬
+ * 生命周期用于进程异常退出时兜底。
  */
 
 import { randomBytes } from "node:crypto";
 import Docker from "dockerode";
-import type { Container, ContainerInspectInfo } from "dockerode";
+import type { Container } from "dockerode";
 import type {
   SandboxCommandContext,
   SandboxCommandTarget,
@@ -40,6 +41,7 @@ export const TARGET_APP_ENV_PATH = "/opt/fixture-secrets/target-app.env";
 interface ProxyHandle {
   token: string;
   endpoint: string;
+  healthNonce: string;
   detachAbort?: () => void;
   close(): Promise<void>;
 }
@@ -61,11 +63,15 @@ export async function provisionTargetAppEnv(
   for (const name of REQUIRED_HOST_VARS) {
     if (!process.env[name]) throw new Error(`${ENV_FILE} 里缺 ${name}，目标应用没有可用的 LLM 出口。`);
   }
+  const upstreamBaseUrl = new URL(process.env.TARGET_APP_OPENAI_BASE_URL!);
+  if (upstreamBaseUrl.protocol !== "https:") {
+    throw new Error("TARGET_APP_OPENAI_BASE_URL 必须使用 HTTPS，避免共享 network namespace 中的明文凭证暴露。");
+  }
 
   ctx.progress({ message: "启动目标应用的 Attempt 级 LLM 代理" });
   const handle = await startProxySidecar(sandbox, {
     apiKey: process.env.TARGET_APP_OPENAI_API_KEY!,
-    baseUrl: process.env.TARGET_APP_OPENAI_BASE_URL!,
+    baseUrl: upstreamBaseUrl.href,
     model: process.env.TARGET_APP_MODEL!,
   });
   proxies.set(sandbox, handle);
@@ -86,16 +92,16 @@ export async function provisionTargetAppEnv(
 
     let health = await sandbox.runCommand(
       "curl",
-      ["--max-time", "1", "--fail", "--silent", `${handle.endpoint}/__niceeval_health`],
+      ["--max-time", "1", "--fail", "--silent", `${handle.endpoint}/__niceeval_health/${handle.healthNonce}`],
     );
     for (let attempt = 1; health.exitCode !== 0 && attempt < 20; attempt++) {
       await new Promise((done) => setTimeout(done, 100));
       health = await sandbox.runCommand(
         "curl",
-        ["--max-time", "1", "--fail", "--silent", `${handle.endpoint}/__niceeval_health`],
+        ["--max-time", "1", "--fail", "--silent", `${handle.endpoint}/__niceeval_health/${handle.healthNonce}`],
       );
     }
-    if (health.exitCode !== 0 || health.stdout.trim() !== "ok") {
+    if (health.exitCode !== 0 || health.stdout.trim() !== handle.healthNonce) {
       throw new Error("目标应用短期代理 sidecar 无法从 Docker sandbox 访问；这是环境 setup 问题。");
     }
     ctx.progress({ message: "目标应用短期 LLM 代理已就绪" });
@@ -123,8 +129,8 @@ async function startProxySidecar(
   config: { apiKey: string; baseUrl: string; model: string },
 ): Promise<ProxyHandle> {
   const parent = await docker.getContainer(sandbox.sandboxId).inspect();
-  const networkName = selectSandboxNetwork(parent);
   const token = randomBytes(32).toString("base64url");
+  const healthNonce = randomBytes(16).toString("base64url");
   let container: Container | undefined;
   try {
     container = await docker.createContainer({
@@ -140,6 +146,7 @@ async function startProxySidecar(
         `MAX_REQUESTS=${MAX_REQUESTS}`,
         `MAX_CONCURRENCY=${MAX_CONCURRENCY}`,
         `MAX_REQUEST_BYTES=${MAX_REQUEST_BYTES}`,
+        `PROXY_HEALTH_NONCE=${healthNonce}`,
       ],
       User: "node",
       Labels: {
@@ -148,7 +155,7 @@ async function startProxySidecar(
       },
       HostConfig: {
         AutoRemove: true,
-        NetworkMode: networkName,
+        NetworkMode: `container:${sandbox.sandboxId}`,
         ReadonlyRootfs: true,
         CapDrop: ["ALL"],
         SecurityOpt: ["no-new-privileges"],
@@ -158,28 +165,18 @@ async function startProxySidecar(
       },
     });
     await container.start();
-    const info = await container.inspect();
-    const address = info.NetworkSettings.Networks[networkName]?.IPAddress;
-    if (!address) throw new Error("目标应用代理 sidecar 没有取得 Sandbox network 地址");
 
     let closing: Promise<void> | undefined;
     return {
       token,
-      endpoint: `http://${address}:${PROXY_PORT}`,
+      endpoint: `http://127.0.0.1:${PROXY_PORT}`,
+      healthNonce,
       close: () => closing ??= removeContainer(container!),
     };
   } catch (error) {
     if (container) await removeContainer(container);
     throw new Error("创建目标应用短期代理 sidecar 失败", { cause: error });
   }
-}
-
-function selectSandboxNetwork(parent: ContainerInspectInfo): string {
-  const names = Object.keys(parent.NetworkSettings.Networks);
-  if (names.length !== 1) {
-    throw new Error(`Sandbox 必须恰好连接一个外层 Docker network，实测 ${names.length} 个`);
-  }
-  return names[0]!;
 }
 
 async function removeContainer(container: Container): Promise<void> {
@@ -225,6 +222,7 @@ const targetModel = process.env.TARGET_MODEL;
 const maxRequests = Number(process.env.MAX_REQUESTS);
 const maxConcurrency = Number(process.env.MAX_CONCURRENCY);
 const maxRequestBytes = Number(process.env.MAX_REQUEST_BYTES);
+const healthNonce = process.env.PROXY_HEALTH_NONCE;
 let requests = 0;
 let active = 0;
 
@@ -257,9 +255,9 @@ function upstreamUrl(incoming) {
 
 const server = http.createServer(async (request, response) => {
   try {
-    if (request.url === "/__niceeval_health") {
+    if (request.url === "/__niceeval_health/" + healthNonce) {
       response.writeHead(200, { "content-type": "text/plain" });
-      response.end("ok");
+      response.end(healthNonce);
       return;
     }
     if (request.headers.authorization !== "Bearer " + token) {
@@ -318,7 +316,7 @@ const server = http.createServer(async (request, response) => {
   }
 });
 
-server.listen(port, "0.0.0.0");
+server.listen(port, "127.0.0.1");
 setTimeout(() => {
   server.closeAllConnections();
   server.close(() => process.exit(0));
