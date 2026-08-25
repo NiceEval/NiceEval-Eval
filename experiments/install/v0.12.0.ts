@@ -15,4 +15,5 @@ export default defineExperiment({
   sandbox: installSandbox(),
   evals: ["install/"],
   attempts: 1,
+  maxConcurrency: 2,
 });
