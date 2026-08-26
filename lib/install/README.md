@@ -4,6 +4,8 @@
 `evals/install/gpt-researcher/eval.ts`。每道题自己的宿主 fixture、题目事实、交互续轮、评分和
 产物归档都收在所属目录内，不再 import 本项目的 install helper。两份评分流程有意各自持有：
 修改一题的事实或判据不会改变另一题的源码指纹，单独打开一份文件也能看清完整被测流程。
+候选版本的物化、INIT.md 地址和随包页面校验仍统一复用 `lib/candidate.ts`，它们属于实验控制面，
+不复制进各题。
 
 `lib/install/` 只保留 roadmap 题复用的辅助实现，不是正式 install 题的评分入口。
 

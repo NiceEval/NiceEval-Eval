@@ -11,7 +11,7 @@
  * 每个评分 key、分值、证据和 barrier 都留在对应阶段，不再跨十几个 helper 追控制流。
  */
 
-import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineScoreEval, type ScoreTestContext } from "niceeval";
 import { closedQA, commandSucceeded, isTrue, satisfies } from "niceeval/expect";
@@ -22,6 +22,7 @@ import {
   sandboxRequirements,
   type SandboxLayer,
 } from "niceeval/sandbox";
+import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
 
 const GIB = 1024 ** 3;
 
@@ -104,7 +105,7 @@ function createInstallEval(installCase: InstallCase) {
     async test(t) {
       const version = t.flags.candidateVersion;
       if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
-      assertCandidatePages(version, installCase.expectedPages);
+      assertPagesInCandidate(installCase.expectedPages, version);
 
       const prompt =
         `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
@@ -616,19 +617,6 @@ done`,
     { cwd: root },
   );
   return result.stdout.trim();
-}
-
-function candidateInitDocUrl(version: string): string {
-  return `https://raw.githubusercontent.com/CorrectRoadH/niceeval/v${version}/INIT.md`;
-}
-
-function assertCandidatePages(version: string, expected: RegExp): void {
-  const manifestPath = resolve(import.meta.dirname, "../../../.candidate", version, "manifest.json");
-  const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { pages?: string[] };
-  const pages = manifest.pages ?? [];
-  if (!pages.includes("INDEX.md")) return;
-  if (pages.some((page) => expected.test(page))) return;
-  throw new Error(`候选 niceeval@${version} 的随包文档没有题库要求的页面：${expected.source}`);
 }
 
 const AGENT_OUTPUT_ROOT = resolve(import.meta.dirname, "../../../.agent-output");
