@@ -121,12 +121,10 @@ canned agent 只用于稳定复现，不代表真实模型智力。
 
 本机默认走 development Incus domain：`project` `niceeval-eval-dev`、`storagePool`
 `niceeval-sandbox-dev`，并显式 `acceptDevelopmentDomain: true`。这条路径的结果
-**non-comparable**，不能当成 reference 通过。digest-pinned base 由宿主环境注入；NiceEval
-不 build / import / pull base，业务 SetupPrefix 可以在 guest 内拉取固定 digest 的 inner runtime：
-
-```sh
-export NICEEVAL_INCUS_BASE_IMAGE='niceeval-eval-base@sha256:<64 lowercase hex>'
-```
+**non-comparable**，不能当成 reference 通过。实验直接固定 it-infra 已部署并信任的通用
+`niceeval-eval-base@sha256:...`；不需要项目 `.env`。NiceEval 不 build / import / pull base，
+也不接受 `ubuntu:latest` 一类可变引用；业务 SetupPrefix 可以在 guest 内拉取固定 digest 的
+inner runtime。it-infra 重建 base 后，同步更新 `lib/experiment-runtime.ts` 中的一个常量即可。
 
 被测 Codex Agent 默认使用只向 Incus VM 暴露 Responses API 的集群专用 TLS endpoint
 `https://sub2api.350124.xyz:18443/v1`。每个 Attempt 在命中业务缓存后重放受控 hosts
@@ -141,8 +139,6 @@ export NICEEVAL_INCUS_CODEX_BASE_URL='https://sub2api.350124.xyz:18443/v1'
 `100.67.1.82:443` 配给它。鉴权仍只通过 `CODEX_API_KEY` 进入 Attempt；不要把 token 写进
 SetupPrefix、镜像、声明式 action 或文档。
 
-未配置时 Experiment 使用全零 digest 的 unconfigured locator，让定义可加载，
-`niceeval list` 可以成功。planning / `exp --dry` 会因镜像未受信而 fail-closed。
 reference domain（`niceeval-eval` / `niceeval-evals`）若未部署，
 `niceeval sandbox provider doctor incus` 与未接受 development 的 dry plan 会给出 typed
 red（例如 `incus-undeployed`）。本机开发检查用

@@ -11,13 +11,10 @@
  * 结果 non-comparable，不能当成 reference 通过。reference exact pair 是
  * `niceeval-eval` / `niceeval-evals`。
  *
- * 镜像 locator 必须是 `name@sha256:<64 lowercase hex>`。NiceEval 不 build / import / pull base；
- * 一个通用 base 之上的业务 runtime、Harness seed 与候选安装由声明式 before action 构建，
- * Run-level Incus prepare 会逐层发布可复用 artifact。
- * 未配置时使用全零 digest 的 unconfigured locator，只为让 Experiment 定义可加载，
- * `niceeval list` 可以成功；planning / dry 因镜像未受信而 fail-closed。用
- * `NICEEVAL_INCUS_BASE_IMAGE` 覆盖为真实受信 digest。精确候选版本由下方声明式 action
- * 安装并物化；case repo 由所属 Eval 的 fixture action 写入后续准备层。
+ * NiceEval 不 build / import / pull Incus base，也不接受 `ubuntu:latest` 一类可变引用；这里直接
+ * 固定 it-infra 已部署并信任的通用 `niceeval-eval-base@sha256:...`。业务 runtime、Harness seed
+ * 与候选安装由声明式 before action 构建，Run-level Incus prepare 再逐层发布可复用 artifact。
+ * 精确候选版本由下方声明式 action 安装并物化；case repo 由所属 Eval 的 fixture action 写入。
  */
 
 import { codexAgent } from "niceeval/adapter";
@@ -49,9 +46,8 @@ const NODE_RUNTIME_SOURCE =
 const PYTHON_RUNTIME_SOURCE =
   "python:3.11.9-bookworm@sha256:c95170ff7d59de63e9445d3d503644a635c1b8cb7f4fa99f19a1c76da92a849a";
 
-const UNCONFIGURED_IMAGE_DIGEST = "0".repeat(64);
-const DIGEST_PINNED_IMAGE =
-  /^[A-Za-z0-9](?:[A-Za-z0-9._/-]*[A-Za-z0-9])?@sha256:[a-f0-9]{64}$/u;
+const INCUS_BASE_IMAGE =
+  "niceeval-eval-base@sha256:1d03a5168e7769da3ed78c9c9f8036e59092a15296fbc0a362da3f4d951609f3";
 
 const DEVELOPMENT_PROJECT = "niceeval-eval-dev";
 const DEVELOPMENT_STORAGE_POOL = "niceeval-sandbox-dev";
@@ -78,22 +74,6 @@ export function incusCodexAgent() {
  */
 export function installCodexAgent() {
   return { ...incusCodexAgent(), tracing: undefined };
-}
-
-function digestPinnedImage(
-  envName: "NICEEVAL_INCUS_BASE_IMAGE",
-  unconfiguredName: "niceeval-eval-base",
-): string {
-  const configured = process.env[envName]?.trim();
-  const locator = configured === undefined || configured === ""
-    ? `${unconfiguredName}@sha256:${UNCONFIGURED_IMAGE_DIGEST}`
-    : configured;
-  if (!DIGEST_PINNED_IMAGE.test(locator)) {
-    throw new Error(
-      `${envName} 必须是 digest-pinned locator name@sha256:<64 lowercase hex>，实际 ${JSON.stringify(locator)}`,
-    );
-  }
-  return locator;
 }
 
 /**
@@ -362,9 +342,7 @@ function incusAttemptSandbox(image: string) {
 /** 从零安装题保留 guest Docker。短期凭证 callback 仍以频率 1000 最后执行并登记 cleanup。 */
 export function installSandbox() {
   loadRepoEnv();
-  return incusAttemptSandbox(
-    digestPinnedImage("NICEEVAL_INCUS_BASE_IMAGE", "niceeval-eval-base"),
-  )
+  return incusAttemptSandbox(INCUS_BASE_IMAGE)
     .before(prepareInnerRuntimes())
     .before(assertRuntime())
     .before(provisionAgentEndpointCommand)
@@ -374,9 +352,7 @@ export function installSandbox() {
 /** Harness 的 runtime、seed、候选安装和 workspace 都成为可复用的业务准备层。 */
 export function harnessSandbox(candidateVersion: string) {
   loadRepoEnv();
-  return incusAttemptSandbox(
-    digestPinnedImage("NICEEVAL_INCUS_BASE_IMAGE", "niceeval-eval-base"),
-  )
+  return incusAttemptSandbox(INCUS_BASE_IMAGE)
     .before(prepareInnerRuntimes())
     .before(uploadDirectory({
       id: HARNESS_SEED_ACTION_ID,
