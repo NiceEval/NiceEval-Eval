@@ -20,49 +20,25 @@ import {
   command,
   gitCheckout,
   sandboxRequirements,
-  type SandboxLayer,
 } from "niceeval/sandbox";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
 
 const GIB = 1024 ** 3;
 
-function dockerCapability() {
-  return sandboxRequirements({
+type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
+
+export default defineScoreEval({
+  description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
+  judge: true,
+  timeoutMs: 50 * 60 * 1000,
+  sandbox: sandboxRequirements({
     docker: {
       api: "docker/v1",
       compose: "v2",
       isolation: "dedicated-kernel/v1",
       minimumDataBytes: 4 * GIB,
     },
-  });
-}
-
-type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
-
-interface InstallCase {
-  id: "db-gpt";
-  description: string;
-  sandbox: SandboxLayer<"command-only">;
-  expectedPages: RegExp;
-  clarification: {
-    transport: string;
-    telemetry: string;
-    variants: string;
-  };
-  quality: {
-    system: string;
-    coreUseCase: string;
-    useCaseShape: string;
-    bypass?: string;
-    assertionShape: string;
-    negativeRisk: string;
-  };
-}
-
-const DB_GPT: InstallCase = {
-  id: "db-gpt",
-  description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
-  sandbox: dockerCapability()
+  })
     .before(gitCheckout({
       id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout",
       repository: "https://github.com/eosphoros-ai/DB-GPT.git",
@@ -76,72 +52,43 @@ const DB_GPT: InstallCase = {
       changeFrequency: 21,
       dependsOn: [actionRef("niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout")],
     })),
-  expectedPages:
-    /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/,
-  clarification: {
-    transport:
-      "HTTP + JSON/SSE，默认端口 5670；OpenAI Chat Completions 兼容入口是 " +
-      "POST /api/v2/chat/completions，前端主聊天另走 /api/v1/chat/completions，没有 WebSocket。",
-    telemetry:
-      "自带本地 tracer，并可选启用标准 OTel/OTLP 导出；因此应确认是保持 Tier 1，还是复用现有 tracing。",
-    variants:
-      "model、chat_mode、chat_param、temperature、max_new_tokens 与 stream 都可能形成实验变体。",
+  async test(t) {
+    const version = t.flags.candidateVersion;
+    if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
+    assertPagesInCandidate(
+      /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/,
+      version,
+    );
+
+    const prompt =
+      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
+      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.\n` +
+      "The first minimal experiment must use the provided offline.invalid/niceeval-install/runtime:python image. " +
+      "It is a digest-pinned generic Node/git/Python base only: it contains no NiceEval, application dependencies, " +
+      "running service, Eval answers, or historical results. You must still install candidate NiceEval and application " +
+      "dependencies, start the real target service, author the adapter/Eval/experiment, and actually run the first niceeval exp.\n" +
+      "Target-app runtime credentials are available in /opt/fixture-secrets/target-app.env. " +
+      "Source that file only into the target service process; never print it or copy its values into the workspace.";
+    const firstTurn = await t.send(prompt);
+
+    try {
+      await scoreFirstTurn(t, firstTurn);
+      const handoff = await continueWithMinimalAnswer(t, firstTurn);
+      await scoreHandoff(t, handoff);
+
+      const foundation = await scoreFoundation(t, version);
+      const authoredSource = await readAuthoredSource(t.sandbox, foundation.root);
+      await scorePublishedAttempt(t, handoff, foundation, authoredSource);
+      await scoreSourceQuality(t, foundation, authoredSource);
+    } finally {
+      await archiveAgentOutput(t, "db-gpt");
+    }
   },
-  quality: {
-    system: "DB-GPT",
-    coreUseCase:
-      "用户用自然语言问真实库表，DB-GPT 通过 chat_data / chat_db_qa / chat_dashboard 等模式生成 SQL、" +
-      "查询并分析；chat_normal 只是裸 LLM 闲聊。",
-    useCaseShape: "具体的数据问答或分析任务，并使用能触达数据库的模式及对应数据源参数",
-    bypass: "；chat_normal 下问常识或算术也没有触达 DB-GPT 的差异化能力",
-    assertionShape: "检查具体数值、表名、SQL 片段等业务结果，而不是只检查有回复或 HTTP 成功",
-    negativeRisk: "不存在的库表或字段被编造成看似合理的结果，而不是明确报告不存在",
-  },
-};
-
-export default createInstallEval(DB_GPT);
-
-function createInstallEval(installCase: InstallCase) {
-  return defineScoreEval({
-    description: installCase.description,
-    judge: true,
-    timeoutMs: 50 * 60 * 1000,
-    sandbox: installCase.sandbox,
-    async test(t) {
-      const version = t.flags.candidateVersion;
-      if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
-      assertPagesInCandidate(installCase.expectedPages, version);
-
-      const prompt =
-        `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
-        `This machine must end up with niceeval@${version} exactly — not whatever version is latest.\n` +
-        "The first minimal experiment must use the provided offline.invalid/niceeval-install/runtime:python image. " +
-        "It is a digest-pinned generic Node/git/Python base only: it contains no NiceEval, application dependencies, " +
-        "running service, Eval answers, or historical results. You must still install candidate NiceEval and application " +
-        "dependencies, start the real target service, author the adapter/Eval/experiment, and actually run the first niceeval exp.\n" +
-        "Target-app runtime credentials are available in /opt/fixture-secrets/target-app.env. " +
-        "Source that file only into the target service process; never print it or copy its values into the workspace.";
-      const firstTurn = await t.send(prompt);
-
-      try {
-        await scoreFirstTurn(t, firstTurn, installCase);
-        const handoff = await continueWithMinimalAnswer(t, firstTurn);
-        await scoreHandoff(t, handoff, installCase);
-
-        const foundation = await scoreFoundation(t, version);
-        const authoredSource = await readAuthoredSource(t.sandbox, foundation.root);
-        await scorePublishedAttempt(t, handoff, foundation, authoredSource);
-        await scoreSourceQuality(t, installCase, foundation, authoredSource);
-      } finally {
-        await archiveAgentOutput(t, installCase.id);
-      }
-    },
-  });
-}
+});
 
 // ── 1. 首轮交互（8 分，全部软分） ─────────────────────────────────────────────
 
-async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: InstallCase): Promise<void> {
+async function scoreFirstTurn(t: ScoreTestContext, turn: Turn): Promise<void> {
   await t.group("首轮交互 · 8 分", async () => {
     t.check(turn.status === "waiting", isTrue("写代码前等待用户确认接入方案"))
       .score(1)
@@ -152,18 +99,21 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: Inst
       [
         "interface",
         "核对接口",
-        `有没有陈述它从仓库确认的 ${installCase.quality.system} 传输方案并请用户核对？` +
-          `大方向应接近：${installCase.clarification.transport}`,
+        "有没有陈述它从仓库确认的 DB-GPT 传输方案并请用户核对？大方向应接近：" +
+          "HTTP + JSON/SSE，默认端口 5670；OpenAI Chat Completions 兼容入口是 " +
+          "POST /api/v2/chat/completions，前端主聊天另走 /api/v1/chat/completions，没有 WebSocket。",
       ],
       [
         "telemetry",
         "核对观测方案",
-        `有没有询问是否接 tracing / OTel，并把 ${installCase.clarification.telemetry} 作为仓库背景而非既定选择？`,
+        "有没有询问是否接 tracing / OTel，并把自带本地 tracer，并可选启用标准 OTel/OTLP 导出；" +
+          "因此应确认是保持 Tier 1，还是复用现有 tracing。 作为仓库背景而非既定选择？",
       ],
       [
         "variants",
         "核对实验变体",
-        `有没有询问是否做多配置对比或 flags？仓库可支持的方向包括：${installCase.clarification.variants}`,
+        "有没有询问是否做多配置对比或 flags？仓库可支持的方向包括：" +
+          "model、chat_mode、chat_param、temperature、max_new_tokens 与 stream 都可能形成实验变体。",
       ],
       [
         "tier",
@@ -182,14 +132,18 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: Inst
       [
         "use-case",
         "首条 Eval 贴核心用例",
-        `有没有基于仓库提出一条具体的首个 Eval 评估面并请用户核对？核心能力是：` +
-          `${installCase.quality.coreUseCase}；合格形状接近：${installCase.quality.useCaseShape}${installCase.quality.bypass ?? ""}。`,
+        "有没有基于仓库提出一条具体的首个 Eval 评估面并请用户核对？核心能力是：" +
+          "用户用自然语言问真实库表，DB-GPT 通过 chat_data / chat_db_qa / chat_dashboard 等模式生成 SQL、" +
+          "查询并分析；chat_normal 只是裸 LLM 闲聊。；合格形状接近：具体的数据问答或分析任务，" +
+          "并使用能触达数据库的模式及对应数据源参数；chat_normal 下问常识或算术也没有触达 " +
+          "DB-GPT 的差异化能力。",
       ],
       [
         "success-risk",
         "核对结果与风险",
-        `有没有提出可观察的业务成功结果，并指出至少一个重要失败风险？` +
-          `结果应接近：${installCase.quality.assertionShape}；风险是：${installCase.quality.negativeRisk}。`,
+        "有没有提出可观察的业务成功结果，并指出至少一个重要失败风险？结果应接近：" +
+          "检查具体数值、表名、SQL 片段等业务结果，而不是只检查有回复或 HTTP 成功；风险是：" +
+          "不存在的库表或字段被编造成看似合理的结果，而不是明确报告不存在。",
       ],
       [
         "runtime-boundary",
@@ -223,7 +177,7 @@ async function continueWithMinimalAnswer(t: ScoreTestContext, turn: Turn): Promi
 
 // ── 2. 完成交接（4 分，全部软分） ─────────────────────────────────────────────
 
-async function scoreHandoff(t: ScoreTestContext, handoff: Turn, installCase: InstallCase): Promise<void> {
+async function scoreHandoff(t: ScoreTestContext, handoff: Turn): Promise<void> {
   await t.group("完成交接 · 4 分", async () => {
     handoff.succeeded()
       .score(2)
@@ -232,7 +186,7 @@ async function scoreHandoff(t: ScoreTestContext, handoff: Turn, installCase: Ins
     handoff.check(
       { input: handoff.input, output: handoff.message },
       closedQA(
-        `只判断 ${installCase.quality.system} 接入的最终回复是否交代：三件套文件位置、复现用 exp/show 命令，` +
+        "只判断 DB-GPT 接入的最终回复是否交代：三件套文件位置、复现用 exp/show 命令，" +
           "以及实际 verdict 或阻塞。若只跑了 stub/mock，必须明确说明它不是目标宿主结果；不能把 errored/failed 包装成全绿。",
       ),
     ).score(1).key("install.handoff.reported-result").label("如实交代首跑结果");
@@ -400,7 +354,6 @@ async function scorePublishedAttempt(
 
 async function scoreSourceQuality(
   t: ScoreTestContext,
-  installCase: InstallCase,
   foundation: FoundationEvidence,
   source: string,
 ): Promise<void> {
@@ -440,34 +393,40 @@ async function scoreSourceQuality(
     ).score(1).key("install.practice.assertions").label("官方断言词汇");
   });
 
-  const quality = installCase.quality;
   const material = {
-    input: `下面是 agent 为 ${quality.system} 写出的 NiceEval 三件套源码。`,
+    input: "下面是 agent 为 DB-GPT 写出的 NiceEval 三件套源码。",
     output: source || "（无）",
   };
   await t.group("Eval 设计质量 · 4 分", async () => {
     t.check(
       material,
       closedQA(
-        `【核心用例】Eval 输入是否贴着 ${quality.coreUseCase}？合格形状是：${quality.useCaseShape}` +
-          `${quality.bypass ?? ""}。hello、自我介绍或无关常识不合格。`,
+        "【核心用例】Eval 输入是否贴着用户用自然语言问真实库表，DB-GPT 通过 chat_data / " +
+          "chat_db_qa / chat_dashboard 等模式生成 SQL、查询并分析；chat_normal 只是裸 LLM 闲聊。？" +
+          "合格形状是：具体的数据问答或分析任务，并使用能触达数据库的模式及对应数据源参数；" +
+          "chat_normal 下问常识或算术也没有触达 DB-GPT 的差异化能力。" +
+          "hello、自我介绍或无关常识不合格。",
       ),
     ).score(1).key("install.quality.core-use-case").label("核心用例");
     t.check(
       material,
       closedQA(
-        `【具体断言】是否${quality.assertionShape}，且开放措辞使用 judge、结构检查或宽容 matcher？` +
+        "【具体断言】是否检查具体数值、表名、SQL 片段等业务结果，而不是只检查有回复或 HTTP 成功，" +
+          "且开放措辞使用 judge、结构检查或宽容 matcher？" +
           "只有 succeeded、非空或单一脆弱短语不合格。",
       ),
     ).score(1).key("install.quality.assertion").label("具体且稳健的断言");
     t.check(
       material,
-      closedQA(`【负例】是否覆盖“${quality.negativeRisk}”，且 prompt 没有直接教被测系统标准拒答？`),
+      closedQA(
+        "【负例】是否覆盖“不存在的库表或字段被编造成看似合理的结果，而不是明确报告不存在”，" +
+          "且 prompt 没有直接教被测系统标准拒答？",
+      ),
     ).score(1).key("install.quality.negative").label("真实负例");
     t.check(
       material,
       closedQA(
-        `【实验耦合】experiment 是否使用同一个 ${quality.system} adapter，Eval 测的也是该系统，` +
+        "【实验耦合】experiment 是否使用同一个 DB-GPT adapter，Eval 测的也是该系统，" +
           "而不是 echo/通用占位 agent？",
       ),
     ).score(1).key("install.quality.coupling").label("Experiment 与 Eval 耦合");

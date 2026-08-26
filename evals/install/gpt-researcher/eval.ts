@@ -20,49 +20,25 @@ import {
   command,
   gitCheckout,
   sandboxRequirements,
-  type SandboxLayer,
 } from "niceeval/sandbox";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
 
 const GIB = 1024 ** 3;
 
-function dockerCapability() {
-  return sandboxRequirements({
+type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
+
+export default defineScoreEval({
+  description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
+  judge: true,
+  timeoutMs: 50 * 60 * 1000,
+  sandbox: sandboxRequirements({
     docker: {
       api: "docker/v1",
       compose: "v2",
       isolation: "dedicated-kernel/v1",
       minimumDataBytes: 4 * GIB,
     },
-  });
-}
-
-type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
-
-interface InstallCase {
-  id: "gpt-researcher";
-  description: string;
-  sandbox: SandboxLayer<"command-only">;
-  expectedPages: RegExp;
-  clarification: {
-    transport: string;
-    telemetry: string;
-    variants: string;
-  };
-  quality: {
-    system: string;
-    coreUseCase: string;
-    useCaseShape: string;
-    bypass?: string;
-    assertionShape: string;
-    negativeRisk: string;
-  };
-}
-
-const GPT_RESEARCHER: InstallCase = {
-  id: "gpt-researcher",
-  description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
-  sandbox: dockerCapability()
+  })
     .before(gitCheckout({
       id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout",
       repository: "https://github.com/assafelovic/gpt-researcher.git",
@@ -75,68 +51,43 @@ const GPT_RESEARCHER: InstallCase = {
       changeFrequency: 21,
       dependsOn: [actionRef("niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout")],
     })),
-  expectedPages:
-    /docs-site\/zh\/(how-to|tutorials)\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/,
-  clarification: {
-    transport:
-      "主路径是 FastAPI /ws：客户端发送 `start ` + JSON，服务端依次返回 logs/images/report/path 帧；" +
-      "REST 入口也不是 OpenAI Chat Completions 形状。",
-    telemetry:
-      "没有 OpenTelemetry；只有可选 LangSmith tracing，因此应确认保持 Tier 1 还是另接观测链路。",
-    variants: "report_type、tone 与 report_source 都可以形成研究配置变体。",
+  async test(t) {
+    const version = t.flags.candidateVersion;
+    if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
+    assertPagesInCandidate(
+      /docs-site\/zh\/(how-to|tutorials)\/(write-send|connect-your-agent)\.mdx|docs-site\/zh\/reference\/events\.mdx/,
+      version,
+    );
+
+    const prompt =
+      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
+      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.\n` +
+      "The first minimal experiment must use the provided offline.invalid/niceeval-install/runtime:python image. " +
+      "It is a digest-pinned generic Node/git/Python base only: it contains no NiceEval, application dependencies, " +
+      "running service, Eval answers, or historical results. You must still install candidate NiceEval and application " +
+      "dependencies, start the real target service, author the adapter/Eval/experiment, and actually run the first niceeval exp.\n" +
+      "Target-app runtime credentials are available in /opt/fixture-secrets/target-app.env. " +
+      "Source that file only into the target service process; never print it or copy its values into the workspace.";
+    const firstTurn = await t.send(prompt);
+
+    try {
+      await scoreFirstTurn(t, firstTurn);
+      const handoff = await continueWithMinimalAnswer(t, firstTurn);
+      await scoreHandoff(t, handoff);
+
+      const foundation = await scoreFoundation(t, version);
+      const authoredSource = await readAuthoredSource(t.sandbox, foundation.root);
+      await scorePublishedAttempt(t, handoff, foundation, authoredSource);
+      await scoreSourceQuality(t, foundation, authoredSource);
+    } finally {
+      await archiveAgentOutput(t, "gpt-researcher");
+    }
   },
-  quality: {
-    system: "GPT Researcher",
-    coreUseCase: "对具体主题自主检索多源资料，产出带引用来源的结构化研究报告正文",
-    useCaseShape: "具体研究主题，输出应包含实质内容、结构化章节和引用 URL",
-    assertionShape: "检查主题相关内容、报告结构和引用来源，而不是只检查任务提交回执或非空文本",
-    negativeRisk: "虚构且不可能有可靠来源的主题被写成看似有据的报告，而不是明确说无法核实",
-  },
-};
-
-export default createInstallEval(GPT_RESEARCHER);
-
-function createInstallEval(installCase: InstallCase) {
-  return defineScoreEval({
-    description: installCase.description,
-    judge: true,
-    timeoutMs: 50 * 60 * 1000,
-    sandbox: installCase.sandbox,
-    async test(t) {
-      const version = t.flags.candidateVersion;
-      if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
-      assertPagesInCandidate(installCase.expectedPages, version);
-
-      const prompt =
-        `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
-        `This machine must end up with niceeval@${version} exactly — not whatever version is latest.\n` +
-        "The first minimal experiment must use the provided offline.invalid/niceeval-install/runtime:python image. " +
-        "It is a digest-pinned generic Node/git/Python base only: it contains no NiceEval, application dependencies, " +
-        "running service, Eval answers, or historical results. You must still install candidate NiceEval and application " +
-        "dependencies, start the real target service, author the adapter/Eval/experiment, and actually run the first niceeval exp.\n" +
-        "Target-app runtime credentials are available in /opt/fixture-secrets/target-app.env. " +
-        "Source that file only into the target service process; never print it or copy its values into the workspace.";
-      const firstTurn = await t.send(prompt);
-
-      try {
-        await scoreFirstTurn(t, firstTurn, installCase);
-        const handoff = await continueWithMinimalAnswer(t, firstTurn);
-        await scoreHandoff(t, handoff, installCase);
-
-        const foundation = await scoreFoundation(t, version);
-        const authoredSource = await readAuthoredSource(t.sandbox, foundation.root);
-        await scorePublishedAttempt(t, handoff, foundation, authoredSource);
-        await scoreSourceQuality(t, installCase, foundation, authoredSource);
-      } finally {
-        await archiveAgentOutput(t, installCase.id);
-      }
-    },
-  });
-}
+});
 
 // ── 1. 首轮交互（8 分，全部软分） ─────────────────────────────────────────────
 
-async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: InstallCase): Promise<void> {
+async function scoreFirstTurn(t: ScoreTestContext, turn: Turn): Promise<void> {
   await t.group("首轮交互 · 8 分", async () => {
     t.check(turn.status === "waiting", isTrue("写代码前等待用户确认接入方案"))
       .score(1)
@@ -147,18 +98,21 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: Inst
       [
         "interface",
         "核对接口",
-        `有没有陈述它从仓库确认的 ${installCase.quality.system} 传输方案并请用户核对？` +
-          `大方向应接近：${installCase.clarification.transport}`,
+        "有没有陈述它从仓库确认的 GPT Researcher 传输方案并请用户核对？大方向应接近：" +
+          "主路径是 FastAPI /ws：客户端发送 `start ` + JSON，服务端依次返回 logs/images/report/path 帧；" +
+          "REST 入口也不是 OpenAI Chat Completions 形状。",
       ],
       [
         "telemetry",
         "核对观测方案",
-        `有没有询问是否接 tracing / OTel，并把 ${installCase.clarification.telemetry} 作为仓库背景而非既定选择？`,
+        "有没有询问是否接 tracing / OTel，并把没有 OpenTelemetry；只有可选 LangSmith tracing，" +
+          "因此应确认保持 Tier 1 还是另接观测链路。 作为仓库背景而非既定选择？",
       ],
       [
         "variants",
         "核对实验变体",
-        `有没有询问是否做多配置对比或 flags？仓库可支持的方向包括：${installCase.clarification.variants}`,
+        "有没有询问是否做多配置对比或 flags？仓库可支持的方向包括：" +
+          "report_type、tone 与 report_source 都可以形成研究配置变体。",
       ],
       [
         "tier",
@@ -177,14 +131,16 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: Inst
       [
         "use-case",
         "首条 Eval 贴核心用例",
-        `有没有基于仓库提出一条具体的首个 Eval 评估面并请用户核对？核心能力是：` +
-          `${installCase.quality.coreUseCase}；合格形状接近：${installCase.quality.useCaseShape}${installCase.quality.bypass ?? ""}。`,
+        "有没有基于仓库提出一条具体的首个 Eval 评估面并请用户核对？核心能力是：" +
+          "对具体主题自主检索多源资料，产出带引用来源的结构化研究报告正文；" +
+          "合格形状接近：具体研究主题，输出应包含实质内容、结构化章节和引用 URL。",
       ],
       [
         "success-risk",
         "核对结果与风险",
-        `有没有提出可观察的业务成功结果，并指出至少一个重要失败风险？` +
-          `结果应接近：${installCase.quality.assertionShape}；风险是：${installCase.quality.negativeRisk}。`,
+        "有没有提出可观察的业务成功结果，并指出至少一个重要失败风险？结果应接近：" +
+          "检查主题相关内容、报告结构和引用来源，而不是只检查任务提交回执或非空文本；风险是：" +
+          "虚构且不可能有可靠来源的主题被写成看似有据的报告，而不是明确说无法核实。",
       ],
       [
         "runtime-boundary",
@@ -218,7 +174,7 @@ async function continueWithMinimalAnswer(t: ScoreTestContext, turn: Turn): Promi
 
 // ── 2. 完成交接（4 分，全部软分） ─────────────────────────────────────────────
 
-async function scoreHandoff(t: ScoreTestContext, handoff: Turn, installCase: InstallCase): Promise<void> {
+async function scoreHandoff(t: ScoreTestContext, handoff: Turn): Promise<void> {
   await t.group("完成交接 · 4 分", async () => {
     handoff.succeeded()
       .score(2)
@@ -227,7 +183,7 @@ async function scoreHandoff(t: ScoreTestContext, handoff: Turn, installCase: Ins
     handoff.check(
       { input: handoff.input, output: handoff.message },
       closedQA(
-        `只判断 ${installCase.quality.system} 接入的最终回复是否交代：三件套文件位置、复现用 exp/show 命令，` +
+        "只判断 GPT Researcher 接入的最终回复是否交代：三件套文件位置、复现用 exp/show 命令，" +
           "以及实际 verdict 或阻塞。若只跑了 stub/mock，必须明确说明它不是目标宿主结果；不能把 errored/failed 包装成全绿。",
       ),
     ).score(1).key("install.handoff.reported-result").label("如实交代首跑结果");
@@ -395,7 +351,6 @@ async function scorePublishedAttempt(
 
 async function scoreSourceQuality(
   t: ScoreTestContext,
-  installCase: InstallCase,
   foundation: FoundationEvidence,
   source: string,
 ): Promise<void> {
@@ -435,34 +390,38 @@ async function scoreSourceQuality(
     ).score(1).key("install.practice.assertions").label("官方断言词汇");
   });
 
-  const quality = installCase.quality;
   const material = {
-    input: `下面是 agent 为 ${quality.system} 写出的 NiceEval 三件套源码。`,
+    input: "下面是 agent 为 GPT Researcher 写出的 NiceEval 三件套源码。",
     output: source || "（无）",
   };
   await t.group("Eval 设计质量 · 4 分", async () => {
     t.check(
       material,
       closedQA(
-        `【核心用例】Eval 输入是否贴着 ${quality.coreUseCase}？合格形状是：${quality.useCaseShape}` +
-          `${quality.bypass ?? ""}。hello、自我介绍或无关常识不合格。`,
+        "【核心用例】Eval 输入是否贴着对具体主题自主检索多源资料，产出带引用来源的结构化研究报告正文？" +
+          "合格形状是：具体研究主题，输出应包含实质内容、结构化章节和引用 URL。" +
+          "hello、自我介绍或无关常识不合格。",
       ),
     ).score(1).key("install.quality.core-use-case").label("核心用例");
     t.check(
       material,
       closedQA(
-        `【具体断言】是否${quality.assertionShape}，且开放措辞使用 judge、结构检查或宽容 matcher？` +
+        "【具体断言】是否检查主题相关内容、报告结构和引用来源，而不是只检查任务提交回执或非空文本，" +
+          "且开放措辞使用 judge、结构检查或宽容 matcher？" +
           "只有 succeeded、非空或单一脆弱短语不合格。",
       ),
     ).score(1).key("install.quality.assertion").label("具体且稳健的断言");
     t.check(
       material,
-      closedQA(`【负例】是否覆盖“${quality.negativeRisk}”，且 prompt 没有直接教被测系统标准拒答？`),
+      closedQA(
+        "【负例】是否覆盖“虚构且不可能有可靠来源的主题被写成看似有据的报告，而不是明确说无法核实”，" +
+          "且 prompt 没有直接教被测系统标准拒答？",
+      ),
     ).score(1).key("install.quality.negative").label("真实负例");
     t.check(
       material,
       closedQA(
-        `【实验耦合】experiment 是否使用同一个 ${quality.system} adapter，Eval 测的也是该系统，` +
+        "【实验耦合】experiment 是否使用同一个 GPT Researcher adapter，Eval 测的也是该系统，" +
           "而不是 echo/通用占位 agent？",
       ),
     ).score(1).key("install.quality.coupling").label("Experiment 与 Eval 耦合");
