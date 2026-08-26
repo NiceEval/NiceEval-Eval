@@ -1,20 +1,19 @@
 /**
  * DB-GPT install 正式评估入口。
  *
- * 这道题评的是候选 INIT.md + 随包文档能否把 coding agent 带到一个可审阅的 NiceEval
- * 闭环，不把 `niceeval show` 的结果冒充成「真实宿主身份证明」。评分状态机与上限固定为：
+ * 这道题评的是候选 INIT.md + 随包文档能否把 coding agent 带到真实、
+ * 可复审的 NiceEval 接入。分数按 Adapter、Experiment、Eval、真实证据与首轮理解
+ * 的自然价值加总，不设人工总分上限，也不为必要但无区分度的安装事实发分。
  *
- *   首轮交互 8 → 完成交接 4 → 安装基础 12 → Attempt 闭环 15 → 源码与实践 13 = 52
- *
- * 基础结构、有效 locator、非 errored、ASSISTANT 映射与明确 stand-in 是 `orStop`；它们
- * 只停止后续奖励，已经得到的分数都会保留。已知 stand-in 最多 34/52，errored 最多 28/52。
- * 每个评分 key、分值、证据和 barrier 都留在对应阶段，不再跨十几个 helper 追控制流。
+ * 精确版本、config、CLI discovery、一格一次 dry plan、locator 和取证命令只做 gate。
+ * 明确 stub/mock/echo/进程内替代会阻断真实性路径，「没发现」不得分。所有可独立
+ * 审查的 Adapter、Experiment 与 Eval 源码先评，运行失败不会抹掉源码证据。
  */
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineScoreEval, type ScoreTestContext } from "niceeval";
-import { closedQA, commandSucceeded, isTrue, satisfies } from "niceeval/expect";
+import { closedQA, isTrue, referencesAnyPath, toolMatch } from "niceeval/expect";
 import {
   actionRef,
   command,
@@ -60,172 +59,162 @@ export default defineScoreEval({
       version,
     );
 
-    const prompt =
-      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo\n` +
-      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.\n` +
-      "The first minimal experiment must use the provided offline.invalid/niceeval-install/runtime:python image. " +
-      "It is a digest-pinned generic Node/git/Python base only: it contains no NiceEval, application dependencies, " +
-      "running service, Eval answers, or historical results. You must still install candidate NiceEval and application " +
-      "dependencies, start the real target service, author the adapter/Eval/experiment, and actually run the first niceeval exp.\n" +
-      "Target-app runtime credentials are available in /opt/fixture-secrets/target-app.env. " +
-      "Source that file only into the target service process; never print it or copy its values into the workspace.";
-    const firstTurn = await t.send(prompt);
+    const firstTurn = await t.send(
+      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\n` +
+      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
+    );
 
     try {
       await scoreFirstTurn(t, firstTurn);
       const handoff = await continueWithMinimalAnswer(t, firstTurn);
-      await scoreHandoff(t, handoff);
+      await scoreDocumentationRouting(t, firstTurn);
 
-      const foundation = await scoreFoundation(t, version);
-      const authoredSource = await readAuthoredSource(t.sandbox, foundation.root);
-      await scorePublishedAttempt(t, handoff, foundation, authoredSource);
-      await scoreSourceQuality(t, foundation, authoredSource);
+      const discoveredRoot = await locateInstallRoot(t.sandbox);
+      const sourceRoot = discoveredRoot ?? ".";
+      const authoredSource = await readAuthoredSource(t.sandbox, sourceRoot);
+      const published = await collectPublishedEvidence(t, sourceRoot, handoff.message);
+
+      await scoreSourceQuality(t, authoredSource);
+      const assistantMessages = t.events.flatMap((event) =>
+        event.type === "message" && event.role === "assistant" ? [event.text] : []
+      );
+      await assertFoundationGates(t, version, discoveredRoot);
+      await blockExplicitStandIn(t, hasExplicitStandIn([
+        ...assistantMessages,
+        authoredSource,
+        published?.execution.stdout ?? "",
+        published?.source.stdout ?? "",
+      ]));
+
+      await scorePublishedEvidence(t, handoff, published);
     } finally {
       await archiveAgentOutput(t, "db-gpt");
     }
   },
 });
 
-// ── 1. 首轮交互（8 分，全部软分） ─────────────────────────────────────────────
+// ── 文档与首轮理解 ──────────────────────────────────────────────────────
 
 async function scoreFirstTurn(t: ScoreTestContext, turn: Turn): Promise<void> {
-  await t.group("首轮交互 · 8 分", async () => {
-    t.check(turn.status === "waiting", isTrue("写代码前等待用户确认接入方案"))
-      .score(1)
-      .key("install.interaction.waited")
-      .label("先等待方案确认");
-
+  await t.group("文档与首轮理解", async () => {
     const clarificationRubrics = [
       [
         "interface",
         "核对接口",
-        "有没有陈述它从仓库确认的 DB-GPT 传输方案并请用户核对？大方向应接近：" +
+        4,
+        "Y 当且仅当 agent 陈述它从仓库确认的 DB-GPT 真实接口与能力边界：" +
           "HTTP + JSON/SSE，默认端口 5670；OpenAI Chat Completions 兼容入口是 " +
-          "POST /api/v2/chat/completions，前端主聊天另走 /api/v1/chat/completions，没有 WebSocket。",
+          "POST /api/v2/chat/completions，前端主聊天另走 /api/v1/chat/completions，没有 WebSocket；" +
+          "并区分能访问数据源的 chat_data/chat_db_qa/chat_dashboard 与裸 LLM 的 chat_normal。" +
+          "只说“调 API”、猜 WebSocket 或混淆两条路径判 N。",
       ],
       [
         "telemetry",
-        "核对观测方案",
-        "有没有询问是否接 tracing / OTel，并把自带本地 tracer，并可选启用标准 OTel/OTLP 导出；" +
-          "因此应确认是保持 Tier 1，还是复用现有 tracing。 作为仓库背景而非既定选择？",
-      ],
-      [
-        "variants",
-        "核对实验变体",
-        "有没有询问是否做多配置对比或 flags？仓库可支持的方向包括：" +
-          "model、chat_mode、chat_param、temperature、max_new_tokens 与 stream 都可能形成实验变体。",
-      ],
-      [
-        "tier",
-        "摆出接入等级",
-        "有没有让用户在 Tier 1（send）、Tier 2（send + OTel）、Tier 3（侵入改造 + flags）之间选择？",
+        "询问真正用户选择",
+        3,
+        "Y 当且仅当 agent 在实作前询问会改变方案的 Tier，是否复用 DB-GPT 现有 tracer/OTel/OTLP，" +
+          "目标模型或实验变体，以及首跑 Attempt/时间/费用预算。少了 Tier、观测、模型或预算中任一类判 N；" +
+          "并且首轮状态必须是 waiting，确实把决定留给用户；反问本应从仓库查明的接口事实不算用户选择。",
       ],
     ] as const;
-    for (const [key, label, criteria] of clarificationRubrics) {
+    for (const [key, label, points, criteria] of clarificationRubrics) {
       turn.check(
-        { input: turn.input, output: turn.message },
+        { input: turn.input, output: `turn.status=${turn.status}\n${turn.message}` },
         closedQA(`只判断 agent 写代码前的第一条回复是否做到【${label}】。${criteria} 不要因为其它维度缺失而判 N。`),
-      ).score(1).key(`install.interaction.${key}`).label(label);
+      ).score(points).key(`install.interaction.${key}`).label(label);
     }
 
     const scopeRubrics = [
       [
         "use-case",
         "首条 Eval 贴核心用例",
-        "有没有基于仓库提出一条具体的首个 Eval 评估面并请用户核对？核心能力是：" +
+        4,
+        "Y 当且仅当 agent 主动提出一条具体的首个 Eval 核心用例，可观察的业务成功结果，以及主要失败风险。核心能力是：" +
           "用户用自然语言问真实库表，DB-GPT 通过 chat_data / chat_db_qa / chat_dashboard 等模式生成 SQL、" +
-          "查询并分析；chat_normal 只是裸 LLM 闲聊。；合格形状接近：具体的数据问答或分析任务，" +
-          "并使用能触达数据库的模式及对应数据源参数；chat_normal 下问常识或算术也没有触达 " +
-          "DB-GPT 的差异化能力。",
-      ],
-      [
-        "success-risk",
-        "核对结果与风险",
-        "有没有提出可观察的业务成功结果，并指出至少一个重要失败风险？结果应接近：" +
-          "检查具体数值、表名、SQL 片段等业务结果，而不是只检查有回复或 HTTP 成功；风险是：" +
-          "不存在的库表或字段被编造成看似合理的结果，而不是明确报告不存在。",
-      ],
-      [
-        "runtime-boundary",
-        "核对运行边界",
-        "有没有确认安全测试数据或本地服务、Judge 可用性，以及首跑时间/Attempt/付费范围；不能默认无限调用。",
+          "查询并分析；成功应核对具体数值、表名或 SQL；主要风险包括对不存在的表/字段编造结果。" +
+          "仅提 hello、HTTP 成功或非空回复判 N。",
       ],
     ] as const;
-    for (const [key, label, criteria] of scopeRubrics) {
+    for (const [key, label, points, criteria] of scopeRubrics) {
       turn.check(
         { input: turn.input, output: turn.message },
         closedQA(`只判断第一条回复是否做到【${label}】。${criteria} 仓库可确认的事实应由 agent 先提出，不应甩给用户。`),
-      ).score(1).key(`install.interaction.scope.${key}`).label(label);
+      ).score(points).key(`install.interaction.scope.${key}`).label(label);
     }
   });
 }
 
 async function continueWithMinimalAnswer(t: ScoreTestContext, turn: Turn): Promise<Turn> {
-  // 这里只回答真实产品选择，不替 agent 设计用例、断言、负例、候选轴或矩阵，避免泄露 rubric。
-  const answer =
-    "做简单的 Tier 1 接入，使用你刚才确认的接口；先不接 OTel，也不做 experiment flags。" +
-    "没有可用 Judge key 时，按文档选择不依赖 Judge 的验证方式。" +
-    "请继续完成接入，首跑保持每格一次的最小规模，并实际运行后用 niceeval show 查看结果。" +
-    "其余实现细节由你根据仓库和随包文档决定。";
   const requests = turn.events.flatMap((event) =>
     event.type === "input.requested" ? [event.request] : []
   );
-  return turn.status === "waiting"
-    ? await t.respond(...requests.map((request) => ({ request, text: answer })))
-    : await t.send(answer);
+  if (turn.status !== "waiting" || requests.length === 0) return turn;
+  return t.respond(...requests.map((request) => ({
+    request,
+    text: answerRequestedChoice(JSON.stringify(request)),
+  })));
 }
 
-// ── 2. 完成交接（4 分，全部软分） ─────────────────────────────────────────────
+function answerRequestedChoice(question: string): string {
+  const answers: string[] = [];
+  if (/tier|otel|otlp|trac|telemetry|观测|追踪/i.test(question)) answers.push("选 Tier 1；首跑不接 OTel/OTLP。");
+  if (/model|judge|flag|variant|模型|裁判|变体|配置/i.test(question)) {
+    answers.push("目标模型沿用目标服务默认配置；没有可用 Judge key，不做 experiment flags。");
+  }
+  if (/budget|attempt|cost|time|预算|费用|时间|规模|并发/i.test(question)) answers.push("首跑预算只允许一格一次。");
+  if (/image|sandbox|docker|incus|镜像|沙箱|运行时/i.test(question)) {
+    answers.push("离线基础镜像是 offline.invalid/niceeval-install/runtime:python，只提供基础运行时。");
+  }
+  if (/credential|secret|key|token|凭证|密钥|令牌/i.test(question)) {
+    answers.push("目标服务凭证在 /opt/fixture-secrets/target-app.env，只能注入目标服务进程，不得输出或复制进工作区。");
+  }
+  return answers.join("") || "这不是需要我决定的产品选择；请依据仓库与随包文档继续。";
+}
 
-async function scoreHandoff(t: ScoreTestContext, handoff: Turn): Promise<void> {
-  await t.group("完成交接 · 4 分", async () => {
-    handoff.succeeded()
-      .score(2)
-      .key("install.handoff.completed-turn")
-      .label("完成轮正常结束");
-    handoff.check(
-      { input: handoff.input, output: handoff.message },
-      closedQA(
-        "只判断 DB-GPT 接入的最终回复是否交代：三件套文件位置、复现用 exp/show 命令，" +
-          "以及实际 verdict 或阻塞。若只跑了 stub/mock，必须明确说明它不是目标宿主结果；不能把 errored/failed 包装成全绿。",
-      ),
-    ).score(1).key("install.handoff.reported-result").label("如实交代首跑结果");
-    handoff.check(
-      { input: handoff.input, output: handoff.message },
-      closedQA("只判断最终回复是否把继续投入的决定交还用户，并给出至少一个具体升级选项及收益；不能未经同意扩大付费范围。"),
-    ).score(1).key("install.handoff.next-step").label("交还下一步选择");
+
+// ── 随包文档路由 ────────────────────────────────────────────────────────
+
+async function scoreDocumentationRouting(t: ScoreTestContext, firstTurn: Turn): Promise<void> {
+  await t.group("随包文档路由", async () => {
+    firstTurn.toolOrder([
+      toolMatch({ input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }),
+      toolMatch({ input: referencesAnyPath([
+        "node_modules/niceeval/docs-site/zh/tutorials/connect-your-agent.mdx",
+        "node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx",
+        "node_modules/niceeval/docs-site/zh/tutorials/quickstart.mdx",
+        "node_modules/niceeval/docs-site/zh/reference/events.mdx",
+      ]) }),
+    ]).score(3).key("install.docs.index-to-relevant-page").label("从随包 INDEX 路由到相关页面");
+    t.notCalledTool(toolMatch({
+      input: referencesAnyPath([
+        "niceeval.com/docs",
+        "github.com/CorrectRoadH/niceeval/blob/main",
+        "github.com/CorrectRoadH/niceeval/tree/main",
+        "github.com/CorrectRoadH/niceeval/raw/main",
+      ]),
+    })).score(1).key("install.docs.no-online-main").label("没有退回 online main 文档");
   });
 }
 
-// ── 3. 安装基础（12 分，逐级 barrier） ───────────────────────────────────────
-
-interface FoundationEvidence {
-  root: string;
-  packageJson: PackageManifest | null;
-  managedGuidance: boolean;
-}
-
-interface PackageManifest {
-  type?: string;
-  dependencies?: Record<string, string>;
-  devDependencies?: Record<string, string>;
-}
+// ── 安装与 dry plan 零分 gate ───────────────────────────────────────────
 
 interface ExpPlan {
   matrix?: unknown[];
   attempts?: number;
-  runs?: number;
+  total?: number;
+  evals?: number;
+  configs?: number;
 }
 
-async function scoreFoundation(t: ScoreTestContext, version: string): Promise<FoundationEvidence> {
-  const root = await locateInstallRoot(t.sandbox);
-  await t.group("安装基础 · 12 分", async () => {
-    await t.check(root !== null, isTrue("niceeval.config.ts 存在"))
-      .score(3)
-      .key("install.foundation.config")
-      .label("找到安装根")
-      .orStop();
-  });
+async function assertFoundationGates(
+  t: ScoreTestContext,
+  version: string,
+  root: string | null,
+): Promise<string> {
+  await t.check(root !== null, isTrue("niceeval.config.ts 存在"))
+    .key("install.gate.config")
+    .label("gate · niceeval.config.ts 存在")
+    .orStop();
   if (root === null) throw new Error("config barrier 没有终止评分");
 
   const installed = await t.sandbox.runCommand(
@@ -233,204 +222,202 @@ async function scoreFoundation(t: ScoreTestContext, version: string): Promise<Fo
     ["-p", "require('./node_modules/niceeval/package.json').version"],
     { cwd: root },
   );
-  await t.group("安装基础 · 精确版本", async () => {
-    await t.check(
-      installed.stdout.trim(),
-      satisfies(`依赖必须精确解析为 niceeval@${version}`, (value) => value === version),
-    ).score(3).key("install.foundation.version").label("候选版本正确").orStop();
-  });
+  await t.check(
+    installed.exitCode === 0 && installed.stdout.trim() === version,
+    isTrue(`项目依赖必须精确解析为 niceeval@${version}`),
+  ).key("install.gate.exact-version").label("gate · 精确候选版本").orStop();
 
   const list = await runCandidateCli(t.sandbox, root, ["list"]);
-  await t.group("安装基础 · Eval 发现", async () => {
-    await t.check(list, commandSucceeded())
-      .score(2)
-      .key("install.foundation.list")
-      .label("项目内 CLI 可发现 Eval")
-      .orStop();
-    await t.check(
-      list.stdout,
-      satisfies("list 至少发现一条 Eval", (value) => hasDiscoveredEval(value as string)),
-    ).score(1).key("install.foundation.discovered-eval").label("至少一条 Eval").orStop();
-  });
+  await t.check(
+    list.exitCode === 0 && hasDiscoveredEval(list.stdout),
+    isTrue("候选版本的项目内 CLI 能发现至少一条 Eval"),
+  ).key("install.gate.cli-discovery").label("gate · 项目内 CLI discovery").orStop();
 
   const dry = await runCandidateCli(t.sandbox, root, ["exp", "--dry", "--json"]);
   const dryPlan = parseExpPlan(dry.stdout);
-  await t.group("安装基础 · dry plan", async () => {
-    await t.check(
-      dryPlan,
-      satisfies("exp --dry --json 能规划至少一格", (value) => {
-        const plan = value as ExpPlan | null;
-        return dry.exitCode === 0 && (plan?.matrix?.length ?? 0) > 0;
-      }),
-    ).score(3).key("install.foundation.dry-plan").label("实验可规划").orStop();
-  });
+  await t.check(
+    dry.exitCode === 0 && isSingleAttemptPlan(dryPlan),
+    isTrue("exp --dry --json 必须成功规划恰好一格一次；缺少物理 planning 镜像时不伪造 provider"),
+  ).key("install.gate.dry-plan").label("gate · Experiment dry plan 一格一次").orStop();
 
-  const packageJson = parsePackageJson(
-    (await t.sandbox.runCommand("cat", ["package.json"], { cwd: root })).stdout,
-  );
-  const managedGuidance = (
-    await t.sandbox.runShell(
-      "grep -l 'BEGIN:niceeval-agent-rules' AGENTS.md CLAUDE.md 2>/dev/null | head -1",
-      { cwd: root },
-    )
-  ).stdout.trim().length > 0;
-  return { root, packageJson, managedGuidance };
+  return root;
 }
 
-// ── 4. 同一 Attempt 的公开闭环（15 分，逐级 barrier） ─────────────────────────
+// ── 本轮 Attempt 的真实运行与公开证据 ────────────────────────────────────
 
-interface PublishedAttempt {
+type CommandEvidence = Awaited<ReturnType<ScoreTestContext["sandbox"]["runCommand"]>>;
+
+interface PublishedEvidence {
   locator: string;
-  overview: Awaited<ReturnType<ScoreTestContext["sandbox"]["runCommand"]>>;
+  overview: CommandEvidence;
+  execution: CommandEvidence;
+  source: CommandEvidence;
 }
 
-async function scorePublishedAttempt(
+async function collectPublishedEvidence(
+  t: ScoreTestContext,
+  root: string,
+  handoff: string,
+): Promise<PublishedEvidence | null> {
+  const selected = await selectPublishedAttempt(t, root, handoff);
+  if (selected === null) return null;
+  const execution = await runCandidateCli(t.sandbox, root, ["show", selected.locator, "--execution"]);
+  const source = await runCandidateCli(t.sandbox, root, ["show", selected.locator, "--source"]);
+  return { ...selected, execution, source };
+}
+
+async function scorePublishedEvidence(
   t: ScoreTestContext,
   handoff: Turn,
-  foundation: FoundationEvidence,
-  authoredSource: string,
+  published: PublishedEvidence | null,
 ): Promise<void> {
-  const bareShow = await runCandidateCli(t.sandbox, foundation.root, ["show"]);
-  const published = await selectPublishedAttempt(t, foundation.root, handoff.message, bareShow.stdout);
-
-  await t.group("Attempt 闭环 · 15 分", async () => {
-    await t.check(
-      published !== null,
-      isTrue("handoff 引用或 bare show 最后渲染项能被精确 show @locator 打开"),
-    ).score(4).key("install.attempt.published").label("发布了可下钻 Attempt").orStop();
-  });
+  await t.check(
+    published !== null,
+    isTrue("最终交接明确引用的 Attempt locator 能被项目内 CLI 解析；不从 bare show 猜旧结果"),
+  ).key("install.gate.locator").label("gate · 交接 locator 可解析").orStop();
   if (published === null) throw new Error("locator barrier 没有终止评分");
 
-  const verdict = parseAttemptVerdict(published.overview.stdout);
-  await t.group("Attempt 闭环 · verdict", async () => {
-    await t.check(
-      verdict === "passed" || verdict === "failed",
-      isTrue(`同一 locator 到达 passed/failed（实际：${verdict ?? "无法识别"}）`),
-    ).score(3).key("install.attempt.non-errored").label("Attempt 非 errored").orStop();
-  });
+  await t.check(
+    published.overview.exitCode === 0 && published.execution.exitCode === 0 && published.source.exitCode === 0,
+    isTrue(`同一 ${published.locator} 的 overview、--execution 与 --source 命令都实际成功`),
+  ).key("install.gate.evidence-commands").label("gate · 取证命令实际成功").orStop();
 
-  const execution = await runCandidateCli(t.sandbox, foundation.root, [
-    "show",
-    published.locator,
-    "--execution",
-  ]);
-  await t.group("Attempt 闭环 · 事件映射", async () => {
-    await t.check(
-      execution.stdout,
-      satisfies("同一 locator 的 execution 含 ASSISTANT 消息", (value) =>
-        /^\s*ASSISTANT\b/m.test(value as string)
+  const status = parseAttemptStatus(published.overview.stdout);
+  const evidenceMaterial = {
+    input:
+      `评审交接明确引用的固定 Attempt ${published.locator}。\n` +
+      `--- overview ---\n${published.overview.stdout}\n` +
+      `--- execution ---\n${published.execution.stdout}`,
+    output: `--- source ---\n${published.source.stdout}`,
+  };
+  await t.group("真实运行与公开证据", async () => {
+    await t.check(evidenceMaterial, closedQA(
+      "【本轮非 dry Experiment membership】Y 当且仅当 overview/execution/source 交叉证明该 locator 属于本轮实际执行的 DB-GPT Experiment，" +
+        "发布了目标 DB-GPT Eval 的 Attempt，且 source 和 execution 的 Adapter/Eval 身份一致。任意旧 locator、dry plan、通用 agent 或无法确认 Run membership 判 N。",
+    ).atLeast(1)).score(6).key("install.evidence.real-published-attempt")
+      .label("本轮真实非 dry Experiment 发布 Attempt").orStop();
+    t.check(evidenceMaterial, closedQA(
+      "【同一 locator 证据链】Y 当且仅当 overview、execution 与 source 显示同一 eval/experiment/agent/attempt，" +
+        "且 source 中的 Adapter/Eval 能解释 execution 中的输入、事件与断言。任一面空白、对象不一致或无法交叉印证判 N。",
+    )).score(6).key("install.evidence.consistent-chain").label("同一 locator 的 overview/execution/source 证据链一致");
+    t.check(evidenceMaterial, closedQA(
+      "【目标响应在 execution】Y 当且仅当 execution 中的 ASSISTANT/message 内容能追溯到 DB-GPT 响应解析，并呈现与 Eval 数据问答有关的具体结果。" +
+        "仅有静态 ASSISTANT 文字、输入回显、启动日志/status 或无法与 Adapter 映射对应的文本判 N。",
+    )).score(5).key("install.evidence.target-response").label("execution 含 Adapter 映射的 DB-GPT 真实响应");
+    t.check(
+      status === "passed" || status === "failed" || status === "scored",
+      isTrue(`Attempt 得到非 errored 的已完成结果（实际：${status ?? "无法识别"}）`),
+    ).score(3).key("install.evidence.non-errored").label("Attempt 非 errored 且已完成");
+    handoff.check(
+      {
+        input: `交接对应的真实 locator 是 ${published.locator}，终态是 ${status ?? "无法识别"}。\n${published.overview.stdout}`,
+        output: handoff.message,
+      },
+      closedQA(
+        "【最终交接】Y 当且仅当最终回复明确引用输入中的真实 locator，提供可复现的 exp/show 命令和主要文件，" +
+          "并与 overview 终态一致地报告通过、失败、计分或局限。漏 locator、只写泛化 show 命令、或把 failed/errored/替代物说成全绿判 N。",
       ),
-    ).score(3).key("install.attempt.assistant-event").label("映射出 ASSISTANT").orStop();
-  });
-
-  const source = await runCandidateCli(t.sandbox, foundation.root, [
-    "show",
-    published.locator,
-    "--source",
-  ]);
-  const assistantMessages = t.events.flatMap((event) =>
-    event.type === "message" && event.role === "assistant" ? [event.text] : []
-  );
-  const explicitStandIn = hasExplicitStandIn([
-    ...assistantMessages,
-    execution.stdout,
-    source.stdout,
-    authoredSource,
-  ]);
-  await t.group("Attempt 闭环 · stand-in 上限", async () => {
-    await t.check(
-      !explicitStandIn,
-      isTrue("未发现明确使用 stand-in 的正面证据；这不证明背后是真实宿主"),
-    ).score(1).key("install.attempt.no-explicit-stand-in").label("未发现明确 stand-in（不证明真实宿主）").orStop();
-
-    t.check(verdict === "passed", isTrue("候选 Attempt verdict 为 passed"))
-      .score(4)
-      .key("install.attempt.passed")
-      .label("候选 verdict passed");
+    ).score(3).key("install.evidence.handoff").label("交接引用 locator 并如实报告");
+    t.check(status === "passed", isTrue("候选 agent 自写 Eval 的 verdict 为 passed"))
+      .score(1).key("install.evidence.self-eval-passed").label("agent 自写 Eval passed（弱证据）");
   });
 }
 
-// ── 5. 源码与实践（13 分，只有通过闭环 barriers 后才执行） ─────────────────────
+// ── 先于真实性与运行 gate 审查的源码设计 ─────────────────────────────────
 
 async function scoreSourceQuality(
   t: ScoreTestContext,
-  foundation: FoundationEvidence,
   source: string,
 ): Promise<void> {
-  const pkg = foundation.packageJson;
-  await t.group("源码实践 · 9 分", async () => {
-    t.check(
-      !!pkg?.devDependencies?.niceeval && !pkg.dependencies?.niceeval,
-      isTrue("niceeval 只在 devDependencies"),
-    ).score(1).key("install.practice.dev-dependency").label("开发依赖");
-    t.check(pkg?.type === "module", isTrue('独立工作区 package.json 是 "type": "module"'))
-      .score(1).key("install.practice.esm").label("ESM 工作区");
-    t.check(foundation.root !== ".", isTrue("Python 宿主使用独立 NiceEval 子工作区"))
-      .score(1).key("install.practice.standalone-workspace").label("独立工作区");
-    t.check(foundation.managedGuidance, isTrue("init 写入托管 AGENTS/CLAUDE 区块"))
-      .score(1).key("install.practice.managed-guidance").label("托管指引区块");
-    t.check(
-      source,
-      satisfies("experiment 显式限制 attempts/runs 为 1", (value) =>
-        /\b(?:attempts|runs):\s*1\b/.test(value as string)
-      ),
-    ).score(1).key("install.practice.single-attempt").label("每格一次");
-    t.check(
-      source,
-      satisfies("adapter 有 HTTP/WebSocket 传输调用", (value) =>
-        /\bfetch\s*\(|\bWebSocket\b|axios|https?\.request\s*\(/.test(value as string)
-      ),
-    ).score(1).key("install.practice.transport").label("真实传输层写法");
-    t.check(source, satisfies("adapter 转发 ctx.signal", (value) => /ctx\.signal/.test(value as string)))
-      .score(1).key("install.practice.signal").label("转发取消信号");
-    t.check(source, satisfies("adapter 消费 ctx.model", (value) => /ctx\.model/.test(value as string)))
-      .score(1).key("install.practice.model").label("消费 experiment model");
-    t.check(
-      source,
-      satisfies("Eval 使用 NiceEval 官方断言词汇", (value) =>
-        /\.(?:check|require|messageIncludes|succeeded)\s*\(|\.judge\./.test(value as string)
-      ),
-    ).score(1).key("install.practice.assertions").label("官方断言词汇");
-  });
-
   const material = {
     input: "下面是 agent 为 DB-GPT 写出的 NiceEval 三件套源码。",
     output: source || "（无）",
   };
-  await t.group("Eval 设计质量 · 4 分", async () => {
+  await t.group("Adapter、Experiment 与 Eval 源码设计", async () => {
     t.check(
       material,
       closedQA(
-        "【核心用例】Eval 输入是否贴着用户用自然语言问真实库表，DB-GPT 通过 chat_data / " +
-          "chat_db_qa / chat_dashboard 等模式生成 SQL、查询并分析；chat_normal 只是裸 LLM 闲聊。？" +
+        "【真实目标协议】Y 当且仅当 Adapter 连接 DB-GPT 仓库真实提供的 HTTP 入口，并对所选路径实现正确请求/响应语义：" +
+          "例如 POST /api/v2/chat/completions 的兼容 payload 与 JSON/SSE 返回，或仓库中另一条被源码证明的 DB-GPT 路径及其实际 shape。" +
+          "仅有通用 /v1/chat/completions、猜测 WebSocket、进程内函数调用或静态回复判 N。",
+      ),
+    ).score(8).key("install.adapter.target-protocol").label("真实 DB-GPT 协议与请求响应语义");
+    t.check(
+      material,
+      closedQA(
+        "【真实响应映射】Y 当且仅当 NiceEval 助手消息或标准事件的文本来自 DB-GPT 实际 JSON/SSE response/delta，" +
+          "并正确组合流式分片和结束。返回输入原文、固定 ASSISTANT 文字、未读 body 或把 logs/status 当最终答案判 N。",
+      ),
+    ).score(6).key("install.adapter.response-mapping").label("真实响应映射为 NiceEval 消息或事件");
+    t.check(material, closedQA(
+      "【变量传递】Y 当且仅当 Adapter 真正读取 model 以及所选静态配置（如 base URL、chat_mode、chat_param），" +
+        "并把它们传入 DB-GPT 请求或运行过程。只在 Experiment 声明但 send 不读取，或 send 内全部硬编码，判 N。",
+    )).score(3).key("install.adapter.variables-forwarded").label("模型、配置与实验变量传到 DB-GPT");
+    t.check(material, closedQA(
+      "【取消与失败】Y 当且仅当 send 将 NiceEval AbortSignal 或等价取消机制传给网络请求，有有界超时，" +
+        "并在非 2xx、SSE/JSON 解析错误、连接中断或目标服务报错时抛出/映射失败。catch 后改返成功空文本或吞错判 N。",
+    )).score(3).key("install.adapter.failure-semantics").label("取消、超时与错误不被吞掉");
+    t.check(material, closedQA(
+      "【凭证边界】Y 当且仅当凭证只从环境/目标服务进程边界读取，不硬编码，不写入工作区，不打印，也不混入 Eval 文本或取证输出。",
+    )).score(2).key("install.adapter.credential-boundary").label("凭证边界正确");
+    t.check(
+      material,
+      closedQA(
+        "【核心能力输入】Y 当且仅当至少一条 Eval 输入让用户用自然语言问真实库表，DB-GPT 通过 chat_data / " +
+          "chat_db_qa / chat_dashboard 等模式生成 SQL、查询并分析；chat_normal 只是裸 LLM 闲聊。" +
           "合格形状是：具体的数据问答或分析任务，并使用能触达数据库的模式及对应数据源参数；" +
           "chat_normal 下问常识或算术也没有触达 DB-GPT 的差异化能力。" +
           "hello、自我介绍或无关常识不合格。",
       ),
-    ).score(1).key("install.quality.core-use-case").label("核心用例");
+    ).score(6).key("install.eval.core-input").label("输入覆盖 DB-GPT 核心能力");
     t.check(
       material,
       closedQA(
-        "【具体断言】是否检查具体数值、表名、SQL 片段等业务结果，而不是只检查有回复或 HTTP 成功，" +
-          "且开放措辞使用 judge、结构检查或宽容 matcher？" +
-          "只有 succeeded、非空或单一脆弱短语不合格。",
+        "【业务结果断言】Y 当且仅当断言核对可预期的业务事实，例如查询数值、表/字段名、SQL 片段或与固定测试数据一致的分析结论。" +
+          "只检查 succeeded、HTTP 2xx、非空文本、字数或“成功”字样判 N。",
       ),
-    ).score(1).key("install.quality.assertion").label("具体且稳健的断言");
+    ).score(6).key("install.eval.business-assertions").label("断言检查具体业务结果");
     t.check(
       material,
       closedQA(
-        "【负例】是否覆盖“不存在的库表或字段被编造成看似合理的结果，而不是明确报告不存在”，" +
-          "且 prompt 没有直接教被测系统标准拒答？",
+        "【真实负例】Y 当且仅当 Eval 询问固定测试数据中不存在的表或字段，并断言系统不得编造数值/SQL。" +
+          "prompt 若直接教它标准拒答，或只把网络失败当负例，判 N。",
       ),
-    ).score(1).key("install.quality.negative").label("真实负例");
+    ).score(4).key("install.eval.negative-case").label("真实负例暴露编造风险");
+    t.check(material, closedQA(
+      "【开放输出稳健性】Y 当且仅当对可有多种正确措辞的输出使用语义 Judge、解析后的结构/数值比较、或能容纳合法变体的 matcher。" +
+        "仅匹配一个脆弱短语、完整原文或和业务无关的长度判 N。",
+    )).score(3).key("install.eval.robust-open-output").label("开放输出使用稳健判断");
+    t.check(material, closedQA(
+      "【Eval 生命周期边界】Y 当且仅当 Eval 只描述任务和断言，没有在 test 中自行启动、伪造、重启或代管 DB-GPT 服务。" +
+        "服务 setup/teardown 位于 Experiment/Plugin/Sandbox lifecycle 才判 Y。",
+    )).score(2).key("install.eval.no-service-management").label("Eval 不代管目标服务");
     t.check(
       material,
       closedQA(
-        "【实验耦合】experiment 是否使用同一个 DB-GPT adapter，Eval 测的也是该系统，" +
-          "而不是 echo/通用占位 agent？",
+        "【目标耦合】Y 当且仅当 Experiment 实际选择本次 DB-GPT Adapter，且它选中的 Eval 测试的也是 DB-GPT 数据问答，" +
+          "而不是内置/通用/echo agent 或无关 Eval。必须能从导入和 experiment 选择追到同一对定义。",
       ),
-    ).score(1).key("install.quality.coupling").label("Experiment 与 Eval 耦合");
+    ).score(5).key("install.experiment.target-coupling").label("使用本次 DB-GPT Adapter 与目标 Eval");
+    t.check(material, closedQA(
+      "【配置被消费】Y 当且仅当 Experiment 中的 model、flags 或静态配置有清楚的消费方：Adapter/lifecycle 读取后传给 DB-GPT。" +
+        "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。未选用 flags 不是错，但仍需证明实际声明的 model/配置被消费。",
+    )).score(3).key("install.experiment.config-consumed").label("模型、flags 与静态配置不是死配置");
+    t.check(material, closedQA(
+      "【服务生命周期】Y 当且仅当 Experiment/Plugin/Sandbox lifecycle 负责启动真实 DB-GPT、将 /opt/fixture-secrets/target-app.env 只注入目标服务进程、" +
+        "等待可用，并在结束或失败时可靠清理进程/容器。仅假设外部已启动、把凭证 source 到 agent shell，或无清理判 N。",
+    )).score(3).key("install.experiment.lifecycle").label("目标服务生命周期、环境与清理合理");
+    t.check(material, closedQA(
+      "【首跑规模】Y 当且仅当可实际执行的首跑选择是一个 Experiment × 一条 Eval × 一次 Attempt，没有隐式矩阵扩张或多次 attempts。",
+    )).score(1).key("install.experiment.first-run-scale").label("首跑规模符合预算");
   });
+}
+
+async function blockExplicitStandIn(t: ScoreTestContext, explicit: boolean): Promise<void> {
+  await t.check(
+    !explicit,
+    isTrue("源码、execution 或交接明确显示 stub/mock/echo/进程内替代时，阻断依赖真实运行的后续证据分"),
+  ).key("install.gate.no-explicit-stand-in").label("gate · 明确替代物阻断真实证据路径").orStop();
 }
 
 // ── 纯取证与解析工具 ─────────────────────────────────────────────────────────
@@ -463,26 +450,26 @@ async function selectPublishedAttempt(
   t: ScoreTestContext,
   root: string,
   handoff: string,
-  bareShow: string,
-): Promise<PublishedAttempt | null> {
+): Promise<Pick<PublishedEvidence, "locator" | "overview"> | null> {
   const explicit = [...extractAttemptLocators(handoff)].reverse();
-  const fallback = [...extractAttemptLocators(bareShow)].reverse();
-  for (const locator of [...explicit, ...fallback]) {
+  for (const locator of explicit) {
     const overview = await runCandidateCli(t.sandbox, root, ["show", locator]);
     if (overview.exitCode === 0) return { locator, overview };
   }
   return null;
 }
 
-function parseAttemptVerdict(stdout: string): "passed" | "failed" | "errored" | null {
+function parseAttemptStatus(stdout: string): "passed" | "failed" | "scored" | "errored" | null {
   const header = stdout.split("\n").slice(0, 16).join("\n");
   return /\berrored\b/i.test(header)
     ? "errored"
-    : /\bfailed\b/i.test(header)
-      ? "failed"
-      : /\bpassed\b/i.test(header)
-        ? "passed"
-        : null;
+    : /\bscored\b/i.test(header)
+      ? "scored"
+      : /\bfailed\b/i.test(header)
+        ? "failed"
+        : /\bpassed\b/i.test(header)
+          ? "passed"
+          : null;
 }
 
 function hasExplicitStandIn(materials: readonly string[]): boolean {
@@ -492,8 +479,11 @@ function hasExplicitStandIn(materials: readonly string[]): boolean {
   const chineseUse = /(?:用|使用|通过|跑了|跑过|验证)[^。\n]{0,100}(?:临时|本地|协议|一次性)?[^。\n]{0,20}(?:桩|模拟|假|占位)(?:服务|服务器|模型)/i;
   const serverWithMarker =
     /(?:http\.createServer|server\.listen)[\s\S]{0,240}\b(?:stub|mock|fake|stand[- ]?in)\b|\b(?:stub|mock|fake|stand[- ]?in)\b[\s\S]{0,240}(?:http\.createServer|server\.listen)/i;
+  const echoOrInProcess =
+    /\b(?:use[ds]?|using|ran|run|with|via)\s+(?:an?\s+)?(?:local\s+|temporary\s+)?echo(?:\s+agent|\s+adapter)?\b|\b(?:name|id)\s*:\s*["']echo["']|\bin[- ]process\s+(?:replacement|substitute|stand[- ]?in|fake|mock|stub)\b|(?:进程内|本地函数)[^。\n]{0,40}(?:替代|模拟|桩|占位)/i;
   return materials.some((text) =>
-    positiveUse.test(text) || explicitModel.test(text) || chineseUse.test(text) || serverWithMarker.test(text)
+    positiveUse.test(text) || explicitModel.test(text) || chineseUse.test(text) ||
+    serverWithMarker.test(text) || echoOrInProcess.test(text)
   );
 }
 
@@ -505,6 +495,8 @@ function assertStandInContracts(): void {
       true,
     ],
     ["chinese", ["通过临时模拟服务跑过一次，目标应用仍未启动。"], true],
+    ["echo-agent", ['const agent = defineAgent({ name: "echo", send });'], true],
+    ["in-process", ["用进程内函数替代了目标服务。"], true],
     ["negated", ["No mocked service will be substituted for the real evaluation."], false],
     ["fixture-server-only", ["const server = http.createServer(handler); server.listen(8001);"], false],
   ];
@@ -542,12 +534,12 @@ function parseExpPlan(stdout: string): ExpPlan | null {
   }
 }
 
-function parsePackageJson(stdout: string): PackageManifest | null {
-  try {
-    return JSON.parse(stdout) as PackageManifest;
-  } catch {
-    return null;
-  }
+function isSingleAttemptPlan(plan: ExpPlan | null): boolean {
+  return plan?.matrix?.length === 1 &&
+    plan.attempts === 1 &&
+    plan.total === 1 &&
+    plan.evals === 1 &&
+    plan.configs === 1;
 }
 
 async function runCandidateCli(
