@@ -14,16 +14,27 @@
 import { mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineScoreEval, type ScoreTestContext } from "niceeval";
-import { commandSucceeded, isTrue, satisfies } from "niceeval/expect";
+import { closedQA, commandSucceeded, isTrue, satisfies } from "niceeval/expect";
 import {
   actionRef,
   command,
   gitCheckout,
-  sandboxLayer,
-  sandboxState,
-  shell,
+  sandboxRequirements,
   type SandboxLayer,
 } from "niceeval/sandbox";
+
+const GIB = 1024 ** 3;
+
+function dockerCapability() {
+  return sandboxRequirements({
+    docker: {
+      api: "docker/v1",
+      compose: "v2",
+      isolation: "dedicated-kernel/v1",
+      minimumDataBytes: 4 * GIB,
+    },
+  });
+}
 
 type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
 
@@ -50,8 +61,7 @@ interface InstallCase {
 const DB_GPT: InstallCase = {
   id: "db-gpt",
   description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
-  sandbox: sandboxLayer()
-    .before(installRuntimeImport("db-gpt-v0.8.1"))
+  sandbox: dockerCapability()
     .before(gitCheckout({
       id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout",
       repository: "https://github.com/eosphoros-ai/DB-GPT.git",
@@ -59,7 +69,6 @@ const DB_GPT: InstallCase = {
       to: ".",
       sparse: { include: ["/*"], exclude: ["/docs/", "/assets/"] },
       changeFrequency: 20,
-      dependsOn: [actionRef(installRuntimeActionId("db-gpt-v0.8.1"))],
     }))
     .before(command("rm", ["-rf", ".git"], {
       id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.detach",
@@ -92,15 +101,13 @@ const DB_GPT: InstallCase = {
 const GPT_RESEARCHER: InstallCase = {
   id: "gpt-researcher",
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
-  sandbox: sandboxLayer()
-    .before(installRuntimeImport("gpt-researcher-v3.6.0"))
+  sandbox: dockerCapability()
     .before(gitCheckout({
       id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout",
       repository: "https://github.com/assafelovic/gpt-researcher.git",
       ref: "5d84d2f5553e70a2765a8ff3a0d2672d60437ce8",
       to: ".",
       changeFrequency: 20,
-      dependsOn: [actionRef(installRuntimeActionId("gpt-researcher-v3.6.0"))],
     }))
     .before(command("rm", ["-rf", ".git"], {
       id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.detach",
@@ -131,37 +138,11 @@ export default {
   "gpt-researcher": createInstallEval(GPT_RESEARCHER),
 };
 
-function installRuntimeActionId(owner: string): string {
-  return `niceeval-eval.install-fixture.${owner}.import-runtime-python`;
-}
-
-/**
- * 每个正式 install Eval 都拥有一枚可审计的 dockerData action。它只校验并导入镜像；
- * checkout、workspace、home、凭证和答案都不进入可缓存前缀。
- */
-function installRuntimeImport(owner: string) {
-  return shell({
-    id: installRuntimeActionId(owner),
-    command: `set -eu
-runtime_dir=/opt/niceeval-install/runtime
-cd "$runtime_dir"
-sha256sum -c runtime-python.tar.gz.sha256
-docker import runtime-python.tar.gz offline.invalid/niceeval-install/runtime:python
-docker run --pull=never --rm --entrypoint /bin/sh \\
-  offline.invalid/niceeval-install/runtime:python \\
-  -c 'node -v && git --version && python3 --version'
-printf '%s\\n' 'install runtime 就绪：offline.invalid/niceeval-install/runtime:python'`,
-    user: "root",
-    changeFrequency: 10,
-    cache: { state: sandboxState.dockerData },
-  });
-}
-
 function createInstallEval(installCase: InstallCase) {
   return defineScoreEval({
     description: installCase.description,
     judge: true,
-    timeoutMs: 35 * 60 * 1000,
+    timeoutMs: 50 * 60 * 1000,
     sandbox: installCase.sandbox,
     async test(t) {
       const version = t.flags.candidateVersion;
@@ -228,8 +209,9 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: Inst
       ],
     ] as const;
     for (const [key, label, criteria] of clarificationRubrics) {
-      turn.judge.autoevals.closedQA(
-        `只判断 agent 写代码前的第一条回复是否做到【${label}】。${criteria} 不要因为其它维度缺失而判 N。`,
+      turn.check(
+        { input: turn.input, output: turn.message },
+        closedQA(`只判断 agent 写代码前的第一条回复是否做到【${label}】。${criteria} 不要因为其它维度缺失而判 N。`),
       ).score(1).key(`install.interaction.${key}`).label(label);
     }
 
@@ -253,8 +235,9 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn, installCase: Inst
       ],
     ] as const;
     for (const [key, label, criteria] of scopeRubrics) {
-      turn.judge.autoevals.closedQA(
-        `只判断第一条回复是否做到【${label}】。${criteria} 仓库可确认的事实应由 agent 先提出，不应甩给用户。`,
+      turn.check(
+        { input: turn.input, output: turn.message },
+        closedQA(`只判断第一条回复是否做到【${label}】。${criteria} 仓库可确认的事实应由 agent 先提出，不应甩给用户。`),
       ).score(1).key(`install.interaction.scope.${key}`).label(label);
     }
   });
@@ -283,12 +266,16 @@ async function scoreHandoff(t: ScoreTestContext, handoff: Turn, installCase: Ins
       .score(2)
       .key("install.handoff.completed-turn")
       .label("完成轮正常结束");
-    handoff.judge.autoevals.closedQA(
-      `只判断 ${installCase.quality.system} 接入的最终回复是否交代：三件套文件位置、复现用 exp/show 命令，` +
-        "以及实际 verdict 或阻塞。若只跑了 stub/mock，必须明确说明它不是目标宿主结果；不能把 errored/failed 包装成全绿。",
+    handoff.check(
+      { input: handoff.input, output: handoff.message },
+      closedQA(
+        `只判断 ${installCase.quality.system} 接入的最终回复是否交代：三件套文件位置、复现用 exp/show 命令，` +
+          "以及实际 verdict 或阻塞。若只跑了 stub/mock，必须明确说明它不是目标宿主结果；不能把 errored/failed 包装成全绿。",
+      ),
     ).score(1).key("install.handoff.reported-result").label("如实交代首跑结果");
-    handoff.judge.autoevals.closedQA(
-      "只判断最终回复是否把继续投入的决定交还用户，并给出至少一个具体升级选项及收益；不能未经同意扩大付费范围。",
+    handoff.check(
+      { input: handoff.input, output: handoff.message },
+      closedQA("只判断最终回复是否把继续投入的决定交还用户，并给出至少一个具体升级选项及收益；不能未经同意扩大付费范围。"),
     ).score(1).key("install.handoff.next-step").label("交还下一步选择");
   });
 }
@@ -496,24 +483,30 @@ async function scoreSourceQuality(
     output: source || "（无）",
   };
   await t.group("Eval 设计质量 · 4 分", async () => {
-    t.judge.autoevals.closedQA(
-      `【核心用例】Eval 输入是否贴着 ${quality.coreUseCase}？合格形状是：${quality.useCaseShape}` +
-        `${quality.bypass ?? ""}。hello、自我介绍或无关常识不合格。`,
+    t.check(
       material,
+      closedQA(
+        `【核心用例】Eval 输入是否贴着 ${quality.coreUseCase}？合格形状是：${quality.useCaseShape}` +
+          `${quality.bypass ?? ""}。hello、自我介绍或无关常识不合格。`,
+      ),
     ).score(1).key("install.quality.core-use-case").label("核心用例");
-    t.judge.autoevals.closedQA(
-      `【具体断言】是否${quality.assertionShape}，且开放措辞使用 judge、结构检查或宽容 matcher？` +
-        "只有 succeeded、非空或单一脆弱短语不合格。",
+    t.check(
       material,
+      closedQA(
+        `【具体断言】是否${quality.assertionShape}，且开放措辞使用 judge、结构检查或宽容 matcher？` +
+          "只有 succeeded、非空或单一脆弱短语不合格。",
+      ),
     ).score(1).key("install.quality.assertion").label("具体且稳健的断言");
-    t.judge.autoevals.closedQA(
-      `【负例】是否覆盖“${quality.negativeRisk}”，且 prompt 没有直接教被测系统标准拒答？`,
+    t.check(
       material,
+      closedQA(`【负例】是否覆盖“${quality.negativeRisk}”，且 prompt 没有直接教被测系统标准拒答？`),
     ).score(1).key("install.quality.negative").label("真实负例");
-    t.judge.autoevals.closedQA(
-      `【实验耦合】experiment 是否使用同一个 ${quality.system} adapter，Eval 测的也是该系统，` +
-        "而不是 echo/通用占位 agent？",
+    t.check(
       material,
+      closedQA(
+        `【实验耦合】experiment 是否使用同一个 ${quality.system} adapter，Eval 测的也是该系统，` +
+          "而不是 echo/通用占位 agent？",
+      ),
     ).score(1).key("install.quality.coupling").label("Experiment 与 Eval 耦合");
   });
 }

@@ -1,7 +1,7 @@
 /** roadmap 预览题的通用澄清：正式 install 题已经收进 evals/install/eval.ts。 */
 
 import type { ScoreTestContext } from "niceeval";
-import { equals, isTrue } from "niceeval/expect";
+import { closedQA, equals, isTrue } from "niceeval/expect";
 import { buildClarifyRubrics, type ClarifyFacts } from "./criteria/clarification.ts";
 
 type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
@@ -22,7 +22,10 @@ export async function scoreIntegrationConversation(
       .key("install.interaction.waited-for-clarification")
       .label("首轮等待澄清");
     for (const [index, rubric] of buildClarifyRubrics(opts.clarify).entries()) {
-      opts.turn.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`)
+      opts.turn.check(
+        { input: opts.turn.input, output: opts.turn.message },
+        closedQA(`【${rubric.key}】${rubric.criteria}`),
+      )
         .score(1)
         .key(`install.interaction.clarification.${index + 1}`)
         .label(rubric.key);
@@ -62,10 +65,13 @@ export async function scoreSandboxClarification(
   await t.group("评估交互", async () => {
     t.check(isWaiting, equals(true)).label("停下来澄清").score(1);
     for (const rubric of rubrics) {
-      t.judge.autoevals.closedQA(`【${rubric.key}】${rubric.criteria}`, {
-        input: "下面是 agent 在动手前给出的澄清回复。",
-        output: clarifyReply,
-      }).score(1);
+      t.check(
+        {
+          input: "下面是 agent 在动手前给出的澄清回复。",
+          output: clarifyReply,
+        },
+        closedQA(`【${rubric.key}】${rubric.criteria}`),
+      ).score(1);
     }
   });
   return isWaiting;

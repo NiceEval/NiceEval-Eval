@@ -1,7 +1,9 @@
 import { defineScoreEval } from "niceeval";
 import { commandSucceeded, equals, referencesAnyPath, toolMatch } from "niceeval/expect";
 import { loadCriteria, loadText } from "niceeval/loaders";
-import { changeFrequency, sandboxLayer, uploadDirectory } from "niceeval/sandbox";
+import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+
+const GIB = 1024 ** 3;
 
 const TARGET_EVAL = "evals/terminal-bench/cancel-async-tasks.eval.ts";
 const FIXTURE_ROOT = "../../../../fixtures/harness/terminal-bench/cancel-async-authoring/repo/";
@@ -52,7 +54,14 @@ export default defineScoreEval({
   tags: ["harness", "terminal-bench", "authoring", "hidden-tests", "deterministic", "single-turn"],
   timeoutMs: 30 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
-  sandbox: sandboxLayer().before(uploadDirectory({
+  sandbox: sandboxRequirements({
+    docker: {
+      api: "docker/v1",
+      compose: "v2",
+      isolation: "dedicated-kernel/v1",
+      minimumDataBytes: 4 * GIB,
+    },
+  }).before(uploadDirectory({
     id: "niceeval-eval.harness.cancel-async-authoring.fixture",
     source: new URL(FIXTURE_ROOT, import.meta.url),
     to: ".",

@@ -28,7 +28,7 @@
  */
 
 import type { ScoreTestContext } from "niceeval";
-import { isTrue, satisfies } from "niceeval/expect";
+import { closedQA, isTrue, satisfies } from "niceeval/expect";
 import { locateInstallRoot } from "./installation.ts";
 
 /** 文档「用哪个装哪个」表：provider 工厂 → 必须进依赖的 SDK 包名。localSandbox 免装，不在表里。 */
@@ -159,7 +159,7 @@ export async function checkSandboxProvisioning(t: ScoreTestContext, opts: { mate
 
     // judge 三维（纯加分）：预制分层 / 官方基线派生 / 制品引用版本化。
     for (const r of buildSandboxRubrics()) {
-      t.judge.autoevals.closedQA(`【${r.key}】${r.criteria}`, judgeMaterial).score(1);
+      t.check(judgeMaterial, closedQA(`【${r.key}】${r.criteria}`)).score(1);
     }
   });
 }

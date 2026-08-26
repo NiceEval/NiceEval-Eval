@@ -25,19 +25,20 @@ sandbox agent 在预载 runtime 里确定性重放 task 产出；authoring 题�
 
 共享的是运行基建，不是题目内容：
 
-- `sandbox/Dockerfile` 的 `base` 阶段提供 Node、pnpm、Docker/Compose；
-- `harness-candidate` target 只携带项目 seed 与两枚离线 inner runtime 归档；独立 `install`
-  target 只引用 Python runtime stage，不携带 Harness 的 Node archive 或 seed；
-- Experiment 的声明式 TS action 以解析后的精确版本为输入，在 attempt tmpfs 中运行
-  `pnpm add`、`niceeval init`、生成物清理并物化只读 `node_modules` symlink；版本与完整命令
-  自动进入 action fingerprint；
-- 准备顺序固定为离线 runtime 导入 → 候选安装/物化 → runtime contract → 各 Eval 的 fixture
-  action。fixture 只上传几 KB 的 repo，覆盖到已准备的 workspace，不重复安装或 init。
+- 唯一的通用 Incus base 只提供 Node、pnpm、Docker/Compose 与 guest-init；它不按 install 或
+  harness 区分，也不携带项目 seed、候选 NiceEval、inner runtime 或任何题目资产；
+- Experiment 的声明式 TS `before` action 依次从固定 digest 准备 inner runtime tag、上传项目
+  seed、以解析后的精确版本运行 `pnpm add` / `niceeval init`、清理生成物并物化只读
+  `node_modules` symlink；版本、命令与依赖关系都进入 action identity；
+- 每一层成功后由 provider-native SetupPrefix artifact 发布，后续具有相同 identity 的 Attempt
+  逐层复用；准备顺序固定为 runtime → seed → 候选安装/物化 → runtime contract → 各 Eval 的
+  fixture action。fixture 只上传所属小 repo，覆盖已准备 workspace，不重复安装或 init。
 
-case repo 不进入 Docker build context，所以改题目不会使通用 Harness 镜像失效。镜像内也没有
-任何 case 的正确或错误业务源码、候选版指引或 `node_modules`；只有项目 seed 与离线归档。
+case repo 不属于通用 base 或项目 seed，所以改题目不会影响共享基建 artifact。通用 base 与共享的
+inner-runtime / seed 层不包含任何 case 的正确或错误业务源码、候选版指引或 `node_modules`；后续
+候选安装层才按精确版本物化 `node_modules`，仍不包含 case repo。
 
-## 离线 inner runtime 镜像
+## Inner runtime tag
 
 `terminal-bench/regex-log` 与 `cancel-async-authoring` 要求候选 workspace 的 inner dockerd 启动完成后，
 本地已有两个 tag：
@@ -54,26 +55,18 @@ offline.invalid/niceeval-harness/runtime:python
 
 ### 构造与生命周期
 
-- 构建期：`sandbox/Dockerfile` 里 `runtime-node` / `runtime-python` 两个**固定 digest**
-  stage 在 stage 内 RUN 真实验证 `node -v`、`git --version`、`python3 --version`（node
-  变体额外验证 python3 不存在），再把各自完整 rootfs 用确定性 tar/gzip（`--sort=name
-  --mtime=@0 --numeric-owner` + `gzip -n`）物化成两枚 `tar.gz` 归档，同层生成 `sha256`
-  校验文件。
-  全程**零包安装**——归档内容完全由固定 digest 镜像决定，不存在 unpinned package
-  install，也不存在随时间漂移；
-- Harness 阶段：专用 `harness-candidate` target 用 `COPY --from=runtime-*` 把归档与校验
-  文件放到 `/opt/niceeval-harness/runtime/`；普通 `candidate` 不引用这两个 stage，install
-  镜像不构建也不携带归档；
-- 启动期：Experiment 的低频 `dockerData` action 在 inner dockerd 就绪后，先对两枚归档做
-  `sha256sum -c` 校验，再做本地
-  `docker import`，最后用 `docker run --pull=never` 冒烟：node 变体 node/git 可用且
-  python3 不可执行，python 变体 node/git/python3 全可用；任一步失败即整体退出，
-  Sandbox 直接 errored；
-- 镜像准备期：导入只读本地归档，冒烟固定 `--pull=never`，两步均不访问网络；`.invalid`
-  保留域防止本地 tag 与真实 registry 名冲突。
+- `prepareInnerRuntimes` 是最前面的声明式 action：它在 guest 内拉取两枚**固定 digest** source，
+  将 Node source 标为 `runtime:node`，并用 Docker 的 create/cp/export/import surface 将 Node
+  二进制加入 Python rootfs 后得到 `runtime:python`；不安装未固定的包；
+- action 随即以 `docker run --pull=never` 冒烟：node 变体必须有 node/git 且没有 python3，
+  python 变体必须同时有 node/git/python3。`.invalid` 保留域避免 local tag 与真实 registry
+  名冲突，任一步失败都会让 Sandbox errored；
+- 此 action 的成功结果先由 provider-native SetupPrefix artifact 复用，项目 seed、候选安装与
+  runtime contract 依赖它逐层继续。固定 digest source 首次准备时可能访问 registry；后续本地
+  tag 冒烟不请求 registry。
 
-这层基建与候选安装 action、`node` 用户、DinD socket 生命周期互不影响：归档只在镜像层，
-不进入 build context，也不进入 git；其校验、导入和 `--pull=never` 冒烟仍完全离线。
+这层基建与候选安装 action、`node` 用户、DinD socket 生命周期互不影响：题目内容不进入通用
+base 或共享准备层，只有所属 Eval 的 fixture action 将它覆盖到已准备 workspace。
 
 ### 被测 agent 的唯一修改面
 

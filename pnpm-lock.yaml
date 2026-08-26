@@ -372,7 +372,7 @@ settings:
   excludeLinksFromLockfile: false
 
 overrides:
-  niceeval: link:../../NiceEval/docker-cache-more/packages/niceeval
+  niceeval: link:../NiceEval/packages/niceeval
 
 importers:
 
@@ -388,8 +388,8 @@ importers:
         specifier: ^4.0.12
         version: 4.0.12
       niceeval:
-        specifier: link:../../NiceEval/docker-cache-more/packages/niceeval
-        version: link:../../NiceEval/docker-cache-more/packages/niceeval
+        specifier: link:../NiceEval/packages/niceeval
+        version: link:../NiceEval/packages/niceeval
       react:
         specifier: ^19.2.7
         version: 19.2.7
