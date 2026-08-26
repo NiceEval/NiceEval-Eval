@@ -1,8 +1,9 @@
 # install Eval 结构
 
-正式 install 题集中在 `evals/install/eval.ts`：两个稳定 Eval ID、题目事实、交互续轮、评分、
-fixture 准备和产物归档都在同一文件内，不再 import 本项目的 install helper。这样读一份文件就能看清
-被测流程和全部计分规则。
+正式 install 题分别位于 `evals/install/db-gpt/eval.ts` 与
+`evals/install/gpt-researcher/eval.ts`。每道题自己的宿主 fixture、题目事实、交互续轮、评分和
+产物归档都收在所属目录内，不再 import 本项目的 install helper。两份评分流程有意各自持有：
+修改一题的事实或判据不会改变另一题的源码指纹，单独打开一份文件也能看清完整被测流程。
 
 `lib/install/` 只保留 roadmap 题复用的辅助实现，不是正式 install 题的评分入口。
 

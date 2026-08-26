@@ -1,6 +1,6 @@
 /**
  * 评估 adapter：roadmap 题对已发布结果与源码写法做软分观察。正式 install 题的结果状态机
- * 已集中在 evals/install/eval.ts，这里不再维护第二套 outcome barrier。
+ * 已分别内聚在两道正式 install Eval 中，这里不再维护另一套 outcome barrier。
  *
  * 只信 agent 自装的项目内 CLI，不读 result.json。checkAdapterConnection 看公开结果，
  * checkExecutionEvidence 看公开 execution，checkAdapterPractice 看源码；三者都是独立软分。

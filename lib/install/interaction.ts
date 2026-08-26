@@ -1,4 +1,4 @@
-/** roadmap 预览题的通用澄清：正式 install 题已经收进 evals/install/eval.ts。 */
+/** roadmap 预览题的通用澄清：正式 install 题分别在自己的目录内维护完整流程。 */
 
 import type { ScoreTestContext } from "niceeval";
 import { closedQA, equals, isTrue } from "niceeval/expect";

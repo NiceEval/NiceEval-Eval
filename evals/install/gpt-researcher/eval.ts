@@ -1,7 +1,7 @@
 /**
- * install 正式评估的唯一入口。
+ * GPT Researcher install 正式评估入口。
  *
- * 这两道题评的是候选 INIT.md + 随包文档能否把 coding agent 带到一个可审阅的 NiceEval
+ * 这道题评的是候选 INIT.md + 随包文档能否把 coding agent 带到一个可审阅的 NiceEval
  * 闭环，不把 `niceeval show` 的结果冒充成「真实宿主身份证明」。评分状态机与上限固定为：
  *
  *   首轮交互 8 → 完成交接 4 → 安装基础 12 → Attempt 闭环 15 → 源码与实践 13 = 52
@@ -39,7 +39,7 @@ function dockerCapability() {
 type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
 
 interface InstallCase {
-  id: "db-gpt" | "gpt-researcher";
+  id: "gpt-researcher";
   description: string;
   sandbox: SandboxLayer<"command-only">;
   expectedPages: RegExp;
@@ -57,46 +57,6 @@ interface InstallCase {
     negativeRisk: string;
   };
 }
-
-const DB_GPT: InstallCase = {
-  id: "db-gpt",
-  description: "把 niceeval 接入 DB-GPT（数据库对话式分析 agent 平台）",
-  sandbox: dockerCapability()
-    .before(gitCheckout({
-      id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout",
-      repository: "https://github.com/eosphoros-ai/DB-GPT.git",
-      ref: "177bfc84f77e7f7760c055a748b0e4bb82d9fa47",
-      to: ".",
-      sparse: { include: ["/*"], exclude: ["/docs/", "/assets/"] },
-      changeFrequency: 20,
-    }))
-    .before(command("rm", ["-rf", ".git"], {
-      id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.detach",
-      changeFrequency: 21,
-      dependsOn: [actionRef("niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout")],
-    })),
-  expectedPages:
-    /docs-site\/zh\/(how-to|tutorials)\/(connect-your-agent|write-send)\.mdx|docs-site\/zh\/tutorials\/quickstart\.mdx/,
-  clarification: {
-    transport:
-      "HTTP + JSON/SSE，默认端口 5670；OpenAI Chat Completions 兼容入口是 " +
-      "POST /api/v2/chat/completions，前端主聊天另走 /api/v1/chat/completions，没有 WebSocket。",
-    telemetry:
-      "自带本地 tracer，并可选启用标准 OTel/OTLP 导出；因此应确认是保持 Tier 1，还是复用现有 tracing。",
-    variants:
-      "model、chat_mode、chat_param、temperature、max_new_tokens 与 stream 都可能形成实验变体。",
-  },
-  quality: {
-    system: "DB-GPT",
-    coreUseCase:
-      "用户用自然语言问真实库表，DB-GPT 通过 chat_data / chat_db_qa / chat_dashboard 等模式生成 SQL、" +
-      "查询并分析；chat_normal 只是裸 LLM 闲聊。",
-    useCaseShape: "具体的数据问答或分析任务，并使用能触达数据库的模式及对应数据源参数",
-    bypass: "；chat_normal 下问常识或算术也没有触达 DB-GPT 的差异化能力",
-    assertionShape: "检查具体数值、表名、SQL 片段等业务结果，而不是只检查有回复或 HTTP 成功",
-    negativeRisk: "不存在的库表或字段被编造成看似合理的结果，而不是明确报告不存在",
-  },
-};
 
 const GPT_RESEARCHER: InstallCase = {
   id: "gpt-researcher",
@@ -133,10 +93,7 @@ const GPT_RESEARCHER: InstallCase = {
   },
 };
 
-export default {
-  "db-gpt": createInstallEval(DB_GPT),
-  "gpt-researcher": createInstallEval(GPT_RESEARCHER),
-};
+export default createInstallEval(GPT_RESEARCHER);
 
 function createInstallEval(installCase: InstallCase) {
   return defineScoreEval({
@@ -666,7 +623,7 @@ function candidateInitDocUrl(version: string): string {
 }
 
 function assertCandidatePages(version: string, expected: RegExp): void {
-  const manifestPath = resolve(import.meta.dirname, "../../.candidate", version, "manifest.json");
+  const manifestPath = resolve(import.meta.dirname, "../../../.candidate", version, "manifest.json");
   const manifest = JSON.parse(readFileSync(manifestPath, "utf8")) as { pages?: string[] };
   const pages = manifest.pages ?? [];
   if (!pages.includes("INDEX.md")) return;
@@ -674,7 +631,7 @@ function assertCandidatePages(version: string, expected: RegExp): void {
   throw new Error(`候选 niceeval@${version} 的随包文档没有题库要求的页面：${expected.source}`);
 }
 
-const AGENT_OUTPUT_ROOT = resolve(import.meta.dirname, "../../.agent-output");
+const AGENT_OUTPUT_ROOT = resolve(import.meta.dirname, "../../../.agent-output");
 
 async function archiveAgentOutput(t: ScoreTestContext, target: string): Promise<void> {
   try {
