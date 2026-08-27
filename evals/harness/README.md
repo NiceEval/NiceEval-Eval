@@ -3,7 +3,7 @@
 这组题评估 coding agent 能否在一个已经接入 NiceEval 的项目里，自主完成“运行 → 用公开
 `niceeval show` 取证 → 形成因果判断 → 在正确层修改/给出归因”，以及能否把真实题包写成
 不泄漏判据的 Eval。三题共享运行基建，但各自维护独立项目与独立起始状态；完整矩阵为
-4 版本 × 3 题 × 1 次，共 **12 个付费
+1 个当前 canary × 3 题 × 1 次，共 **3 个付费
 coding-agent attempt**。
 
 ## 当前三题
@@ -30,12 +30,11 @@ coding-agent attempt**。
 完整且**唯一**的正确修复是只把 `experiments/local.ts` 里的
 `runtime:node` 改成 `runtime:python`，其余一律不动。修复后复验：
 
-- 候选为 0.12.x / canary 时，从公开 `niceeval show` 输出动态取得 locator，恰好 accept
+- 候选为 0.14 API / canary 时，从公开 `niceeval show` 输出动态取得 locator，恰好 accept
   三条仍有效的 terminal results（`hello-world`、`fix-permissions`、`classifier-debug`），只真实
   重跑被改动影响的 `regex-log`；
-- 候选为 0.9.x 时没有 locator accept，必须真实完整重跑四题，得到的数字完全一致。
 
-两代候选的终态相同：**3 passed / 1 failed / 0 errored**——合法 failed 的那道不因换运行时
+候选的正确终态是 **3 passed / 1 failed / 0 errored**——合法 failed 的那道不因换运行时
 而改变，它本来就不是环境问题。题目考察的是 agent 能否从 CLI 反馈把「errored 的环境缺口」
 与「failed 的业务事实」分开，而不是让它把所有红灯都“修绿”。
 
@@ -81,7 +80,7 @@ Node、pnpm、Docker/Compose、项目 seed 与两枚**完全离线**的 inner ru
 变体）由通用 Harness 镜像共享。Experiment 的 TS layer 先导入并冒烟离线 runtime，再按解析后的
 精确版本安装候选 NiceEval、运行 `niceeval init`、清理示例并物化只读依赖树；随后各题 fixture
 才覆盖自己的 repo。完整顺序见 [`fixtures/harness/README.md`](../../fixtures/harness/README.md)。
-四个 Harness experiment 目前沿用项目的全局并发设置；单个 Attempt 已同时占用候选
+当前 Harness canary experiment 沿用项目的全局并发设置；单个 Attempt 已同时占用候选
 Sandbox 与内层 dockerd，运行时需留意宿主资源竞争和模型网关并发抖动。
 
 `fixtures/harness/<case>/repo/` 由每道题各自维护：起始状态直接写在所属 repo，不靠中央
@@ -101,8 +100,8 @@ canonical fixture 加 evaluator overlay。三个 repo 都记录 Terminal-Bench �
 
 ## 判分与取证边界
 
-- 当前运行结果只从公开 CLI 取证：`niceeval show`（动态 `@<locator>`）、前缀收窄、0.9.x 的
-  `--eval` / 0.12+ 的 `--source`，以及 `--execution` 等公开证据视图。读取 `evals/`、`agents/`
+- 当前运行结果只从公开 CLI 取证：`niceeval show`（动态 `@<locator>`）、前缀收窄、
+  `--source` 与 `--execution` 等公开证据视图。读取 `evals/`、`agents/`
   或随包文档可以辅助理解；唯一的路径黑名单是 `.niceeval/` 落盘数据，这不是能力加分项，
   而是题目边界。
 - B 额外要求反馈轮的第一个 NiceEval 取证动作直接是 compact `niceeval show`；读取 INDEX、
@@ -142,9 +141,9 @@ Fact / Match 作者面；全仓 `pnpm run typecheck` 必须通过，不能再用
 
 ## 运行成本
 
-每个版本选中 3 道题，每题运行 1 次；因此完整 `niceeval exp harness` 是 4 版本 × 3 题 × 1 次，
-共 **12 个付费 coding-agent attempt**。A/B 包含多个 judge 评分点，C 仅使用确定性断言。实现落地后必须运行
-`niceeval list` 和各版本的 `--dry`
+当前 canary 选中 3 道题，每题运行 1 次；因此完整 `niceeval exp harness` 是 1 版本 × 3 题 × 1 次，
+共 **3 个付费 coding-agent attempt**。0.14.0 正式发布后增加稳定基线会变成 6 个。A/B 包含多个 judge 评分点，C 仅使用确定性断言。实现落地后必须运行
+`niceeval list` 和各启用版本的 `--dry`
 验证。本机使用一次性 VM 或专用评测 runner；用户明确授权 install、roadmap 与 Harness 都使用
 `raw-privileged` DinD。该模式不提供不可信代码隔离；若迁移到共享宿主，必须恢复
 managed-rootless 并注册 execution profile。

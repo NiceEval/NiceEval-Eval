@@ -17,7 +17,7 @@ fixtures/harness/
 前两份诊断 repo 裁自干净的
 `NiceEval/terminal-bench@c74165d6a3f712a7646db5f9684fe68ab1e3abb8`；authoring repo 来自
 `terminal-bench@5964952` 的 `cancel-async-tasks`。题面和 task ID 保持真实；业务资产及官方 Python
-判据均从审核后题包逐字节复制。为了跨 NiceEval 0.9 / 0.12 / canary 离线稳定运行，诊断题由 canned
+判据均从审核后题包逐字节复制。为了在 NiceEval 0.14 API 的 canary 与后续稳定版间离线运行，诊断题由 canned
 sandbox agent 在预载 runtime 里确定性重放 task 产出；authoring 题保留真实 Dockerfile 工作目录
 语义，并把联网依赖 bootstrap 替换为执行同一官方测试函数的离线 runner。
 

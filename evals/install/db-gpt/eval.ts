@@ -114,7 +114,8 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn): Promise<void> {
         3,
         "Y 当且仅当 agent 在实作前询问会改变方案的 Tier，是否复用 DB-GPT 现有 tracer/OTel/OTLP，" +
           "目标模型或实验变体，以及首跑 Attempt/时间/费用预算。少了 Tier、观测、模型或预算中任一类判 N；" +
-          "并且首轮状态必须是 waiting，确实把决定留给用户；反问本应从仓库查明的接口事实不算用户选择。",
+          "并且必须在首轮明确暂停、把决定留给用户；正式 HITL waiting 或普通文本请求确认都接受；" +
+          "反问本应从仓库查明的接口事实不算用户选择。",
       ],
     ] as const;
     for (const [key, label, points, criteria] of clarificationRubrics) {
@@ -148,11 +149,17 @@ async function continueWithMinimalAnswer(t: ScoreTestContext, turn: Turn): Promi
   const requests = turn.events.flatMap((event) =>
     event.type === "input.requested" ? [event.request] : []
   );
-  if (turn.status !== "waiting" || requests.length === 0) return turn;
-  return t.respond(...requests.map((request) => ({
-    request,
-    text: answerRequestedChoice(JSON.stringify(request)),
-  })));
+  if (turn.status === "waiting" && requests.length > 0) {
+    return t.respond(...requests.map((request) => ({
+      request,
+      text: answerRequestedChoice(JSON.stringify(request)),
+    })));
+  }
+  return t.send(
+    "确认：选 Tier 1，首跑不接 OTel/OTLP；目标模型沿用服务默认配置，不做 experiment flags；" +
+    "首跑只允许一格一次。离线基础镜像是 offline.invalid/niceeval-install/runtime:python。" +
+    "凭证仅从 /opt/fixture-secrets/target-app.env 注入目标服务进程，不得输出或复制进工作区。请按计划继续完成接入与验证。",
+  );
 }
 
 function answerRequestedChoice(question: string): string {

@@ -4,7 +4,8 @@ import runtimeAgent from "../agents/canned-terminal-bench.ts";
 
 const sandbox = niceevalSandbox as unknown as Record<string, unknown>;
 const dockerImageSandbox = sandbox.dockerImageSandbox as ((options: { image: string }) => unknown) | undefined;
-const dockerSandbox = sandbox.dockerSandbox as ((options: { image: string }) => unknown) | undefined;
+const dockerSandbox = sandbox.dockerSandbox as ((options: unknown) => unknown) | undefined;
+const hasLayeredDockerApi = typeof sandbox.dockerComposeSandbox === "function";
 const RUNTIME_IMAGE = "offline.invalid/niceeval-harness/runtime:node";
 
 if (dockerImageSandbox === undefined && dockerSandbox === undefined) {
@@ -13,7 +14,9 @@ if (dockerImageSandbox === undefined && dockerSandbox === undefined) {
 
 const runtimeSandbox = dockerImageSandbox !== undefined
   ? dockerImageSandbox({ image: RUNTIME_IMAGE })
-  : dockerSandbox!({ image: RUNTIME_IMAGE });
+  : hasLayeredDockerApi
+    ? dockerSandbox!({ source: { type: "image", image: RUNTIME_IMAGE } })
+    : dockerSandbox!({ image: RUNTIME_IMAGE });
 
 export default defineExperiment({
   description: "Terminal-Bench task slice with one Python-dependent verifier",

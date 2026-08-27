@@ -23,8 +23,8 @@
 - 外层 Assertion 以 `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`
   保留禁区路径的结构化工具匹配，禁止观察到把 `.niceeval`、`evals` 或 `agents` 作为工具输入读取，并要求
   Turn 成功；
-- 0.12+ / canary 必须从公开 `niceeval show` 输出取得动态 locator，恰好接受三条仍有效的 terminal results，
-  只真实重跑原先 errored 的 `terminal-bench/regex-log`；0.9.x 没有 locator accept，改完后必须完整重跑；
+- 0.14 API / canary 必须从公开 `niceeval show` 输出取得动态 locator，恰好接受三条仍有效的 terminal results，
+  只真实重跑原先 errored 的 `terminal-bench/regex-log`；
 - 外层只接受 `experiments/local.ts` 的目标 image 改动，并用公开结果证据核验根因、保留项和最终分布。
 
 题面、task ID、`classifier-debug/code.py`、`fix-permissions/process_data.sh` 与 `regex-log` 官方判据来自

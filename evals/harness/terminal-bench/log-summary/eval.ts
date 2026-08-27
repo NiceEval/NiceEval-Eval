@@ -26,8 +26,7 @@ export default defineScoreEval({
   async test(t) {
     // 先由 fixture 跑完 experiment，再让 agent 接手已经停稳的 Record。Agent 可以从安装版本的
     // bundled docs 学公开命令，但历史事实仍必须来自 compact show 与 locator 证据切片。
-    // 不开 stream：0.9.x 的多行 agent handoff 经流式 tee 后可能只在返回值里留下首行，
-    // 这里需要完整公开汇总做前置判定。
+    // 不开 stream：这里需要完整公开汇总做前置判定，避免流式 tee 的返回值缺少尾部内容。
     const initialRun = await t.sandbox.runCommand(
       "pnpm",
       ["exec", "niceeval", "exp", "local"],

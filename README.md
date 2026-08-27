@@ -13,8 +13,8 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 | 目录 | 回答的问题 | 当前配置 |
 | --- | --- | --- |
-| `experiments/install/` | coding agent 能否按该版本文档在普通与复杂宿主中完成从零接入 | `v0.11.0` 、`v0.12.0` 、`canary` |
-| `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `v0.9.0`、`v0.12.0`、`canary` |
+| `experiments/install/` | coding agent 能否按该版本文档在普通与复杂宿主中完成从零接入 | `canary`（0.14.0 发布后补稳定基线） |
+| `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `canary`（0.14.0 发布后补稳定基线） |
 
 版本是 experiment 的配置维度，题目类型不再各自建 experiment 目录。`roadmap/` 中已实现的
 复杂安装题仍由 `install/<version>` 调度；只保留 Markdown 的未来设计不会被 discovery。
@@ -40,6 +40,8 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 Install 与 Harness 使用同一份只含 Node、pnpm、Docker/Compose 和 guest-init 的通用 Incus base。
 Experiment 的声明式 TS action 从固定 digest 构建 inner runtime tags、上传项目 seed，再按版本安装候选
 NiceEval、运行 `niceeval init` 并物化 workspace；NiceEval 在 Attempt 派发前逐层发布并复用这些业务 artifact。
+base 本身的固定 Ubuntu 输入、构建、block volume 启动验证和安全升级流程位于
+[`sandbox/incus-base/`](sandbox/incus-base/README.md)。
 两道题分别维护 `fixtures/harness/<case>/repo/`，fixture action 只把所属小 repo 覆盖进已准备
 workspace，不在镜像里共享业务 fixture。项目不携带
 `.niceeval`，结果仍由被测 agent 当场运行产生。完整设计见
@@ -53,9 +55,8 @@ workspace，不在镜像里共享业务 fixture。项目不携带
 - `terminal-bench/regex-log` 运行 `hello-world`、`fix-permissions`、`classifier-debug`
   和 `regex-log`，首跑 2 passed / 1 合法 failed / 1 缺 Python errored：唯一修复是
   把 `experiments/local.ts` 的 inner runtime 从 `runtime:node` 改成 `runtime:python`；
-  0.12.x / canary 只从公开 `niceeval show` 输出动态取得 locator，恰好 accept 三条仍有效的
-  terminal results，只真实重跑 errored 的 `regex-log`；0.9.x 没有 locator accept，修改后必须
-  真实完整重跑；终态同为 3/1/0。
+  0.14 API / canary 只从公开 `niceeval show` 输出动态取得 locator，恰好 accept 三条仍有效的
+  terminal results，只真实重跑 errored 的 `regex-log`；终态为 3/1/0。
 - `terminal-bench/log-summary` 运行 `hello-world`、`classifier-debug` 和 `log-summary`，首跑
   1 passed / 2 failed / 0 errored：只诊断不修改——`classifier-debug` 是 agent 选错 B（正确为 A），
   `log-summary` 是合法带引号 CSV 被 exact 字符串断言拒绝，两者都不得靠改断言擦红。
@@ -81,8 +82,8 @@ pnpm exec niceeval list
 只生成计划、不启动付费 agent：
 
 ```sh
-pnpm --silent exec niceeval exp install/v0.12.0 --dry --json
-pnpm --silent exec niceeval exp harness/v0.12.0 --dry --json
+pnpm --silent exec niceeval exp install/canary --dry --json
+pnpm --silent exec niceeval exp harness/canary --dry --json
 ```
 
 明确决定花费后再运行实验：
@@ -104,7 +105,7 @@ pnpm exec niceeval show @<locator> --diff
 
 Harness 题会把 observed tool input 中直接读取 `.niceeval`、`evals` 或 `agents` 的行为记为零分，
 但这不是 OS 级文件审计。取证只承认公开 `niceeval show`：动态 `@<locator>`、
-前缀收窄、0.9.x 的 `--eval` / 0.12+ 的 `--source`，以及 `--execution` 证据视图。外层
+前缀收窄、`--source` 与 `--execution` 证据视图。外层
 确定性断言是 scope-first 的窄锚点：`commandMatch(executable, { argsStart, excludes,
 status? })` 本身就是匹配同一笔 logical tool occurrence 的 `ToolMatch`（没有直接传
 `{ name, status }`、command tuple、嵌套 command selector 或 sequential 旧形态），只锚定本轮 `t.send()` 内调过 `niceeval exp local` /
@@ -124,7 +125,8 @@ canned agent 只用于稳定复现，不代表真实模型智力。
 **non-comparable**，不能当成 reference 通过。实验直接固定 it-infra 已部署并信任的通用
 `niceeval-eval-base@sha256:...`；不需要项目 `.env`。NiceEval 不 build / import / pull base，
 也不接受 `ubuntu:latest` 一类可变引用；业务 SetupPrefix 可以在 guest 内拉取固定 digest 的
-inner runtime。it-infra 重建 base 后，同步更新 `lib/experiment-runtime.ts` 中的一个常量即可。
+inner runtime。可复现 builder 与升级步骤见
+[`sandbox/incus-base/`](sandbox/incus-base/README.md)。
 
 被测 Codex Agent 默认使用只向 Incus VM 暴露 Responses API 的集群专用 TLS endpoint
 `https://sub2api.350124.xyz:18443/v1`。每个 Attempt 在命中业务缓存后重放受控 hosts
@@ -146,26 +148,26 @@ red（例如 `incus-undeployed`）。本机开发检查用
 
 ## 候选版本与实验矩阵
 
-安装实验族当前有三格：
+安装实验族从 0.14 API 开始，当前只有 canary 一格：
 
-- `install/v0.12.0`：当前稳定发布基线；
-- `install/v0.11.0`：上一代对照；
 - `install/canary`：解析运行时的 canary dist-tag。
+
+`niceeval@0.14.0` 正式发布后再增加 `install/v0.14.0` 稳定基线；发布前不创建会让
+experiment discovery 整体失败的虚假精确版本。
 
 每个 experiment 都通过 `ensureCandidate()` 物化候选清单，并把解析后的精确版本放进
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
 
-三格都跑普通安装题与 roadmap 中已实现的复杂安装题。
+启用的格都跑普通安装题与 roadmap 中已实现的复杂安装题。
 安装实验统一使用一次性 Incus VM（Docker-in-disposable-VM，V1 DestroyOnly）。共享业务
 SetupPrefix 从固定 digest 构建并验证 `offline.invalid/niceeval-install/runtime:python`；后续
 Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEval、应用依赖、服务、
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 
-Harness 实验族也有三格：`harness/v0.9.0`、`harness/v0.12.0` 与
-`harness/canary`。它们运行相同的两道无历史快照反馈闭环题；差异只在 TS action 安装的候选
-NiceEval、随包文档版本与 accept 契约（0.12+ 可 accept 缓存、0.9.x 全量重跑），不承担跨
-reader 的历史 report 兼容测试。`attempts` 使用 NiceEval 的默认值 1，完整矩阵共 **6 个
+Harness 实验族同样从 0.14 API 开始，当前只启用 `harness/canary`；0.14.0 发布后补
+`harness/v0.14.0` 稳定对照。它运行三道 Harness 题，不承担跨 reader 的历史 report
+兼容测试。`attempts` 使用 NiceEval 的默认值 1，当前完整矩阵共 **3 个
 coding-agent attempt**。全仓并发上限为 2：安装题的宿主 checkout、Codex session 与
 guest Docker 会同时占用大量内存和临时空间。只想检查计划时始终先用 `--dry`。
 
