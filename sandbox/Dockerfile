@@ -94,7 +94,7 @@ COPY --from=runtime-python /out/runtime-python.tar.gz /out/runtime-python.tar.gz
 RUN chmod 0700 /opt/niceeval-install/runtime \
   && chmod 0400 /opt/niceeval-install/runtime/*
 
-# Harness 专用层只携带候选项目 seed 与两枚离线 runtime。候选 NiceEval 的精确版本、依赖、
+# Harness 专用层只携带候选项目 seed 与两枚固定 runtime 缓存。候选 NiceEval 的精确版本、依赖、
 # lockfile 和 init 指引由 Experiment 的声明式 TS action 物化到 attempt tmpfs。
 FROM base AS harness-candidate
 

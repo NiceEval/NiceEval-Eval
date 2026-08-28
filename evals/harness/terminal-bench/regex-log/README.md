@@ -11,7 +11,7 @@
 - `terminal-bench/regex-log` 使用 TB 官方 Python 判据，初始 runtime 没有 `python3`，因而 errored。
 
 唯一允许的修复是把 `experiments/local.ts` 中的
-`offline.invalid/niceeval-harness/runtime:node` 改为 `offline.invalid/niceeval-harness/runtime:python`。
+`cache.invalid/niceeval-harness/runtime:node` 改为 `cache.invalid/niceeval-harness/runtime:python`。
 
 正确收尾是 `3 passed / 1 failed / 0 errored`。`classifier-debug` 的 failed 是可信终态，不能为了全绿而修改它。
 

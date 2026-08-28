@@ -40,7 +40,6 @@ for root in /tests /app /home/sandbox/workspace /workspace /tmp; do
     -name test.py -o \
     -name test_outputs.py -o \
     -name run-tests.sh -o \
-    -name run-tests-offline.sh -o \
     -name solution.sh \
   \) -print 2>/dev/null
 done | sort -u`,

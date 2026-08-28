@@ -86,9 +86,9 @@ function prepareInnerRuntimes() {
     command: `set -eu
 node_source=${shellQuote(NODE_RUNTIME_SOURCE)}
 python_source=${shellQuote(PYTHON_RUNTIME_SOURCE)}
-node_tag=offline.invalid/niceeval-harness/runtime:node
-harness_python_tag=offline.invalid/niceeval-harness/runtime:python
-install_python_tag=offline.invalid/niceeval-install/runtime:python
+node_tag=cache.invalid/niceeval-harness/runtime:node
+harness_python_tag=cache.invalid/niceeval-harness/runtime:python
+install_python_tag=cache.invalid/niceeval-install/runtime:python
 build_dir="$(mktemp -d)"
 node_container=
 python_container=
@@ -160,8 +160,8 @@ rm -rf "$project/agents" "$project/config" "$project/docs" "$project/evals" \
   "$project/experiments" "$project/src"
 mkdir -p "$project/evals" "$project/experiments"
 
-# 保留绝对 symlink 和 root 拥有的只读依赖树；清空仅供安装使用的 pnpm store 后，pnpm exec
-# 仍能完全离线运行候选 CLI。
+# 保留绝对 symlink 和 root 拥有的只读依赖树；清空仅供安装使用的 pnpm store 后，后续命令
+# 继续使用已物化的候选依赖。Sandbox 仍保留公网访问，题内项目可按上游方式安装依赖。
 mv "$project/node_modules" "$modules"
 ln -s "$modules" "$project/node_modules"
 rm -rf "$store"

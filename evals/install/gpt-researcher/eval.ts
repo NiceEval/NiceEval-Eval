@@ -156,7 +156,8 @@ async function continueWithMinimalAnswer(t: ScoreTestContext, turn: Turn): Promi
   }
   return t.send(
     "确认：选 Tier 1，首跑不接 OTel 或 LangSmith；目标模型与搜索配置沿用服务默认值，不做 experiment flags；" +
-    "首跑只允许一格一次。离线基础镜像是 offline.invalid/niceeval-install/runtime:python。" +
+    "首跑只允许一格一次。Sandbox 可以访问互联网；cache.invalid/niceeval-install/runtime:python " +
+    "只是预载的基础运行时，可以按 GPT Researcher 上游方式联网安装依赖或拉取固定版本镜像。" +
     "凭证仅从 /opt/fixture-secrets/target-app.env 注入目标服务进程，不得输出或复制进工作区。请按计划继续完成接入与验证。",
   );
 }
@@ -169,7 +170,7 @@ function answerRequestedChoice(question: string): string {
   }
   if (/budget|attempt|cost|time|预算|费用|时间|规模|并发/i.test(question)) answers.push("首跑预算只允许一格一次。");
   if (/image|sandbox|docker|incus|镜像|沙箱|运行时/i.test(question)) {
-    answers.push("离线基础镜像是 offline.invalid/niceeval-install/runtime:python，只提供基础运行时。");
+    answers.push("Sandbox 可以访问互联网；cache.invalid/niceeval-install/runtime:python 只是预载基础运行时，可以按上游方式联网安装依赖或拉取固定版本镜像。");
   }
   if (/credential|secret|key|token|凭证|密钥|令牌/i.test(question)) {
     answers.push("目标服务凭证在 /opt/fixture-secrets/target-app.env，只能注入目标服务进程，不得输出或复制进工作区。");

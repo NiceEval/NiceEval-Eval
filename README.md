@@ -160,7 +160,8 @@ experiment discovery 整体失败的虚假精确版本。
 
 启用的格都跑普通安装题与 roadmap 中已实现的复杂安装题。
 安装实验统一使用一次性 Incus VM（Docker-in-disposable-VM，V1 DestroyOnly）。共享业务
-SetupPrefix 从固定 digest 构建并验证 `offline.invalid/niceeval-install/runtime:python`；后续
+SetupPrefix 从固定 digest 构建并验证联网 Sandbox 中的本地缓存镜像
+`cache.invalid/niceeval-install/runtime:python`；后续
 Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEval、应用依赖、服务、
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。

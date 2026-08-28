@@ -1,4 +1,4 @@
-FROM offline.invalid/niceeval-harness/runtime:python
+FROM cache.invalid/niceeval-harness/runtime:python
 
 RUN mkdir -p /home/sandbox/workspace \
  && if [ -L /app ]; then test "$(readlink -f /app)" = "/home/sandbox/workspace"; \

@@ -1,7 +1,7 @@
 /**
  * terminal-bench / classifier-debug —— folder-local 正式题包。
  *
- * 题面与 code.py 来自 Terminal-Bench；Harness 在固定离线 runtime 中复现其答案判据。
+ * 题面与 code.py 来自 Terminal-Bench；Harness 在固定 runtime 缓存中复现其答案判据。
  */
 import { defineEval } from "niceeval";
 import { equals } from "niceeval/expect";

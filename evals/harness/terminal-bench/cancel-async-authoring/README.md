@@ -2,8 +2,8 @@
 
 这道题不让 coding agent 修业务代码，而是让它把一份真实 Terminal-Bench 原题包接成正式
 NiceEval Eval。题包来自 `terminal-bench@5964952` 的 `cancel-async-tasks`：官方题面、测试、
-联网版 `run-tests.sh` 与参考解答保持原样；Harness 只额外提供一个离线 runner，跳过依赖下载并
-逐个执行同一份官方测试函数。
+官方 `run-tests.sh` 与参考解答保持原样；Sandbox 可以联网，正式 Eval 应使用官方 runner 安装
+固定版本依赖并执行同一份官方测试。
 
 评分完全确定性，总分 16：
 

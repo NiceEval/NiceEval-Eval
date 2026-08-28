@@ -17,9 +17,9 @@ fixtures/harness/
 前两份诊断 repo 裁自干净的
 `NiceEval/terminal-bench@c74165d6a3f712a7646db5f9684fe68ab1e3abb8`；authoring repo 来自
 `terminal-bench@5964952` 的 `cancel-async-tasks`。题面和 task ID 保持真实；业务资产及官方 Python
-判据均从审核后题包逐字节复制。为了在 NiceEval 0.14 API 的 canary 与后续稳定版间离线运行，诊断题由 canned
-sandbox agent 在预载 runtime 里确定性重放 task 产出；authoring 题保留真实 Dockerfile 工作目录
-语义，并把联网依赖 bootstrap 替换为执行同一官方测试函数的离线 runner。
+判据均从审核后题包逐字节复制。为了在 NiceEval 0.14 API 的 canary 与后续稳定版间稳定比较，诊断题由 canned
+sandbox agent 在固定 runtime 缓存里确定性重放 task 产出；authoring 题保留真实 Dockerfile 工作目录
+语义，并使用官方 runner 联网安装固定版本测试依赖。Sandbox 本身允许访问公网。
 
 ## 共享边界
 
@@ -44,8 +44,8 @@ inner-runtime / seed 层不包含任何 case 的正确或错误业务源码、�
 本地已有两个 tag：
 
 ```text
-offline.invalid/niceeval-harness/runtime:node
-offline.invalid/niceeval-harness/runtime:python
+cache.invalid/niceeval-harness/runtime:node
+cache.invalid/niceeval-harness/runtime:python
 ```
 
 - `runtime:node`：完整 rootfs 物化自固定 digest 的 codex stage（Debian 12 bookworm +
@@ -58,12 +58,12 @@ offline.invalid/niceeval-harness/runtime:python
 - `prepareInnerRuntimes` 是最前面的声明式 action：它在 guest 内拉取两枚**固定 digest** source，
   将 Node source 标为 `runtime:node`，并用 Docker 的 create/cp/export/import surface 将 Node
   二进制加入 Python rootfs 后得到 `runtime:python`；不安装未固定的包；
-- action 随即以 `docker run --pull=never` 冒烟：node 变体必须有 node/git 且没有 python3，
+- action 随即对已经准备好的本地 tag 以 `docker run --pull=never` 冒烟：node 变体必须有 node/git 且没有 python3，
   python 变体必须同时有 node/git/python3。`.invalid` 保留域避免 local tag 与真实 registry
   名冲突，任一步失败都会让 Sandbox errored；
 - 此 action 的成功结果先由 provider-native SetupPrefix artifact 复用，项目 seed、候选安装与
   runtime contract 依赖它逐层继续。固定 digest source 首次准备时可能访问 registry；后续本地
-  tag 冒烟不请求 registry。
+  tag 冒烟不重复请求 registry；这不限制题内容器或 Sandbox 访问公网。
 
 这层基建与候选安装 action、`node` 用户、DinD socket 生命周期互不影响：题目内容不进入通用
 base 或共享准备层，只有所属 Eval 的 fixture action 将它覆盖到已准备 workspace。

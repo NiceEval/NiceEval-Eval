@@ -6,7 +6,7 @@ const sandbox = niceevalSandbox as unknown as Record<string, unknown>;
 const dockerImageSandbox = sandbox.dockerImageSandbox as ((options: { image: string }) => unknown) | undefined;
 const dockerSandbox = sandbox.dockerSandbox as ((options: unknown) => unknown) | undefined;
 const hasLayeredDockerApi = typeof sandbox.dockerComposeSandbox === "function";
-const RUNTIME_IMAGE = "offline.invalid/niceeval-harness/runtime:node";
+const RUNTIME_IMAGE = "cache.invalid/niceeval-harness/runtime:node";
 
 if (dockerImageSandbox === undefined && dockerSandbox === undefined) {
   throw new Error("installed niceeval lacks a Docker sandbox factory required by this fixture");

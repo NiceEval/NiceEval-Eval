@@ -11,7 +11,6 @@ const PROTECTED_ASSETS = [
   "task/task.yaml",
   "task/fixture/Dockerfile",
   "task/run-tests.sh",
-  "task/run-tests-offline.sh",
   "task/solution.sh",
   "task/tests/test.py",
   "task/tests/test_outputs.py",
@@ -72,7 +71,7 @@ export default defineScoreEval({
 
 请只创建 ${TARGET_EVAL}，把它做成正式 Eval：保持 task/task.yaml 的官方题意，使用 task/fixture/Dockerfile，并把未经修改的官方 tests 作为唯一业务判据。tests、run-tests 脚本和 solution 都是隐藏判据或参考答案，必须在被测 agent 收工以后才进入 task sandbox，不能进入 Docker build context，也不能提前出现在 agent 可见的文件系统里。隐藏测试及 runner 还必须进入这条 Eval 的 fingerprint，判据内容改变后不能复用旧结果。
 
-当前 Harness 完全离线；task/run-tests-offline.sh 只替换官方 run-tests.sh 的联网依赖 bootstrap，执行的仍是原样官方 tests。不要修改 task/、agents/、experiments/ 或其它文件。
+当前 Harness 可以访问互联网；请使用未经修改的官方 task/run-tests.sh 安装固定版本测试依赖并执行官方 tests。预载 runtime 只是构建缓存，不是离线限制。不要修改 task/、agents/、experiments/ 或其它文件。
 
 请把 oracle 和 leak-probe 两格都实际跑完并用公开 niceeval show 核对：oracle 应 passed；leak-probe 应 ordinary failed 而不是 errored。完成后告诉我结果。`;
     const turn = await t.send(input);

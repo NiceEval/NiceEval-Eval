@@ -12,7 +12,7 @@ coding-agent attempt**。
 | --- | --- | --- | --- |
 | `terminal-bench/regex-log` | 单轮：把评估跑完并报告最终结果，题面不预告 error | 真实 TB task slice 首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 自主识别未完成的 errored、定位 experiment runtime 缺口、最小修改恢复、按候选版本差异复验 |
 | `terminal-bench/log-summary` | fixture 先运行；单轮追问每个失败，未授权修改 | 真实 TB task slice 已有 1 passed / 2 failed / 0 errored | 直接用 `show` 进入反馈闭环，区分「agent 产出错误」与「eval 过紧」 |
-| `terminal-bench/cancel-async-authoring` | 单轮：把未接入的真实题包写成正式 Eval | 官方题面、Docker fixture、隐藏测试、离线 runner 与两格确定性 agent 已就绪 | 正确使用任务级 sandbox、隐藏判据时序、criteria fingerprint，并用 oracle / leak-probe 证明正反边界 |
+| `terminal-bench/cancel-async-authoring` | 单轮：把未接入的真实题包写成正式 Eval | 官方题面、Docker fixture、隐藏测试、官方联网 runner 与两格确定性 agent 已就绪 | 正确使用任务级 sandbox、隐藏判据时序、criteria fingerprint，并用 oracle / leak-probe 证明正反边界 |
 
 ## 真实题意
 
@@ -76,8 +76,9 @@ agent 可见文件系统，若提前看到 tests、runner 或 solution 就写入
 
 ## 共享基建，独立 repo
 
-Node、pnpm、Docker/Compose、项目 seed 与两枚**完全离线**的 inner runtime 归档（node / python
-变体）由通用 Harness 镜像共享。Experiment 的 TS layer 先导入并冒烟离线 runtime，再按解析后的
+Node、pnpm、Docker/Compose、项目 seed 与两枚固定 digest 的 inner runtime 缓存（node / python
+变体）由通用 Harness 镜像共享。Sandbox 保留公网访问；Experiment 的 TS layer 先导入并冒烟
+runtime 缓存，再按解析后的
 精确版本安装候选 NiceEval、运行 `niceeval init`、清理示例并物化只读依赖树；随后各题 fixture
 才覆盖自己的 repo。完整顺序见 [`fixtures/harness/README.md`](../../fixtures/harness/README.md)。
 当前 Harness canary experiment 沿用项目的全局并发设置；单个 Attempt 已同时占用候选

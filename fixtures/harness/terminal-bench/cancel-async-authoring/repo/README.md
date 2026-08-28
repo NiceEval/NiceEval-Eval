@@ -7,14 +7,11 @@ evals/terminal-bench/cancel-async-tasks.eval.ts
 ```
 
 来源是 `NiceEval/terminal-bench` 历史提交 `5964952` 中的 `cancel-async-tasks`。`task.yaml`、
-`tests/`、`run-tests.sh` 与 `solution.sh` 保留官方内容；`fixture/Dockerfile` 把官方 Python
-环境替换为 Harness 预载的离线 runtime，并维持相同的 `/app` 工作目录约定。
+`tests/`、`run-tests.sh` 与 `solution.sh` 保留官方内容；`fixture/Dockerfile` 使用 Harness 预载的
+固定 Python runtime 缓存，并维持相同的 `/app` 工作目录约定。题内容器可以访问公网。
 
-Harness 不能访问网络，所以提供 `run-tests-offline.sh`：它只省略官方 `run-tests.sh` 中安装
-curl、uv 与 pytest 的步骤，实际调用的仍是未经修改的 `tests/test_outputs.py` 全部测试函数。
-
-`tests/`、两个 runner 与 `solution.sh` 都不属于给 task agent 的起始材料。正式 Eval 应只用
-`task/fixture/` 作为 Docker build context，在 `t.send()` 返回后再上传测试和离线 runner。
+`tests/`、官方 runner 与 `solution.sh` 都不属于给 task agent 的起始材料。正式 Eval 应只用
+`task/fixture/` 作为 Docker build context，在 `t.send()` 返回后再上传测试和官方 runner。
 
 两格固定实验各只选择目标 Eval：
 
