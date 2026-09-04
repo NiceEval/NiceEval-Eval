@@ -98,14 +98,28 @@ cleanup() {
   rm -rf "$build_dir"
 }
 trap cleanup EXIT
+pull_fixed() {
+  image="$1"
+  attempt=1
+  while ! docker pull "$image"; do
+    if [ "$attempt" -ge 3 ]; then
+      printf '固定镜像拉取连续 %s 次失败：%s\\n' "$attempt" "$image" >&2
+      return 1
+    fi
+    delay=$((attempt * 2))
+    printf '固定镜像拉取失败，%s 秒后重试（%s/3）：%s\\n' "$delay" "$attempt" "$image" >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+}
 
 printf '%s\\n' '初始化 root/node 的固定 pnpm toolchain…'
 corepack prepare pnpm@11.12.0 --activate
 su -s /bin/sh node -c 'corepack prepare pnpm@11.12.0 --activate'
 
 printf '%s\\n' '拉取固定 digest 的 inner runtime sources…'
-docker pull "$node_source"
-docker pull "$python_source"
+pull_fixed "$node_source"
+pull_fixed "$python_source"
 docker image tag "$node_source" "$node_tag"
 
 # Generic base intentionally does not carry buildx. Recreate the previously
@@ -125,7 +139,7 @@ docker run --pull=never --rm --entrypoint /bin/sh "$harness_python_tag" \
 
 printf '%s\\n' 'inner runtime tags 已由业务 SetupPrefix 准备完成'`,
     user: "root",
-    changeFrequency: changeFrequency.rare,
+    changeFrequency: changeFrequency.rare + 1,
   });
 }
 

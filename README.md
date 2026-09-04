@@ -13,27 +13,27 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 | 目录 | 回答的问题 | 当前配置 |
 | --- | --- | --- |
-| `experiments/install/` | coding agent 能否按该版本文档在普通与复杂宿主中完成从零接入 | `canary`（0.14.0 发布后补稳定基线） |
-| `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `canary`（0.14.0 发布后补稳定基线） |
+| `experiments/install/` | coding agent 能否按该版本文档在普通与复杂宿主中完成从零接入 | `v0.14.0`、`canary` |
+| `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `v0.14.0`、`canary` |
 
 版本是 experiment 的配置维度，题目类型不再各自建 experiment 目录。`roadmap/` 中已实现的
 复杂安装题仍由 `install/<version>` 调度；只保留 Markdown 的未来设计不会被 discovery。
 
 ## 评估用例分区
 
-`evals/` 按用户所处阶段分成三组，全仓共 8 道可发现评估用例：
+`evals/` 按用户所处阶段分成三组，全仓共 9 道可发现评估用例：
 
 | 目录 | 类型 | 回答的问题 | 当前场景 |
 | --- | --- | --- | --- |
 | `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher（2 道） |
 | `roadmap/` | 扩展路线与未来设计 | 复杂第三方接入与暂缓实现的评估方向 | Express Sandbox、Letta、OpenHands、Skyvern（4 道） |
-| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | terminal-bench/regex-log、terminal-bench/log-summary（2 道） |
+| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | terminal-bench/cancel-async-authoring、terminal-bench/regex-log、terminal-bench/log-summary（3 道） |
 
 `install/` 与 `roadmap/` 的每道可运行题都采用 `<case>/eval.ts` 目录入口，因此路径本身继续
 给出稳定 Eval ID（例如 `roadmap/openhands`）。场景脚本只保留 setup、任务、检查阶段与收口；
 宿主 repo/ref、协议和长 rubric 在 `fixtures/install/<case>/`，跨题机制在
 [`lib/install/`](lib/install/README.md)。`roadmap/harness/*.md` 仍只是未来设计；`harness/`
-物理上只放当前两道可运行题。
+物理上只放当前三道可运行题。
 
 ## harness/ 的共享基建与独立 repo
 
@@ -148,12 +148,10 @@ red（例如 `incus-undeployed`）。本机开发检查用
 
 ## 候选版本与实验矩阵
 
-安装实验族从 0.14 API 开始，当前只有 canary 一格：
+安装实验族从 0.14 API 开始，当前有稳定版与 canary 两格：
 
+- `install/v0.14.0`：固定 `niceeval@0.14.0` 稳定基线；
 - `install/canary`：解析运行时的 canary dist-tag。
-
-`niceeval@0.14.0` 正式发布后再增加 `install/v0.14.0` 稳定基线；发布前不创建会让
-experiment discovery 整体失败的虚假精确版本。
 
 每个 experiment 都通过 `ensureCandidate()` 物化候选清单，并把解析后的精确版本放进
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
@@ -166,10 +164,10 @@ Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEv
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 
-Harness 实验族同样从 0.14 API 开始，当前只启用 `harness/canary`；0.14.0 发布后补
-`harness/v0.14.0` 稳定对照。它运行三道 Harness 题，不承担跨 reader 的历史 report
+Harness 实验族同样从 0.14 API 开始，当前启用 `harness/v0.14.0` 稳定基线与
+`harness/canary`。它运行三道 Harness 题，不承担跨 reader 的历史 report
 兼容测试。`attempts` 使用 NiceEval 的默认值 1，当前完整矩阵共 **3 个
-coding-agent attempt**。全仓并发上限为 2：安装题的宿主 checkout、Codex session 与
+coding-agent attempt/格**。全仓并发上限为 2：安装题的宿主 checkout、Codex session 与
 guest Docker 会同时占用大量内存和临时空间。只想检查计划时始终先用 `--dry`。
 
 ## 安装评估如何计分
