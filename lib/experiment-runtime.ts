@@ -167,7 +167,7 @@ cp -a "$seed/." "$project/"
 # pnpm 11 的 minimumReleaseAge 默认策略会拦截刚发布的候选；被评对象不受包年龄限制。
 export npm_config_minimum_release_age=0
 printf '安装 harness 候选 niceeval@%s…\n' "$candidate_version"
-(cd "$project" && pnpm add -D --store-dir "$store" "niceeval@$candidate_version" && pnpm exec niceeval init)
+(cd "$project" && pnpm add -D --allow-build=autoevals --store-dir "$store" "niceeval@$candidate_version" && pnpm exec niceeval init)
 
 # init 只提供候选版本的项目指引；题目源码、agent、eval 与 experiment 由 case fixture 上传。
 rm -rf "$project/agents" "$project/config" "$project/docs" "$project/evals" \
