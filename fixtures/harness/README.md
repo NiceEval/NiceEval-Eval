@@ -1,6 +1,6 @@
 # Harness case repos
 
-三道 Harness 题各自拥有一份小 repo，互不 overlay、互不依赖：
+三个 Harness 任务家族各自拥有一份小 repo；regex-log 的自主/授权两条件共享源码，但各自创建独立 workspace：
 
 ```text
 fixtures/harness/
@@ -70,11 +70,8 @@ base 或共享准备层，只有所属 Eval 的 fixture action 将它覆盖到�
 
 ### 被测 agent 的唯一修改面
 
-`terminal-bench/regex-log` 的完整修复是**只改** `experiments/local.ts`：
+`terminal-bench/regex-log` 两条件允许修改的范围是 `experiments/local.ts`：
 
-```diff
-- runtime:node
-+ runtime:python
-```
+切换到具备 Python 的 runtime 是一种修法，也接受在该配置内实现的等价环境。判分核验实际结果，不匹配固定标签。
 
 改错层（动 eval、动 fixture、改其它配置）或改出多余变化，都属于范围错误。

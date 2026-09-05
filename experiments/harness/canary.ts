@@ -5,10 +5,13 @@ import { harnessSandbox, incusCodexAgent } from "../../lib/experiment-runtime.ts
 const NICEEVAL_VERSION = await ensureCandidate("canary");
 
 export default defineExperiment({
-  description: `niceeval@${NICEEVAL_VERSION}（canary）：三道 Terminal-Bench Harness 运行、反馈与 authoring 闭环`,
+  description: `niceeval@${NICEEVAL_VERSION}（canary）：四个条件、三个任务家族的 Terminal-Bench Harness 运行、反馈与 authoring 闭环`,
   agent: incusCodexAgent(),
   model: "gpt-5.6-terra",
-  flags: { candidateVersion: NICEEVAL_VERSION },
+  reasoningEffort: "medium",
+  attempts: 1,
+  earlyExit: false,
+  flags: { candidateVersion: NICEEVAL_VERSION, harnessRubric: "v2" },
   sandbox: harnessSandbox(NICEEVAL_VERSION),
   evals: (evalDef) => evalDef.tags.includes("harness"),
 });

@@ -1,12 +1,17 @@
 import { defineScoreEval } from "niceeval";
-import { closedQA, referencesAnyPath, toolMatch } from "niceeval/expect";
+import { closedQA, equals, referencesAnyPath, toolMatch } from "niceeval/expect";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+
+import { loadCriteria } from "niceeval/loaders";
+import { collectResults, currentMembers, matchesResults } from "../../../../lib/harness/public-results.ts";
+
+await loadCriteria({ pattern: "../../../../fixtures/harness/terminal-bench/log-summary/repo/**/*", relativeTo: new URL(import.meta.url) });
 
 const GIB = 1024 ** 3;
 
 export default defineScoreEval({
   description: "只凭公开结果区分 Terminal-Bench agent 产出错误与过紧 eval",
-  tags: ["harness", "terminal-bench", "diagnosis", "failed", "single-turn"],
+  tags: ["harness", "harness-v2", "terminal-bench", "diagnosis", "failed", "single-turn"],
   timeoutMs: 20 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
   judge: true,
@@ -31,25 +36,24 @@ export default defineScoreEval({
       "pnpm",
       ["exec", "niceeval", "exp", "local"],
     );
-    const initialOutput = `${initialRun.stdout}\n${initialRun.stderr}`;
-    const hasExpectedSummary = initialOutput
-      .split(/\r?\n/u)
-      .some((line) =>
-        /^.*\b1 passed\s+·\s+2 failed\s+·\s+0 errored\s+\(0 reused\)(?:\s*│)?\s*$/u.test(line)
-        || /^summary:\s+1 passed,\s+2 failed,\s+0 errored\s+\(0 reused\)\s*$/u.test(line)
-        || /^.*1 通过\s+·\s+2 失败\s+·\s+0 出错\s+\(复用 0\)(?:\s*│)?\s*$/u.test(line)
-      );
-    if (initialRun.exitCode !== 1 || !hasExpectedSummary) {
-      throw new Error(
-        "log-summary 初始 local experiment 应完整得到 1 passed、2 failed、0 errored " +
-          `并返回 exit 1，实测 exit ${initialRun.exitCode}: ` +
-          `${initialOutput.trim() || "无输出"}`,
-      );
+    const before = await collectResults((cmd, args) => t.sandbox.runCommand(cmd, args));
+    const expected = {
+      "terminal-bench/hello-world": "passed",
+      "terminal-bench/classifier-debug": "failed",
+      "terminal-bench/log-summary": "failed",
+    };
+    if (initialRun.exitCode !== 1 || !matchesResults(currentMembers(before.runs, "local"), expected)) {
+      throw new Error("log-summary fixture 未形成完整的 1 passed / 2 failed 初始结果，不能对 agent 判分");
     }
 
     // 用户只要求归因，没有授权改文件；failed 是已完成的业务结论，不应重跑或“修绿”。
-    const input = "刚才的 local 评估已经跑完了，定位一下为什么有两个失败。";
+    const input = "刚才的 local 评估已经跑完了，定位一下为什么有两个失败。只分析已有结果，不修改项目、不重新运行评估。";
     const turn = await t.send(input);
+    const after = await collectResults((cmd, args) => t.sandbox.runCommand(cmd, args));
+    t.check(after.runIds, equals(before.runIds))
+      .key("harness.log-summary.no-new-runs").label("只读任务没有新发布 Run");
+    t.log(JSON.stringify({ rubric: "harness-v2", initialRunIds: before.runIds, finalRunIds: after.runIds }));
+
 
     turn.notCalledTool(
       toolMatch({ input: referencesAnyPath([".niceeval"]) }),
@@ -76,7 +80,7 @@ export default defineScoreEval({
     // 每个失败各 7 分：公开证据链 2 分、最终任务事实 2 分、责任归因 3 分。
     // 两题都不能只凭复述 actual / expected mismatch 获得归因分；最终回复必须
     // 明确判断责任在错误的 agent 结果，还是在拒绝合法结果的过紧 Eval。
-    t.check(turnMaterial, closedQA("【classifier-debug 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：先用 niceeval show 确认 current 为 1 passed、2 failed、0 errored，并取得 terminal-bench/classifier-debug 的动态 locator；再用该 locator 的公开下钻输出确认 agent 写入 B、正确答案与断言要求都是 A。"))
+    t.check(turnMaterial, closedQA("【classifier-debug 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：使用公开 niceeval show 或 query 的等价结果，固定本次 local Run 及 classifier-debug 的 Attempt，确认整体 1 passed、2 failed、0 errored，并从公开执行、源码或断言详情确认 agent 写入 B、正确答案与断言要求都是 A。"))
       .score(2)
       .key("harness.log-summary.classifier-evidence")
       .label("classifier-debug 公开证据完整");
@@ -91,7 +95,7 @@ export default defineScoreEval({
       .key("harness.log-summary.classifier-agent-attribution")
       .label("classifier-debug 最终归因 agent 答案错误");
 
-    t.check(turnMaterial, closedQA("【log-summary 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：从 niceeval show 取得 terminal-bench/log-summary 的动态 locator；再用该 locator 的公开下钻输出确认 agent 生成四行合法 CSV，ERROR/WARNING/INFO 为 4/3/8，实际差异只是 CSV 字段带有允许的双引号，而 exact Assertion 要求无引号文本。"))
+    t.check(turnMaterial, closedQA("【log-summary 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：使用公开 niceeval show 或 query 固定本次 local Run 的 log-summary Attempt，再从公开执行、源码或断言详情确认 agent 生成四行合法 CSV，ERROR/WARNING/INFO 为 4/3/8，实际差异只是 CSV 字段带有允许的双引号，而 exact Assertion 要求无引号文本。"))
       .score(2)
       .key("harness.log-summary.log-evidence")
       .label("log-summary 公开证据完整");
@@ -101,7 +105,7 @@ export default defineScoreEval({
       .key("harness.log-summary.log-result-valid")
       .label("log-summary 最终确认任务结果正确");
 
-    t.check(replyMaterial, closedQA("【log-summary 最终责任归因】只判断最终回复是否明确得出 terminal-bench/log-summary 的失败责任在 Eval：它用过紧的精确字符串断言拒绝了题面允许的合法 CSV。若回复称这是 agent 输出错误、称‘并非 NiceEval/Eval 问题’，或只描述引号与 exact 文本的差异而没有把判据定性为过紧，必须判为不满足。题面没有要求修复建议，是否附带建议不属于本项。"))
+    t.check(replyMaterial, closedQA("【log-summary 最终责任归因】只判断最终回复是否明确得出 terminal-bench/log-summary 的失败责任在 Eval：它用过紧的精确字符串断言拒绝了题面允许的合法 CSV。若回复称这是 agent 输出错误，或只描述引号与 exact 文本的差异而没有把判据定性为过紧，必须判为不满足。可以说明 NiceEval runtime 本身没有问题，只要明确本地 Eval 的断言过紧。题面没有要求修复建议，是否附带建议不属于本项。"))
       .score(3)
       .key("harness.log-summary.log-eval-attribution")
       .label("log-summary 最终归因 Eval 过紧");

@@ -27,13 +27,13 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 | --- | --- | --- | --- |
 | `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher（2 道） |
 | `roadmap/` | 扩展路线与未来设计 | 复杂第三方接入与暂缓实现的评估方向 | Express Sandbox、Letta、OpenHands、Skyvern（4 道） |
-| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | terminal-bench/cancel-async-authoring、terminal-bench/regex-log、terminal-bench/log-summary（3 道） |
+| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | 三个任务家族、四个独立条件（含自主/明确授权修复配对） |
 
 `install/` 与 `roadmap/` 的每道可运行题都采用 `<case>/eval.ts` 目录入口，因此路径本身继续
 给出稳定 Eval ID（例如 `roadmap/openhands`）。场景脚本只保留 setup、任务、检查阶段与收口；
 宿主 repo/ref、协议和长 rubric 在 `fixtures/install/<case>/`，跨题机制在
 [`lib/install/`](lib/install/README.md)。`roadmap/harness/*.md` 仍只是未来设计；`harness/`
-物理上只放当前三道可运行题。
+物理上只放当前四个可运行条件。
 
 ## harness/ 的共享基建与独立 repo
 
@@ -42,26 +42,19 @@ Experiment 的声明式 TS action 从固定 digest 构建 inner runtime tags、�
 NiceEval、运行 `niceeval init` 并物化 workspace；NiceEval 在 Attempt 派发前逐层发布并复用这些业务 artifact。
 base 本身的固定 Ubuntu 输入、构建、block volume 启动验证和安全升级流程位于
 [`sandbox/incus-base/`](sandbox/incus-base/README.md)。
-两道题分别维护 `fixtures/harness/<case>/repo/`，fixture action 只把所属小 repo 覆盖进已准备
+三个任务家族分别维护 `fixtures/harness/<case>/repo/`，fixture action 只把所属小 repo 覆盖进已准备
 workspace，不在镜像里共享业务 fixture。项目不携带
 `.niceeval`，结果仍由被测 agent 当场运行产生。完整设计见
 [`evals/harness/README.md`](evals/harness/README.md) 与
 [`fixtures/harness/README.md`](fixtures/harness/README.md)。
 
-## Harness 的两个确定性场景
+## Harness 评分与发版比较
 
-这组使用不含历史结果、从真实 Terminal-Bench 题包裁出的确定性项目：
+当前使用 rubric v2：自主恢复 10 分、明确授权恢复 10 分、只读归因 14 分、authoring 18 分。
+真实结果通过公开 query 核验；分数、完成事实与修改范围分别报告。历史 32/48 不能直接
+与新分数相减。安装前 INIT 的效果由 install 题覆盖，不由预装好的 Harness 题代替。
 
-- `terminal-bench/regex-log` 运行 `hello-world`、`fix-permissions`、`classifier-debug`
-  和 `regex-log`，首跑 2 passed / 1 合法 failed / 1 缺 Python errored：唯一修复是
-  把 `experiments/local.ts` 的 inner runtime 从 `runtime:node` 改成 `runtime:python`；
-  0.14 API / canary 只从公开 `niceeval show` 输出动态取得 locator，恰好 accept 三条仍有效的
-  terminal results，只真实重跑 errored 的 `regex-log`；终态为 3/1/0。
-- `terminal-bench/log-summary` 运行 `hello-world`、`classifier-debug` 和 `log-summary`，首跑
-  1 passed / 2 failed / 0 errored：只诊断不修改——`classifier-debug` 是 agent 选错 B（正确为 A），
-  `log-summary` 是合法带引号 CSV 被 exact 字符串断言拒绝，两者都不得靠改断言擦红。
-
-题面只表达真实用户需求，具体过程由宿主行为证据与隐藏判分观察。
+详见 [题库与评分](evals/harness/README.md) 和 [发布评估协议](docs/harness-release-evaluation.md)。
 
 ## 快速开始
 
@@ -96,8 +89,8 @@ pnpm run harness-eval
 结果诊断可优先使用公共 CLI：
 
 ```sh
-pnpm exec niceeval show --exp <experiment-id>
-pnpm exec niceeval show --exp <experiment-id> --history
+pnpm exec niceeval show --experiment <experiment-id>
+pnpm exec niceeval show --run <run-id>
 pnpm exec niceeval show @<locator>
 pnpm exec niceeval show @<locator> --execution
 pnpm exec niceeval show @<locator> --diff
@@ -164,11 +157,10 @@ Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEv
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 
-Harness 实验族同样从 0.14 API 开始，当前启用 `harness/v0.14.0` 稳定基线与
-`harness/canary`。它运行三道 Harness 题，不承担跨 reader 的历史 report
-兼容测试。`attempts` 使用 NiceEval 的默认值 1，当前完整矩阵共 **3 个
-coding-agent attempt/格**。全仓并发上限为 2：安装题的宿主 checkout、Codex session 与
-guest Docker 会同时占用大量内存和临时空间。只想检查计划时始终先用 `--dry`。
+Harness 当前启用 `harness/v0.14.0`、`harness/v0.14.2` 与 `harness/canary`。
+每个候选运行四个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。
+完整矩阵最多 12 个 coding-agent attempts，另计 Judge 调用。全仓并发上限为 2；
+只想检查计划时使用 `--dry`。新评分基线与发布比较见上方 Harness 说明。
 
 ## 安装评估如何计分
 

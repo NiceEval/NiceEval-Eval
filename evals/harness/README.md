@@ -1,146 +1,85 @@
-# Harness 评估套件
+# Harness 文档工作流评估 · rubric v2
 
-这组题评估 coding agent 能否在一个已经接入 NiceEval 的项目里，自主完成“运行 → 用公开
-`niceeval show` 取证 → 形成因果判断 → 在正确层修改/给出归因”，以及能否把真实题包写成
-不泄漏判据的 Eval。三题共享运行基建，但各自维护独立项目与独立起始状态；当前启用三个候选：v0.14.0、v0.14.2、canary。单候选为 3 题 × 1 次；
-全矩阵最多 **9 个付费 coding-agent attempts**，实际新执行数量以 dry-run 为准。
+这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
+可信评估。当前是 **三个任务家族、四个独立条件**，不是四种独立能力样本。
+候选安装和 `init` 已由 Harness 完成；安装前 `INIT.md` 的效果另由 `evals/install/` 测量。
 
-## 当前三题
+| 条件 | 请求与起始状态 | 分值 |
+| --- | --- | --- |
+| regex-log | 自主完成；首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 10 |
+| regex-log-authorized | 相同 fixture，明确要求修复执行错误后复验 | 10 |
+| log-summary | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
+| cancel-async-authoring | 编写正式 Eval，隐藏判据、真实正反控制及 fingerprint | 18 |
 
-| 用例 | 用户交互 | 初始状态 | 主要能力 |
-| --- | --- | --- | --- |
-| `terminal-bench/regex-log` | 单轮：把评估跑完并报告最终结果，题面不预告 error | 真实 TB task slice 首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 自主识别未完成的 errored、定位 experiment runtime 缺口、最小修改恢复、按候选版本差异复验 |
-| `terminal-bench/log-summary` | fixture 先运行；单轮追问每个失败，未授权修改 | 真实 TB task slice 已有 1 passed / 2 failed / 0 errored | 直接用 `show` 进入反馈闭环，区分「agent 产出错误」与「eval 过紧」 |
-| `terminal-bench/cancel-async-authoring` | 单轮：把未接入的真实题包写成正式 Eval | 官方题面、Docker fixture、隐藏测试、官方联网 runner 与两格确定性 agent 已就绪 | 正确使用任务级 sandbox、隐藏判据时序、criteria fingerprint，并用 oracle / leak-probe 证明正反边界 |
+满分合计 52。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
 
-## 真实题意
+## 评分在评什么
 
-### A · terminal-bench/regex-log
+A 的目标是最终保留 `hello-world`、`fix-permissions`、`regex-log` passed 与 `classifier-debug`
+failed。每个控制用例正确各 1 分，真实恢复 regex-log 3 分，区分环境依赖与业务失败 2 分，
+如实交接 2 分。只诊断未修复者仍能取得诊断、诚实交接与已完成控制项的分数。
+不奖励特定镜像字符串或 `show` 命令拼写；允许在 `experiments/local.ts` 中配置等价运行环境。
 
-用户只要求“把这次评估跑完”，题面刻意不预告 error、根因、修复文件或候选版本策略。
-这里测的正是 agent 能否识别 `errored` 表示评估尚未跑完，自主诊断并修复基础设施；
-已完成的合法 `failed` 则是应被如实保留的业务结论，不等于“没跑完”。
+外层在 agent 结束后仅用公开 `runs.list` 固定 Run 集合，再读取逐个固定 `run.summary`，
+以时间顺序取 local 的各用例最后一个 Member。只复跑受影响用例也可完成任务；旧控制项保留
+它们的 Run ID、locator 和 executed/carried/accepted 状态。后续退步不能挑旧成功来遮盖。
+原有题面、Agent 与判据若被改写，结果分不给分。外层不会替 A 重跑、accept 或 migrate。
 
-候选 workspace 里的 inner project 从 `NiceEval/terminal-bench` 的已审核题包裁出四项：
-`hello-world`、`fix-permissions`、`classifier-debug` 和 `regex-log`。首跑 `niceeval exp local`
-得到 **2 passed / 1 合法 failed / 1 errored**：`classifier-debug` 的 canned agent 选择错误的 B，
-是可信 failed；`regex-log` 直接运行 TB 官方 Python 判据，而当前 runtime 镜像没有 python3，因而 errored。
+B 每个失败仍是公开证据 2、任务事实 2、责任归因 3 分。`show` 与 `query` 的等价证据都接受，
+不强制命令顺序或 locator 拼写。外层用公开结果验证初始状态，并比较前后 Run 集合；
+`noChanges` 与 `no-new-runs` 分别记录文件和新发布结果边界。没有新 Run 不证明没有发起失败命令。
+归因仍使用 Judge：输出有开放性，不能用出现 A/B 或 CSV 等词代替正确解释。
 
-当前确定性配置得分只识别把 `experiments/local.ts` 里的 `runtime:node` 改成
-`runtime:python`。范围检查记录其它文件是否改动。当前 rubric 要求修后真实运行和公开复验，
-没有对 accept 数量或重跑次数单独计分；等价 runtime 与当前字符串判据的差异见本轮审计。
+C 不使用 Judge，18 分来自：只改目标文件 1、官方资产未改 2、discovery 2、oracle 6、
+fingerprint 自动新执行 2、leak-probe ordinary failed 3、强制失败判据确实使 oracle failed 2。
+最后一项由外层在官方测试末尾增加必失败测试，检验未执行 tests 或忽略退出码的假成功；
+探针结束后在 finally 恢复测试文件。oracle 与 leak-probe 用 `--rerun all` 保证外层实际验收，
+fingerprint 探针刻意不加重跑参数。结果来自固定 Run 的公开 JSON，不解析终端汇总文案。
+agent 自己是否跑过正反两格在外层验收开始前单独取证，不能由外层运行补作业。
 
-候选的正确终态是 **3 passed / 1 failed / 0 errored**——合法 failed 的那道不因换运行时
-而改变，它本来就不是环境问题。题目考察的是 agent 能否从 CLI 反馈把「errored 的环境缺口」
-与「failed 的业务事实」分开，而不是让它把所有红灯都“修绿”。
+## 分数与完成必须分开报告
 
-### B · terminal-bench/log-summary
+计分制的高分不自动证明任务完成。每次同时审阅：
 
-fixture 先替用户运行评估，随后用户只追问每个失败的原因，没有授权重跑或修改项目文件。
-这里测的是 agent 能否直接从 `niceeval show` 进入已经停稳的 Record，把已完成的 `failed`
-当作需要归因的结果，而不是先重学 CLI、重跑 experiment，或把红灯“修绿”。
+- A：`task-complete`、`changed-only-config`、`assets-unchanged`、Turn 状态和公开证据边界。
+- B：两项归因与事实得分、`no-changes`、`no-new-runs`、Turn 状态和公开证据边界。
+- C：产物分数、`student-runs`、`target-only`、`assets-unchanged` 与公开证据边界。
 
-inner project 首跑 **1 passed / 2 failed / 0 errored**。agent 的任务是逐道给出因果归因并
-如实交接，**不得修改任何 eval 或项目文件**：
+`.niceeval` 负向工具匹配只证明没有观察到禁止路径，不是 OS 文件访问审计。Adapter 的 shell
+内部 argv 可能不可见，因此不按不可观察的命令序列设置硬门禁。公开 query 失败、截断或成员
+身份不闭合时 verifier 抛出错误，结果不可排名，不能静默变成零分。空 Record 则是确定的“没有运行”。
 
-- `terminal-bench/classifier-debug`：正确选项与断言要求都是 A，canned agent 却写入 B。这是
-  **agent 产出/能力问题**，断言本身是对的；
-- `terminal-bench/log-summary`：ERROR/WARNING/INFO 计数是正确的 4/3/8，输出也是合法 CSV，
-  只是字段带标准双引号。TB 官方 CSV 判据会接受，本地 exact 字符串断言却拒绝——这是
-  **eval 过紧**。
+## 题库质量与适用边界
 
-正确完成 = 两道失败都归因到正确层、不产生任何文件改动；错误完成 = 靠改断言、放宽匹配或
-改 fixture 让套件变绿，或把两类失败互相张冠李戴。
+B 的两类相似 failed 要求不同责任归因，C 用真实测试和反例检查产物，适合工作流回归。
+A 配对能区分任务理解/自主恢复和明确授权后的执行能力。它们仍只有三个任务家族，且均为
+开发集；重复 Attempt 增加行为稳定性的证据，不增加场景覆盖。canned agent 稳定制造问题，
+不能用这些结果推断真实模型解决 Terminal-Bench 的能力。
 
-### C · terminal-bench/cancel-async-authoring
+保留题必须在调文档前冻结，使用不同依赖、合法失败与输出格式；只更名或替换固定答案不够。
+一旦看过失败并据此调优，就移入开发集。本轮没有新增已宣称为盲测的保留题。
+完整安装链、多轮交互、复杂接入和不熟悉的任务仍需独立测试，不由这四个条件代替。
 
-用户给出 `terminal-bench@5964952` 的真实 `cancel-async-tasks` 题包，要求 coding agent 只创建
-`evals/terminal-bench/cancel-async-tasks.eval.ts`。官方题意是实现受最大并发数约束、在
-KeyboardInterrupt 时仍运行 cleanup 的 Python async task runner；六个官方测试覆盖文件存在、
-并行执行、并发上限，以及低于、等于、高于上限时的取消清理。
+## 验证与发版后重跑
 
-这题不按源码模板或回复措辞判分。外层真实运行两个确定性 experiment：oracle 在 task agent
-turn 内写入官方参考实现，必须得到 **1 passed / 0 failed / 0 errored**；leak-probe 会先检查
-agent 可见文件系统，若提前看到 tests、runner 或 solution 就写入参考实现，否则写入违反并发要求
-的负例。因此正确 Eval 下它必须得到 **0 passed / 1 failed / 0 errored**，而不是 errored。
-隐藏材料进入 Docker build context、在 `t.send()` 前上传，或 verifier 没有真正执行官方 tests，
-都会让负向探针意外通过。
+```sh
+pnpm run typecheck
+pnpm run test:harness
+pnpm exec niceeval exp harness/canary --dry
+pnpm harness-report <fixed-run-id> [<fixed-run-id> ...]
+```
 
-外层还会给官方测试追加一行不改变行为的注释后再次运行 oracle。只有 Eval 在发现期把隐藏测试
-及 runner 登记进 criteria fingerprint，第二次才会自动重跑并公开报告 0 reused；这避免“本次恰好
-跑通，但以后修改判据仍错误复用旧结论”的假完成。
+`test:harness` 用临时项目真实运行确定性 CLI，不使用 LLM 或 Docker，不写本项目历史 Record。
+它验证空结果、合法 failed、执行错误、局部修复、沿用、后续退步和证据结构错误。
+`harness-report` 只读取指定 Run，输出逐题分数、来源、覆盖和用量；不从 Score 推断边界合规，
+不将 carried/accepted 当新样本。同一 Attempt ID 跨多个 Run 出现时也只算一个独立样本。
 
-## 共享基建，独立 repo
+目前三个候选均固定 `gpt-5.6-terra`、`reasoningEffort: medium`、1 Attempt、不开首过即停。
+单候选最多 4 个 coding-agent attempts，三候选完整矩阵最多 12 个，A/B 另有 Judge 调用。
+预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
+`canary` 每次解析精确版本，跨日比较不能只记录标签。
 
-Node、pnpm、Docker/Compose、项目 seed 与两枚固定 digest 的 inner runtime 缓存（node / python
-变体）由通用 Harness 镜像共享。Sandbox 保留公网访问；Experiment 的 TS layer 先导入并冒烟
-runtime 缓存，再按解析后的
-精确版本安装候选 NiceEval、运行 `niceeval init`、清理示例并物化只读依赖树；随后各题 fixture
-才覆盖自己的 repo。完整顺序见 [`fixtures/harness/README.md`](../../fixtures/harness/README.md)。
-当前 Harness canary experiment 沿用项目的全局并发设置；单个 Attempt 已同时占用候选
-Sandbox 与内层 dockerd，运行时需留意宿主资源竞争和模型网关并发抖动。
-
-`fixtures/harness/<case>/repo/` 由每道题各自维护：起始状态直接写在所属 repo，不靠中央
-canonical fixture 加 evaluator overlay。三个 repo 都记录 Terminal-Bench 来源 commit，保留 task ID、
-题面、所需初始资产及官方判据副本。Attempt 启动时 fixture 只上传所属 repo；不改扩展名，
-也不重复安装依赖或执行 init。fixture 修改不会使通用 Docker 基线失效。
-
-## 题面原则
-
-- 每次 `t.send()` 都像真实用户说话，只表达当轮需求；三道题都是单轮。A 在一次 `send` 内完成
-  运行、取证、修改和复验；B 由 fixture 先运行，再用一次 `send` 测停稳 Record 的反馈归因；
-  C 在一次 `send` 内完成 Eval authoring、正反运行与公开复验；
-- 不告诉 agent 应使用哪些 NiceEval 命令、结果在哪里或根因属于哪一层；
-- agent 必须先形成可独立检查的诊断，再（仅 `terminal-bench/regex-log` 的题面授权下）做最小修改；
-- 项目不携带 `.niceeval`，结果必须在 Attempt 内真实运行产生：A 由被测 agent 运行，B 由 fixture
-  在发送反馈问题前运行，不预载历史 Record。
-
-## 判分与取证边界
-
-- 当前运行结果只从公开 CLI 取证：`niceeval show`（动态 `@<locator>`）、前缀收窄、
-  `--source` 与 `--execution` 等公开证据视图。读取 `evals/`、`agents/`
-  或随包文档可以辅助理解；唯一的路径黑名单是 `.niceeval/` 落盘数据，这不是能力加分项，
-  而是题目边界。
-- B 当前按公开 show / locator 证据链、最终事实与归因计分；先读 INDEX 或指南不直接扣分。
-  无关探索和错误命令可作为效率指标审计，不混入现有质量分。
-- 外层确定性断言只保留当前 Observation / Sandbox 能诚实证明的 **Fact**：
-  `turn.notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`、`turn.succeeded()`，以及 A 的
-  精确 `changedPaths` / `fileChanged`、B 的 `noChanges`。当前 Codex / Claude CLI Adapter 看不到
-  内部 shell argv，故不把 `commandMatch()` 或 `toolOrder()` 当作硬 gate；不能把 opaque shell
-  伪装成已经观察到的 CLI 子序列。
-- 每个 Fact use 都有稳定、互异的 `key`，用于公开 `query` 与后续逐项审计对齐；key 只命名用途，
-  不改变 Fact 的求值或分值。A 的 `changedPaths` 与 B 的 `noChanges` 只作为不计分的范围检查；
-  分数奖励真正的 runtime 修复和语义归因。
-- `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))` 命中观察到的 `.niceeval` 禁区路径
-  会让对应 Fact 判定用途失败；读取 `evals/`、`agents/` 与随包文档不属于禁区。该检查复用工具负存在性，只是行为证据，
-  不是 OS 级文件审计；没有命中的文件系统操作不在判分范围内；
-- A/B Judge 使用 `t.check(material, closedQA(criteria))`，并显式传入本轮完整 `toolCalls + message`
-  或只含最终回复的材料。独立 rubric 分别核对 A 的错误现象、runtime 修复理解、实际修改、
-  公开复验与终态，以及 B 的
-  公开证据、任务事实与责任归因；两个失败都把“actual / expected 事实”与“责任归属”拆开计分，
-  避免只复述差异便获得完整归因分。A/B 两题总分仍为 18 / 14。这里的
-  Turn 材料只是 Judge matcher 的输入，不匹配 `show` JSON 形状，也不替 agent 重跑 experiment。
-- A 的 18 分按能力阶梯分为：Python runtime 依赖诊断 2、runtime 修复理解 2、实际配置修改 3、修后真实运行并
-  公开复验 3、公开 current 结果正确 5、最终回复正确 3。B 的两个失败各 7 分，均为公开证据 2、
-  最终任务事实 2、责任归因 3；主动诊断不要求先制造错误，责任归因也不要求固定措辞，权重不随候选版本变化。
-- C 不使用 LLM judge，总分 16：只改目标 Eval 1、官方资产未篡改 2、discovery/link plan 2、
-  oracle 通过 6、criteria fingerprint 自动失效旧结果 2、leak-probe 普通失败 3。
-- canned agent 只用于稳定复现判分路径，不构成对真实模型智力的任何结论。
-
-## 类型检查与审计
-
-当前三题使用 `defineScoreEval`、作用域断言和 `.score()` 登记分值；精确 API 以安装包
-`INDEX.md` 指向的指南及当前源码为准。`pnpm run typecheck` 检查本仓库全部代码，脚本会过滤
-依赖目录内的诊断。运行前使用 `niceeval exp list harness` 和精确候选的 `--dry` 核对范围。
-
-固定 Run 的评分审计、证据限制与迭代方案见
+发版比较流程及量化口径见 [发布评估协议](../../docs/harness-release-evaluation.md)。
+共享基建与来源见 [fixture 说明](../../fixtures/harness/README.md)，旧 rubric 证据见
 [2026-09-05 审计](../../docs/harness-review-2026-09-05.md)。
-
-## 运行成本
-
-每个候选选中 3 道题、每题 1 次；完整 `niceeval exp harness` 当前选择三个候选，最多新执行
-9 个付费 coding-agent attempts。A/B 另有 Judge 调用，C 使用确定性断言。canary 是动态标签，
-运行比较时记录解析后的精确版本；不能把不同日期的 canary 当同一候选。
-
-当前 Incus VM 为内层 Docker 提供独立内核，整仓并发为 2。SetupPrefix 缓存与历史 Attempt
-沿用是两种不同机制；分别报告缓存命中和 executed/carried 数量。付费运行需要明确预算授权。

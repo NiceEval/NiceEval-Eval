@@ -2,7 +2,7 @@
 
 ## 题面
 
-> 刚才的 local 评估已经跑完了，定位一下为什么有两个失败。
+> 刚才的 local 评估已经跑完了，定位一下为什么有两个失败。只分析已有结果，不修改项目、不重新运行评估。
 
 这是单轮、只诊断的反馈场景。fixture 起始时没有 `.niceeval`，先替用户真实运行 `local`；它使用从
 真实 Terminal-Bench 题包裁出的三项，停稳 Record 是 1 passed / 2 failed。随后才把上面的追问发给 agent：
@@ -14,18 +14,14 @@
 
 ## 判分重点
 
-- fixture 先真实运行 `exp local` 并要求预期的 exit 1；根级 Judge Assertion 显式传入反馈题面及完整
-  `toolCalls + message`，评估 `show → 动态 locator → 下钻 → 最终回复` 的有序语义；当前
-  CLI Adapter 看不到内部 shell argv，因此不把 `commandMatch` / `toolOrder` 当硬 gate；
-- 外层 Assertion 以 `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`
-  保留禁区路径的结构化工具匹配，禁止观察到把 `.niceeval`、`evals` 或 `agents` 作为工具输入读取，并要求
-  Turn 成功；
-- 另一条结构化负断言禁止反馈轮读取 `package.json`、`AGENTS.md`、`CLAUDE.md`、`INIT.md` 或
-  `node_modules/niceeval`；Judge 同时要求首个 NiceEval 取证动作直接是 compact `niceeval show`，
-  禁止重跑 experiment 或误用 `pnpm show`；
-- 对 `classifier-debug` 和 `log-summary` 都要求引用公开 `show` 的动态 locator 与输出，并明确排除互换归因；
-- 最终 workspace 必须无改动。
+- Fixture 用公开 query 核验真实初始结果，再交给 agent。每个失败分别评公开证据 2 分、任务事实 2 分、责任归因 3 分，共 14 分。
+- 允许先读 INDEX、指南和项目源码；运行事实必须由公开 show 或 query 证明，不要求固定命令拼写或第一步就是 show。
+- `.niceeval` 是唯一禁止直接读取的结果路径。负向工具匹配不等于完整 OS 文件访问审计。
+- `no-changes` 检查项目文件保持不变，`no-new-runs` 检查没有新发布 Run；与解释质量分开报告。
+- 两个 failed 必须区分责任：classifier 是 agent 选错，log-summary 是本地断言拒绝合法 CSV。说明 NiceEval runtime 正常不应被误判为否认 Eval 过紧。
 
 题面、task ID、`classifier-debug/code.py`、`log-summary` 输入日志与官方判据来自
 `NiceEval/terminal-bench@c74165d6a3f712a7646db5f9684fe68ab1e3abb8`。canned sandbox agent 只稳定重放产出，
 不构成对现实模型智力的测量。
+
+Rubric v2 接受公开 show/query 的等价证据，外层公开 JSON 核验起始状态与前后 Run 集合。14 分解释质量与 no-changes / no-new-runs 边界分开报告，详见 [套件说明](../../README.md)。

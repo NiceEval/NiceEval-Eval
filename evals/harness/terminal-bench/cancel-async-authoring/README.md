@@ -5,14 +5,15 @@ NiceEval Eval。题包来自 `terminal-bench@5964952` 的 `cancel-async-tasks`�
 官方 `run-tests.sh` 与参考解答保持原样；Sandbox 可以联网，正式 Eval 应使用官方 runner 安装
 固定版本依赖并执行同一份官方测试。
 
-评分完全确定性，总分 16：
+评分完全确定性，rubric v2 总分 18：
 
 - 1 分：只创建指定 Eval；
 - 2 分：题面、Docker fixture、官方测试、runner 与参考答案均未被篡改；
 - 2 分：Eval 可发现并完成 link plan；
 - 6 分：oracle 的官方参考实现得到恰好 1 passed / 0 failed / 0 errored；
 - 2 分：只给官方测试追加无行为变化的注释后，oracle 自动重跑且报告 0 reused；
-- 3 分：leak-probe 得到恰好 0 passed / 1 failed / 0 errored。
+- 3 分：leak-probe 得到恰好 0 passed / 1 failed / 0 errored；
+- 2 分：外层增加必失败测试后，oracle 必须 ordinary failed，证明执行了判据且没有忽略退出码。
 
 `leak-probe` 是时间边界检查，不是弱答案样例。它会在 `t.send()` 内检查 task sandbox 是否已
 出现 tests、runner 或 solution：若发现泄漏，就写入正确参考实现；若没有泄漏，才写入一个会
@@ -21,3 +22,5 @@ Docker build context，或写出无效 verifier，都会让负向探针意外通
 
 外层不根据最终回复措辞给分，也不使用 LLM judge。`.niceeval/` 仍是唯一禁止直接读取的私有
 结果路径；读取题包、agent、experiment 与 bundled docs 都是合法工作。
+
+外层全部使用公开 JSON 核验固定 Run；agent 自己的运行在外层验收前另行记录。详见 [套件说明](../../README.md)。
