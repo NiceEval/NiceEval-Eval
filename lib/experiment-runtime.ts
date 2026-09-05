@@ -53,7 +53,10 @@ const DEVELOPMENT_PROJECT = "niceeval-eval-dev";
 const DEVELOPMENT_STORAGE_POOL = "niceeval-sandbox-dev";
 const AGENT_ENDPOINT_HOST = "sub2api.350124.xyz";
 const AGENT_ENDPOINT_IP = "10.43.0.184";
-const DEFAULT_INCUS_CODEX_BASE_URL = `https://${AGENT_ENDPOINT_HOST}:18443/v1`;
+loadRepoEnv();
+// 探活与 Agent 构造必须消费同一个值，包括显式覆盖；避免探活通过却请求其它端口。
+const INCUS_CODEX_BASE_URL = process.env.NICEEVAL_INCUS_CODEX_BASE_URL?.trim()
+  || `https://${AGENT_ENDPOINT_HOST}/v1`;
 
 /**
  * Incus VM 通过只暴露 Responses API 的集群专用 TLS entrypoint 连接 Agent endpoint。
@@ -61,10 +64,7 @@ const DEFAULT_INCUS_CODEX_BASE_URL = `https://${AGENT_ENDPOINT_HOST}:18443/v1`;
  * 中继续从 CODEX_API_KEY 取得短期鉴权。
  */
 export function incusCodexAgent() {
-  loadRepoEnv();
-  const baseUrl = process.env.NICEEVAL_INCUS_CODEX_BASE_URL?.trim()
-    || DEFAULT_INCUS_CODEX_BASE_URL;
-  return codexAgent({ baseUrl });
+  return codexAgent({ baseUrl: INCUS_CODEX_BASE_URL });
 }
 
 /**
@@ -274,11 +274,11 @@ const provisionTargetAppCommand = defineSandboxCommand(
 const provisionAgentEndpointCommand = defineSandboxCommand(
   {
     id: AGENT_ENDPOINT_COMMAND_ID,
-    revision: "1",
+    revision: "2",
     inputs: {
       host: AGENT_ENDPOINT_HOST,
       ip: AGENT_ENDPOINT_IP,
-      baseUrl: DEFAULT_INCUS_CODEX_BASE_URL,
+      baseUrl: INCUS_CODEX_BASE_URL,
     },
     changeFrequency: changeFrequency.frequent,
     dependsOn: [actionRef(RUNTIME_CONTRACT_ACTION_ID)],
@@ -320,7 +320,7 @@ rm -f "$tmp"`,
       "--show-error",
       "--output", "/dev/null",
       "--write-out", "%{http_code}",
-      `https://${AGENT_ENDPOINT_HOST}:18443/v1/models`,
+      `${INCUS_CODEX_BASE_URL.replace(/\/+$/u, "")}/models`,
     ]);
     if (probe.exitCode !== 0 || probe.stdout.trim() !== "401") {
       throw new Error(

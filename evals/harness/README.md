@@ -2,9 +2,8 @@
 
 这组题评估 coding agent 能否在一个已经接入 NiceEval 的项目里，自主完成“运行 → 用公开
 `niceeval show` 取证 → 形成因果判断 → 在正确层修改/给出归因”，以及能否把真实题包写成
-不泄漏判据的 Eval。三题共享运行基建，但各自维护独立项目与独立起始状态；完整矩阵为
-1 个当前 canary × 3 题 × 1 次，共 **3 个付费
-coding-agent attempt**。
+不泄漏判据的 Eval。三题共享运行基建，但各自维护独立项目与独立起始状态；当前启用三个候选：v0.14.0、v0.14.2、canary。单候选为 3 题 × 1 次；
+全矩阵最多 **9 个付费 coding-agent attempts**，实际新执行数量以 dry-run 为准。
 
 ## 当前三题
 
@@ -27,12 +26,9 @@ coding-agent attempt**。
 得到 **2 passed / 1 合法 failed / 1 errored**：`classifier-debug` 的 canned agent 选择错误的 B，
 是可信 failed；`regex-log` 直接运行 TB 官方 Python 判据，而当前 runtime 镜像没有 python3，因而 errored。
 
-完整且**唯一**的正确修复是只把 `experiments/local.ts` 里的
-`runtime:node` 改成 `runtime:python`，其余一律不动。修复后复验：
-
-- 候选为 0.14 API / canary 时，从公开 `niceeval show` 输出动态取得 locator，恰好 accept
-  三条仍有效的 terminal results（`hello-world`、`fix-permissions`、`classifier-debug`），只真实
-  重跑被改动影响的 `regex-log`；
+当前确定性配置得分只识别把 `experiments/local.ts` 里的 `runtime:node` 改成
+`runtime:python`。范围检查记录其它文件是否改动。当前 rubric 要求修后真实运行和公开复验，
+没有对 accept 数量或重跑次数单独计分；等价 runtime 与当前字符串判据的差异见本轮审计。
 
 候选的正确终态是 **3 passed / 1 failed / 0 errored**——合法 failed 的那道不因换运行时
 而改变，它本来就不是环境问题。题目考察的是 agent 能否从 CLI 反馈把「errored 的环境缺口」
@@ -105,15 +101,14 @@ canonical fixture 加 evaluator overlay。三个 repo 都记录 Terminal-Bench �
   `--source` 与 `--execution` 等公开证据视图。读取 `evals/`、`agents/`
   或随包文档可以辅助理解；唯一的路径黑名单是 `.niceeval/` 落盘数据，这不是能力加分项，
   而是题目边界。
-- B 额外要求反馈轮的第一个 NiceEval 取证动作直接是 compact `niceeval show`；读取 INDEX、
-  随包 CLI 文档、package scripts、AGENTS/INIT，误用 `pnpm show`，或重新运行 experiment 都不算
-  完成这条反馈闭环。
+- B 当前按公开 show / locator 证据链、最终事实与归因计分；先读 INDEX 或指南不直接扣分。
+  无关探索和错误命令可作为效率指标审计，不混入现有质量分。
 - 外层确定性断言只保留当前 Observation / Sandbox 能诚实证明的 **Fact**：
   `turn.notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`、`turn.succeeded()`，以及 A 的
   精确 `changedPaths` / `fileChanged`、B 的 `noChanges`。当前 Codex / Claude CLI Adapter 看不到
   内部 shell argv，故不把 `commandMatch()` 或 `toolOrder()` 当作硬 gate；不能把 opaque shell
   伪装成已经观察到的 CLI 子序列。
-- 每个 Fact use 都有稳定、互异的 `key`，用于 `show --json` 与后续重判对齐；key 只命名用途，
+- 每个 Fact use 都有稳定、互异的 `key`，用于公开 `query` 与后续逐项审计对齐；key 只命名用途，
   不改变 Fact 的求值或分值。A 的 `changedPaths` 与 B 的 `noChanges` 只作为不计分的范围检查；
   分数奖励真正的 runtime 修复和语义归因。
 - `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))` 命中观察到的 `.niceeval` 禁区路径
@@ -132,20 +127,20 @@ canonical fixture 加 evaluator overlay。三个 repo 都记录 Terminal-Bench �
   oracle 通过 6、criteria fingerprint 自动失效旧结果 2、leak-probe 普通失败 3。
 - canned agent 只用于稳定复现判分路径，不构成对真实模型智力的任何结论。
 
-## 类型检查状态
+## 类型检查与审计
 
-Harness 直接使用 Fact API：Fact producer 先创建事实，再用 `t.assert()`、`t.score()` 与
-`return t.finishScore()` 显式登记用途并收口。`niceeval list` 会实际加载这三道 eval；不得用旧
-`.points().gate()` Fact 链、旧 JSON shape、类型断言或本地 helper 掩盖签名错误。Score Eval 没有 gate，既有 Judge 链
-是隔离的 legacy bridge，不属于 Fact 作者面迁移范围。install / roadmap eval 也已迁移到同一
-Fact / Match 作者面；全仓 `pnpm run typecheck` 必须通过，不能再用范围过滤掩盖旧 API 错误。
+当前三题使用 `defineScoreEval`、作用域断言和 `.score()` 登记分值；精确 API 以安装包
+`INDEX.md` 指向的指南及当前源码为准。`pnpm run typecheck` 检查本仓库全部代码，脚本会过滤
+依赖目录内的诊断。运行前使用 `niceeval exp list harness` 和精确候选的 `--dry` 核对范围。
+
+固定 Run 的评分审计、证据限制与迭代方案见
+[2026-09-05 审计](../../docs/harness-review-2026-09-05.md)。
 
 ## 运行成本
 
-当前 canary 选中 3 道题，每题运行 1 次；因此完整 `niceeval exp harness` 是 1 版本 × 3 题 × 1 次，
-共 **3 个付费 coding-agent attempt**。0.14.0 正式发布后增加稳定基线会变成 6 个。A/B 包含多个 judge 评分点，C 仅使用确定性断言。实现落地后必须运行
-`niceeval list` 和各启用版本的 `--dry`
-验证。本机使用一次性 VM 或专用评测 runner；用户明确授权 install、roadmap 与 Harness 都使用
-`raw-privileged` DinD。该模式不提供不可信代码隔离；若迁移到共享宿主，必须恢复
-managed-rootless 并注册 execution profile。
-没有用户明确批准时不启动真实模型运行。
+每个候选选中 3 道题、每题 1 次；完整 `niceeval exp harness` 当前选择三个候选，最多新执行
+9 个付费 coding-agent attempts。A/B 另有 Judge 调用，C 使用确定性断言。canary 是动态标签，
+运行比较时记录解析后的精确版本；不能把不同日期的 canary 当同一候选。
+
+当前 Incus VM 为内层 Docker 提供独立内核，整仓并发为 2。SetupPrefix 缓存与历史 Attempt
+沿用是两种不同机制；分别报告缓存命中和 executed/carried 数量。付费运行需要明确预算授权。

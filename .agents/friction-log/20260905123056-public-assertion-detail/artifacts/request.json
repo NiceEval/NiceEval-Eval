@@ -1,0 +1,8 @@
+{
+  "protocol": "niceeval.query/v1",
+  "operation": {
+    "kind": "attempt.assertion.detail",
+    "locator": "@1P59ARB674QRB",
+    "entryId": "ae_1e6d1a044150db51031e"
+  }
+}

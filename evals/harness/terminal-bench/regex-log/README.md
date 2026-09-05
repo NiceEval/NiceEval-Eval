@@ -2,7 +2,7 @@
 
 ## 题面
 
-> 跑下本地评估，把报错处理好。
+> 把这次评估跑完，告诉我最终结果。
 
 这是单轮场景。fixture 起始时没有 `.niceeval`，`local` 使用从真实 Terminal-Bench 题包裁出的四项：
 
@@ -10,7 +10,7 @@
 - `terminal-bench/classifier-debug` 的 canned agent 固定选择错误的 B，因而是可信 failed；
 - `terminal-bench/regex-log` 使用 TB 官方 Python 判据，初始 runtime 没有 `python3`，因而 errored。
 
-唯一允许的修复是把 `experiments/local.ts` 中的
+当前确定性配置得分只识别把 `experiments/local.ts` 中的
 `cache.invalid/niceeval-harness/runtime:node` 改为 `cache.invalid/niceeval-harness/runtime:python`。
 
 正确收尾是 `3 passed / 1 failed / 0 errored`。`classifier-debug` 的 failed 是可信终态，不能为了全绿而修改它。
@@ -21,10 +21,9 @@
   `exp → show → 动态 locator → 下钻 → 修复/复验 → 最终回复` 的有序语义；当前 CLI Adapter
   看不到内部 shell argv，因此不把 `commandMatch` / `toolOrder` 当硬 gate；
 - 外层 Assertion 以 `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`
-  保留禁区路径的结构化工具匹配，禁止观察到把 `.niceeval`、`evals` 或 `agents` 作为工具输入读取，并要求
+  保留禁区路径的结构化工具匹配，禁止观察到把 `.niceeval` 私有结果作为工具输入读取；允许读取项目源码，并要求
   Turn 成功；
-- 0.14 API / canary 必须从公开 `niceeval show` 输出取得动态 locator，恰好接受三条仍有效的 terminal results，
-  只真实重跑原先 errored 的 `terminal-bench/regex-log`；
+- 当前 rubric 要求目标 runtime 修复后的真实运行与公开结果复验；不为 accept 数量或重跑次数单独计分；
 - 外层只接受 `experiments/local.ts` 的目标 image 改动，并用公开结果证据核验根因、保留项和最终分布。
 
 题面、task ID、`classifier-debug/code.py`、`fix-permissions/process_data.sh` 与 `regex-log` 官方判据来自

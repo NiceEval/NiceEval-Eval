@@ -1,0 +1,1 @@
+默认 Overview 会隐藏没有问题的 Attempt，让错误和下一条下钻命令留在一屏内。看到 `Attempts hidden` 时，使用输出建议的 `show --experiment <experiment-id>` 缩小范围；需要显示该范围的全部 Attempt 时再加 `--all`。隐藏只影响终端排版，不表示 Record 缺少结果。

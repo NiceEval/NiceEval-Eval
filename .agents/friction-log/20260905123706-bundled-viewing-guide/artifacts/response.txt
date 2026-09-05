@@ -1,0 +1,1 @@
+--all applies only to Results, not --experiment, --run, or an Attempt locator.
