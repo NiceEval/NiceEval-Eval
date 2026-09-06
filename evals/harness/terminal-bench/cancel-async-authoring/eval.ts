@@ -3,7 +3,7 @@ import { commandSucceeded, equals, referencesAnyPath, toolMatch } from "niceeval
 import { loadCriteria, loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { collectResults, currentMembers, executeAndInspect, matchesResults } from "../../../../lib/harness/public-results.ts";
+import { collectResults, currentMembers, executeAndInspect, hasFreshExecutions, matchesResults } from "../../../../lib/harness/public-results.ts";
 
 const GIB = 1024 ** 3;
 
@@ -116,11 +116,15 @@ export default defineScoreEval({
       // No rerun flag: this specifically tests criteria invalidation.
       const fingerprint = await executeAndInspect(runCommand, "oracle");
       t.log(JSON.stringify({ outerProbe: "fingerprint", ...fingerprint }));
-      t.check(fingerprint.exitCode === 0
-        && matchesResults(fingerprint.run?.members ?? [], expectPassed)
-        && fingerprint.run?.members.every((m) => m.state === "executed"), equals(true))
+      // Score invalidation separately: a fresh attempt that times out still proves
+      // the old result was not reused. Keep its completion status visible below.
+      t.check(hasFreshExecutions(fingerprint.run?.members ?? [], Object.keys(expectPassed)), equals(true))
         .score(2).key("harness.cancel-async-authoring.criteria-fingerprint")
         .label("隐藏判据变化会自动作废旧结果");
+      t.check(fingerprint.exitCode === 0
+        && matchesResults(fingerprint.run?.members ?? [], expectPassed), equals(true))
+        .key("harness.cancel-async-authoring.fingerprint-probe-completed")
+        .label("无行为变化的判据探针运行完成且参考实现仍通过");
 
       const leak = await executeAndInspect(runCommand, "leak-probe", ["--rerun", "all"]);
       t.log(JSON.stringify({ outerProbe: "leak-probe", ...leak }));

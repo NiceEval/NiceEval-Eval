@@ -26,4 +26,11 @@ NiceEval-Eval 把 `niceeval` 链回刚更新的 `NiceEval/main` 后，旧 `dist`
 
 ## Context
 
+2026-09-06 再次复现：Run `42a4b6e0-bc16-4ef5-8067-cc677655d734`
+在 03:12 UTC 开始，Incus clone/PATCH 修复 `a9ac12657` 已于 02:47 UTC 合入，
+但消费项目链接的 `dist` 仍停在 09-04，触发 volume allocation intent 误报。
+本轮执行上游 `pnpm run build:package` 后，`dist/sandbox/incus/ledger.cjs`
+包含并发快照与 PATCH 窗口保护；下游 `niceeval check harness` 通过 12 个配对。
+当前运行时已恢复，CLI 自动发现 stale build 的长期缺口仍待解决。
+
 2026-08-20 在 NiceEval-Eval 真实 dogfood 复现。当前 main 的 `show --json` 正确给出 harness/install 两个实验组；旧 view 返回根 Overview 且无 `<select>`，新 view 则重定向到组页并输出实验选择器。

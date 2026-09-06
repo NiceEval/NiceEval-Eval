@@ -90,6 +90,14 @@ export function matchesResults(members: Member[], expected: Record<string, strin
   );
 }
 
+/** Fresh execution proves invalidation even when that execution subsequently errors. */
+export function hasFreshExecutions(members: Member[], evalIds: string[]): boolean {
+  return members.length === evalIds.length && evalIds.length > 0
+    && new Set(members.map((m) => m.evalId)).size === members.length
+    && members.every((m) => evalIds.includes(m.evalId)
+      && m.state === "executed" && typeof m.locator === "string");
+}
+
 /** The child node process supplies stdin without shell interpolation or workspace writes. */
 const QUERY = `const {spawnSync}=require('node:child_process');
 const r=spawnSync('pnpm',['exec','niceeval','query','run','--request','-'],{input:process.argv[1],encoding:'utf8',maxBuffer:16*1024*1024});

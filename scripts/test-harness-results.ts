@@ -5,7 +5,7 @@ import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import {
-  collectResults, currentMembers, executeAndInspect, matchesResults,
+  collectResults, currentMembers, executeAndInspect, hasFreshExecutions, matchesResults,
   object, publicQuery, queryDocument, runRefs, runResult,
   type JsonObject, type RunCommand,
 } from "../lib/harness/public-results.ts";
@@ -54,6 +54,24 @@ send(){throw new Error('No model invocation is allowed in verifier smoke')}}),ev
     assert.equal(matchesResults(currentMembers((await collectResults(runCommand)).runs, "local"), expected), false,
       "must not cherry-pick the earlier successful repair");
 
+    await writeFile(join(root, "criteria.txt"), "ready");
+    await writeFile(join(root, "evals/criteria.eval.ts"), `import {defineEval} from 'niceeval';
+import {loadText} from 'niceeval/loaders'; import {equals} from 'niceeval/expect';
+const criteria = await loadText('criteria.txt');
+export default defineEval({test(t){if(criteria !== 'ready') throw new Error('probe execution unavailable');
+t.check(true, equals(true));}});\n`);
+    const baseline = await executeAndInspect(runCommand, "local", ["criteria"]);
+    assert.ok(baseline.run && matchesResults(baseline.run.members, { criteria: "passed" }));
+    const carry = await executeAndInspect(runCommand, "local", ["criteria"]);
+    assert.equal(hasFreshExecutions(carry.run?.members ?? [], ["criteria"]), false);
+    await writeFile(join(root, "criteria.txt"), "changed");
+    const invalidated = await executeAndInspect(runCommand, "local", ["criteria"]);
+    assert.equal(invalidated.exitCode, 1);
+    assert.ok(hasFreshExecutions(invalidated.run?.members ?? [], ["criteria"]),
+      "changed criteria invalidates reuse even when the new execution errors");
+    assert.equal(matchesResults(invalidated.run?.members ?? [], { criteria: "passed" }), false,
+      "invalidation does not imply successful completion");
+
     const wire = await publicQuery(runCommand, { kind: "run.summary", runId: first.run.runId });
     const active = structuredClone(wire);
     const activeRun = (object(active.summary, "summary").runs as JsonObject[])[0]!;
@@ -77,7 +95,11 @@ test("unsupported, truncated and unavailable public evidence is not silently sco
   assert.throws(() => queryDocument('{"protocol":"niceeval.query/v1","operation":"runs.list","outcome":"success","issues":[{"code":"missing"}]}', "runs.list"), /issues/);
   assert.throws(() => runRefs({ selection: { truncated: true }, runs: [] }), /truncated/);
   assert.equal(matchesResults([], { expected: "passed" }), false);
+  assert.equal(hasFreshExecutions([], []), false);
+  assert.equal(hasFreshExecutions([], ["a"]), false);
   const duplicated = { evalId: "a", runId: "r", state: "executed", verdict: "passed", outcome: "completed", locator: "@a" };
   assert.equal(matchesResults([duplicated, duplicated], { a: "passed", b: "passed" }), false);
+  assert.equal(hasFreshExecutions([duplicated, duplicated], ["a", "b"]), false);
+  assert.equal(hasFreshExecutions([duplicated], ["b"]), false);
   assert.equal(matchesResults([{ evalId: "a", runId: "r", state: "executed", verdict: "passed" }], { a: "passed" }), false);
 });
