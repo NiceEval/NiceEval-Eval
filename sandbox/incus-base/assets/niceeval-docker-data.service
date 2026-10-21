@@ -1,0 +1,13 @@
+[Unit]
+Description=Mount NiceEval block Docker data disk
+Wants=systemd-udev-settle.service
+After=systemd-udev-settle.service local-fs.target
+Before=containerd.service docker.service
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/niceeval-docker-data
+RemainAfterExit=yes
+
+[Install]
+WantedBy=multi-user.target

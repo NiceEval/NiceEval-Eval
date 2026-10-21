@@ -1,0 +1,56 @@
+#!/usr/bin/env bash
+
+set -euo pipefail
+
+root_source="$(findmnt --noheadings --raw --first-only --output SOURCE --mountpoint /)"
+root_parent="$(lsblk --noheadings --raw --output PKNAME "$root_source" | head -n 1)"
+if test -n "$root_parent"; then
+  root_disk="$(readlink -f "/dev/$root_parent")"
+else
+  root_disk="$(readlink -f "$root_source")"
+fi
+
+docker_disk=""
+for _ in $(seq 1 60); do
+  candidates=()
+  while read -r device device_type read_only; do
+    test "$device_type" = disk || continue
+    test "$read_only" = 0 || continue
+    test "$(readlink -f "$device")" != "$root_disk" || continue
+    if lsblk --noheadings --raw --output MOUNTPOINT "$device" | grep -q '/'; then
+      continue
+    fi
+    candidates+=("$device")
+  done < <(lsblk --paths --nodeps --noheadings --raw --output NAME,TYPE,RO)
+
+  if test "${#candidates[@]}" = 1; then
+    docker_disk="${candidates[0]}"
+    break
+  fi
+  if test "${#candidates[@]}" -gt 1; then
+    echo "发现多个非 root block disk，拒绝猜测 Docker data 设备：${candidates[*]}" >&2
+    exit 1
+  fi
+  sleep 1
+done
+
+if test -z "$docker_disk"; then
+  echo "等待 60 秒后仍没有发现 NiceEval Docker data block disk" >&2
+  exit 1
+fi
+
+filesystem="$(blkid --output value --match-tag TYPE "$docker_disk" || true)"
+case "$filesystem" in
+  "")
+    mkfs.ext4 -F -L niceeval-docker-data "$docker_disk"
+    ;;
+  ext4)
+    ;;
+  *)
+    echo "Docker data block disk 必须为空或为 ext4，实际为 $filesystem" >&2
+    exit 1
+    ;;
+esac
+
+install -d -m 0711 /var/lib/docker
+mount -t ext4 -o noatime "$docker_disk" /var/lib/docker

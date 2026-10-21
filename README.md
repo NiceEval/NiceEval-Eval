@@ -13,8 +13,8 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 | 目录 | 回答的问题 | 当前配置 |
 | --- | --- | --- |
-| `experiments/install/` | coding agent 能否按该版本文档在普通与复杂宿主中完成从零接入 | `v0.14.0`、`canary` |
-| `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `v0.14.0`、`canary` |
+| `experiments/install/` | coding agent 能否按该版本文档在普通与复杂宿主中完成从零接入 | `v0.14.0`、`v0.14.3`、`canary` |
+| `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `v0.14.0`、`v0.14.3`、`canary` |
 
 版本是 experiment 的配置维度，题目类型不再各自建 experiment 目录。`roadmap/` 中已实现的
 复杂安装题仍由 `install/<version>` 调度；只保留 Markdown 的未来设计不会被 discovery。
@@ -141,9 +141,10 @@ red（例如 `incus-undeployed`）。本机开发检查用
 
 ## 候选版本与实验矩阵
 
-安装实验族从 0.14 API 开始，当前有稳定版与 canary 两格：
+安装实验族从 0.14 API 开始，当前有两个稳定版与 canary 三格：
 
 - `install/v0.14.0`：固定 `niceeval@0.14.0` 稳定基线；
+- `install/v0.14.3`：固定 `niceeval@0.14.3` 当前候选；
 - `install/canary`：解析运行时的 canary dist-tag。
 
 每个 experiment 都通过 `ensureCandidate()` 物化候选清单，并把解析后的精确版本放进
@@ -157,7 +158,7 @@ Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEv
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 
-Harness 当前启用 `harness/v0.14.0`、`harness/v0.14.2` 与 `harness/canary`。
+Harness 当前启用 `harness/v0.14.0`、`harness/v0.14.3` 与 `harness/canary`。
 每个候选运行四个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。
 完整矩阵最多 12 个 coding-agent attempts，另计 Judge 调用。全仓并发上限为 2；
 只想检查计划时使用 `--dry`。新评分基线与发布比较见上方 Harness 说明。

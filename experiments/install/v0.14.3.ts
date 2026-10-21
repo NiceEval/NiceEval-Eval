@@ -2,7 +2,7 @@ import { defineExperiment } from "niceeval";
 import { ensureCandidate } from "../../lib/candidate.ts";
 import { installCodexAgent, installSandbox } from "../../lib/experiment-runtime.ts";
 
-const NICEEVAL_VERSION = await ensureCandidate("0.14.2");
+const NICEEVAL_VERSION = await ensureCandidate("0.14.3");
 
 export default defineExperiment({
   description: `niceeval@${NICEEVAL_VERSION}（稳定版，改进后的初始化与随包文档）`,
