@@ -57,7 +57,7 @@ export async function checkAuthoringPractice(t: ScoreTestContext): Promise<void>
       satisfies(
         "断言用官方词汇（t.check + matcher，或 turn 作用域断言），不是自己 throw",
         (s) =>
-          /\.(check|require)\s*\(|\.messageIncludes\s*\(|\.calledTool\s*\(|\.succeeded\s*\(|\.judge\./.test(
+          /\.(check|require|judge|closeQA|factuality|faithfulness|instructionFollowing|pairwisePreference)\s*\(|\.messageIncludes\s*\(|\.calledTool\s*\(|\.succeeded\s*\(|\.judge\./.test(
             src(s),
           ),
       ),
@@ -76,7 +76,7 @@ export async function checkAuthoringPractice(t: ScoreTestContext): Promise<void>
           // judge 不限定接收者：`t.judge.*` 与 turn 作用域的 `turn.judge.*` 都算（同上一条判据
           // 注里那格 canary.10 实测样本）。正则形态同理——`messageIncludes(/a|b/)` 与
           // `includes(/a|b/)` 等价，都是「多措辞等价的正则」。
-          /\.judge\.|\bincludesUrl\s*\(|\bhasSections\s*\(|\bmatches\s*\(|\bsimilarity\s*\(/.test(src(s)) ||
+          /\.(?:judge|closeQA|factuality|faithfulness|instructionFollowing|pairwisePreference)\s*\(|\.judge\.|\bincludesUrl\s*\(|\bhasSections\s*\(|\bmatches\s*\(|\bsimilarity\s*\(/.test(src(s)) ||
           /\b(includes|excludes|messageIncludes)\s*\(\s*\//.test(src(s)),
       ),
     ).score(1).key("install.authoring.robust-language-check").label("措辞变化的判定");

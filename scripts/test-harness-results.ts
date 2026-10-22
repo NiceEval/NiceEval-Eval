@@ -28,7 +28,7 @@ export default defineEval({test(t){${body}}});\n`;
     await writeFile(join(root, "niceeval.config.ts"), "import {defineConfig} from 'niceeval'; export default defineConfig({});\n");
     await writeFile(join(root, "experiments/local.ts"), `import {defineExperiment} from 'niceeval';
 import {defineAgent,completeEvidenceCoverage} from 'niceeval/adapter';
-export default defineExperiment({agent:defineAgent({name:'never-called',evidenceCoverage:completeEvidenceCoverage,
+export default defineExperiment({adapter:defineAgent({name:'never-called',evidenceCoverage:completeEvidenceCoverage,
 send(){throw new Error('No model invocation is allowed in verifier smoke')}}),evals:[''],attempts:1,maxConcurrency:1});\n`);
     await writeFile(join(root, "evals/good.eval.ts"), evalSource("t.check(true, equals(true));"));
     await writeFile(join(root, "evals/business.eval.ts"), evalSource("t.check(false, equals(true));"));
@@ -37,6 +37,14 @@ send(){throw new Error('No model invocation is allowed in verifier smoke')}}),ev
     const first = await executeAndInspect(runCommand, "local");
     assert.equal(first.exitCode, 1);
     assert.ok(first.run);
+    const report = await runCommand(process.execPath, [
+      "--import", "tsx", resolve("scripts/harness-report.ts"), first.run.runId,
+    ]);
+    assert.equal(report.exitCode, 0, report.stderr);
+    const observations = JSON.parse(report.stdout).reports[0];
+    assert.equal(observations.runId, first.run.runId);
+    assert.equal(observations.rows.length, 3);
+    assert.equal(observations.executed, 3);
     const expected = { good: "passed", business: "failed", broken: "passed" };
     assert.equal(matchesResults(first.run.members, expected), false, "errored is not a completed failed/pass result");
     await writeFile(join(root, "evals/broken.eval.ts"), evalSource("t.check(1, equals(1));"));
@@ -74,15 +82,15 @@ t.check(true, equals(true));}});\n`);
 
     const wire = await publicQuery(runCommand, { kind: "run.summary", runId: first.run.runId });
     const active = structuredClone(wire);
-    const activeRun = (object(active.summary, "summary").runs as JsonObject[])[0]!;
+    const activeRun = (object(active.run, "run").value as JsonObject);
     delete activeRun.completedAt;
     assert.throws(() => runResult(active, first.run!.runId), /still active/);
     const changed = structuredClone(wire);
-    const summary = object(changed.summary, "summary");
-    summary.members = [];
+    const summary = object(changed.run, "run");
+    summary.plannedAttempts = [];
     assert.throws(() => runResult(changed, first.run!.runId), /missing or duplicate/);
     const wrongIdentity = structuredClone(wire);
-    const members = object(wrongIdentity.summary, "summary").members as JsonObject[];
+    const members = object(wrongIdentity.run, "run").plannedAttempts as JsonObject[];
     members[0]!.evalId = "invented";
     assert.throws(() => runResult(wrongIdentity, first.run!.runId), /identity mismatch/);
   } finally {
@@ -91,8 +99,8 @@ t.check(true, equals(true));}});\n`);
 });
 
 test("unsupported, truncated and unavailable public evidence is not silently scored zero", () => {
-  assert.throws(() => queryDocument('{"protocol":"niceeval.query/v1","outcome":"failure"}', "runs.list"), /unavailable/);
-  assert.throws(() => queryDocument('{"protocol":"niceeval.query/v1","operation":"runs.list","outcome":"success","issues":[{"code":"missing"}]}', "runs.list"), /issues/);
+  assert.throws(() => queryDocument('{"protocol":"niceeval.query/v2","outcome":"failure"}', "runs.list"), /unavailable/);
+  assert.throws(() => queryDocument('{"protocol":"niceeval.query/v2","operation":"run.list","outcome":"success","issues":[{"code":"missing"}]}', "runs.list"), /issues/);
   assert.throws(() => runRefs({ selection: { truncated: true }, runs: [] }), /truncated/);
   assert.equal(matchesResults([], { expected: "passed" }), false);
   assert.equal(hasFreshExecutions([], []), false);

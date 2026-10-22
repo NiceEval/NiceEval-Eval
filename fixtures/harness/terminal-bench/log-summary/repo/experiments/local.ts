@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 import { defineExperiment } from "niceeval";
 import * as niceevalSandbox from "niceeval/sandbox";
 import diagnosisAgent from "../agents/canned-terminal-bench.ts";
@@ -18,9 +19,11 @@ const runtimeSandbox = dockerImageSandbox !== undefined
     ? dockerSandbox!({ source: { type: "image", image: RUNTIME_IMAGE } })
     : dockerSandbox!({ image: RUNTIME_IMAGE });
 
+// 固定候选共用同一 fixture；0.19 起撤销 Experiment.agent。
+const candidateMinor = Number(JSON.parse(readFileSync("node_modules/niceeval/package.json", "utf8")).version.split(".")[1]);
 export default defineExperiment({
   description: "Terminal-Bench task slice with one agent failure and one over-tight eval",
-  agent: diagnosisAgent,
+  ...(candidateMinor >= 19 ? { adapter: diagnosisAgent } : { agent: diagnosisAgent }),
   sandbox: runtimeSandbox as never,
   evals: ["terminal-bench/"],
   attempts: 1,

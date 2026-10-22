@@ -18,7 +18,7 @@ import { skyvernCase } from "../../../fixtures/install/skyvern/case.ts";
 /** 真实 Skyvern 接入：保留异步轮询路径的设计检查，不把浏览器服务起停当作文档分数。 */
 export default defineScoreEval({
   description: "把 niceeval 接入 Skyvern（浏览器操作自动化 agent）",
-  judge: true,
+
   timeoutMs: 35 * 60 * 1000,
   sandbox: sandboxLayer()
     .before(gitCheckout({

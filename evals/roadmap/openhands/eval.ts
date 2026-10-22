@@ -18,7 +18,7 @@ import { openhandsCase } from "../../../fixtures/install/openhands/case.ts";
 /** 真实 OpenHands 接入：保留自主编码路径的设计检查，不把重服务起停当作文档分数。 */
 export default defineScoreEval({
   description: "把 niceeval 接入 OpenHands（自主编码 agent）",
-  judge: true,
+
   timeoutMs: 35 * 60 * 1000,
   sandbox: sandboxLayer()
     .before(gitCheckout({

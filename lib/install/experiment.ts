@@ -122,8 +122,8 @@ export async function checkExperimentDesign(t: ScoreTestContext): Promise<void> 
     t.check(
       experiments,
       satisfies(
-        "agent 字段是配置好的工厂调用（静态配置在实验文件里传，不写死在 adapter 里）",
-        (v) => /agent:\s*[A-Za-z_$][\w$]*\s*\(/.test(v as string),
+        "adapter（旧版 agent）字段是配置好的工厂调用（静态配置在实验文件里传，不写死在 adapter 里）",
+        (v) => /(?:adapter|agent):\s*[A-Za-z_$][\w$]*\s*\(/.test(v as string),
       ),
     ).score(1).key("install.experiment.adapter-factory").label("实验侧 adapter 工厂调用");
   });

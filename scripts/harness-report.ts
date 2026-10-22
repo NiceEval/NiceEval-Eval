@@ -17,13 +17,13 @@ for (const runId of runIds) {
   const context = object(value.context, "run context");
   const execution = object(context.execution, "execution context");
   const flags = object(execution.flags, "flags");
-  const overview = object((await publicQuery(runCommand, { kind: "run.overview", runId })).runOverview, "overview");
+  const overview = get;
   const sourceMembers = array(get.members, "Run members").map((m) => object(m, "Run member"));
-  const rows = array(overview.members, "overview members").map((m) => {
+  const rows = array(overview.plannedAttempts, "planned attempts").map((m) => {
     const member = object(m, "member");
-    const slot = object(member.slot, "slot");
-    const source = sourceMembers.find((s) => s.slotId === slot.slotId);
-    const ref = source?.attempt === undefined ? undefined : object(source.attempt, "attempt ref");
+    const slot = member;
+    const source = sourceMembers.find((s) => s.plannedAttemptId === slot.plannedAttemptId);
+    const ref = source?.attempt == null ? undefined : object(source.attempt, "attempt ref");
     return {
       evalId: slot.evalId, attemptOrdinal: slot.attemptOrdinal, locator: member.locator,
       state: member.state, originRunId: ref?.originRunId, attemptId: ref?.attemptId,

@@ -3,9 +3,8 @@
 用 NiceEval 评估 coding agent 是否能正确安装、迁移和实际使用 NiceEval。这里评的是
 NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试。
 
-主仓库当前消费 `niceeval@^0.12.0`。工作区开发时，`pnpm-workspace.yaml` 会把宿主 CLI
-链接到相邻的 `../NiceEval` 源码；进入 sandbox 的被测候选仍按明确版本从 npm 安装，
-避免把宿主工具与被评版本混为一件事。
+主仓库固定消费 npm 发布的 `niceeval@0.19.0`，不再通过 workspace override 链接相邻源码。
+进入 sandbox 的被测候选仍由各 Experiment 明确指定，旧版对照继续保留。
 
 ## 实验入口
 
@@ -13,15 +12,15 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 | 目录 | 回答的问题 | 当前配置 |
 | --- | --- | --- |
-| `experiments/install/` | coding agent 能否按该版本文档在普通与复杂宿主中完成从零接入 | `v0.14.0`、`v0.14.3`、`canary` |
-| `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `v0.14.0`、`v0.14.3`、`canary` |
+| `experiments/install/` | coding agent 能否按该版本文档在普通与复杂宿主中完成从零接入 | `v0.14.0`、`v0.14.3`、`v0.19.0`、`canary` |
+| `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `v0.14.0`、`v0.14.3`、`v0.19.0`、`canary` |
 
 版本是 experiment 的配置维度，题目类型不再各自建 experiment 目录。`roadmap/` 中已实现的
-复杂安装题仍由 `install/<version>` 调度；只保留 Markdown 的未来设计不会被 discovery。
+复杂安装题仍可被 discovery 发现；只保留 Markdown 的未来设计不会被 discovery。
 
 ## 评估用例分区
 
-`evals/` 按用户所处阶段分成三组，全仓共 9 道可发现评估用例：
+`evals/` 按用户所处阶段分成三组，全仓共 10 道可发现评估用例：
 
 | 目录 | 类型 | 回答的问题 | 当前场景 |
 | --- | --- | --- | --- |
@@ -67,16 +66,14 @@ pnpm run typecheck
 pnpm exec niceeval list
 ```
 
-当前 Harness 已直接采用下一版 target assertion API（scope-first 短断言面）；在 NiceEval
-补齐 `commandMatch()`、`referencesAnyPath()`、无 name `toolMatch({ input })` 与对应 scoped assertion 签名前，`pnpm run typecheck`
-和加载 Harness eval 都会明确失败。这是已知依赖，不得用旧 JSON shape、正则 matcher、
-类型断言或本地 helper 绕过。
+宿主已迁移到 0.19 的 `adapter`、`judgeProvider`、`reply` 与 Query v2 API。
+本次新增 `install/v0.19.0` 和 `harness/v0.19.0`；后者覆盖 debug、修复与 authoring 工作流。
 
 只生成计划、不启动付费 agent：
 
 ```sh
-pnpm --silent exec niceeval exp install/canary --dry --json
-pnpm --silent exec niceeval exp harness/canary --dry --json
+pnpm --silent exec niceeval exp install/v0.19.0 --dry --json
+pnpm --silent exec niceeval exp harness/v0.19.0 --dry --json
 ```
 
 明确决定花费后再运行实验：
@@ -106,8 +103,8 @@ status? })` 本身就是匹配同一笔 logical tool occurrence 的 `ToolMatch`�
 `pnpm --silent exec` 与无 runner option 的 `npx` 由 Observation Protocol 统一投影，Eval
 不枚举 wrapper。禁区检查复用
 `notCalledTool(toolMatch({ input: referencesAnyPath(...) }))`，不另造 scoped negative 方法。
-Judge 使用 `turn.check({ input, output }, closedQA(criteria))` 或
-`t.check(material, closedQA(criteria))`，显式传入本轮 `toolCalls + message` 或最终回复；
+Judge 使用 `turn.closeQA(judgeEvidence(material), criteria)` 或
+`t.closeQA(judgeEvidence(material), criteria)`，显式传入本轮 `toolCalls + reply` 或最终回复；
 材料只是公开 Turn 的传输形状，不匹配 `show` JSON，也不替 agent 重跑 experiment。
 canned agent 只用于稳定复现，不代表真实模型智力。
 
@@ -141,16 +138,17 @@ red（例如 `incus-undeployed`）。本机开发检查用
 
 ## 候选版本与实验矩阵
 
-安装实验族从 0.14 API 开始，当前有两个稳定版与 canary 三格：
+安装实验族从 0.14 API 开始，当前有三个稳定版与 canary 四格：
 
 - `install/v0.14.0`：固定 `niceeval@0.14.0` 稳定基线；
-- `install/v0.14.3`：固定 `niceeval@0.14.3` 当前候选；
+- `install/v0.14.3`：固定 `niceeval@0.14.3` 历史对照；
+- `install/v0.19.0`：固定 `niceeval@0.19.0` 当前候选；
 - `install/canary`：解析运行时的 canary dist-tag。
 
 每个 experiment 都通过 `ensureCandidate()` 物化候选清单，并把解析后的精确版本放进
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
 
-启用的格都跑普通安装题与 roadmap 中已实现的复杂安装题。
+当前 install Experiment 选择 `install/` 的两道普通安装题；`roadmap/` 的四道复杂安装题保留为可发现用例。
 安装实验统一使用一次性 Incus VM（Docker-in-disposable-VM，V1 DestroyOnly）。共享业务
 SetupPrefix 从固定 digest 构建并验证联网 Sandbox 中的本地缓存镜像
 `cache.invalid/niceeval-install/runtime:python`；后续
@@ -158,9 +156,9 @@ Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEv
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 
-Harness 当前启用 `harness/v0.14.0`、`harness/v0.14.3` 与 `harness/canary`。
+Harness 当前启用 `harness/v0.14.0`、`harness/v0.14.3`、`harness/v0.19.0` 与 `harness/canary`。
 每个候选运行四个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。
-完整矩阵最多 12 个 coding-agent attempts，另计 Judge 调用。全仓并发上限为 2；
+完整矩阵最多 16 个 coding-agent attempts，另计 Judge 调用。全仓并发上限为 2；
 只想检查计划时使用 `--dry`。新评分基线与发布比较见上方 Harness 说明。
 
 ## 安装评估如何计分
@@ -196,3 +194,14 @@ provider-native SetupPrefix artifact 发布并按其声明式 identity 复用；
 
 仓库不验证 NiceEval 核心实现本身；核心 API、CLI 或报告问题应在相邻 `NiceEval/` 修复。
 这里也不自动跑全量或付费实验：更换候选、作废结果或批量重跑前必须先确认成本。
+
+## 0.19 迁移验证与历史结果
+
+`pnpm run typecheck` 与 `pnpm run test:harness` 验证宿主类型和公开 CLI 的运行、修复、沿用及
+失效重跑链路，不调用付费模型。内层 fixture 根据候选版本选择 `agent` / `adapter`；结果检查
+按候选选择 Query v1 / v2，避免破坏 0.14 对照。0.19 的 `run.get` 同时提供计划、结果和用量。
+
+若旧 `.niceeval` 报 `record-schema-unsupported` 或旧 ProjectDatabase owner 未释放，保留完整
+现场，按随包 `tutorials/agent-feedback-loop.mdx` 与 `troubleshooting/debugging.mdx` 在不含
+`.niceeval` 的项目副本验证。不要删除锁或历史结果来绕过检查。静态计划通过不代表真实 Incus
+或模型评估已通过；真实运行仍需明确成本授权。

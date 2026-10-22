@@ -18,7 +18,7 @@ import { lettaCase } from "../../../fixtures/install/letta/case.ts";
 /** 真实 Letta 接入：保留多轮记忆路径的设计检查，不把重服务起停当作文档分数。 */
 export default defineScoreEval({
   description: "把 niceeval 接入 Letta（有状态记忆对话 agent / MemGPT）",
-  judge: true,
+
   timeoutMs: 35 * 60 * 1000,
   sandbox: sandboxLayer()
     .before(gitCheckout({

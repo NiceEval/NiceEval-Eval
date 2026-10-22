@@ -12,7 +12,9 @@ export function array(value: unknown, label: string): unknown[] {
 }
 export function queryDocument(stdout: string, kind: string): JsonObject {
   const doc = object(JSON.parse(stdout), "query document");
-  if (doc.protocol !== "niceeval.query/v1" || doc.operation !== kind || doc.outcome !== "success") {
+  const expectedOperation = doc.protocol === "niceeval.query/v2"
+    ? ({ "runs.list": "run.list", "run.summary": "run.get" }[kind] ?? kind) : kind;
+  if (!["niceeval.query/v1", "niceeval.query/v2"].includes(String(doc.protocol)) || doc.operation !== expectedOperation || doc.outcome !== "success") {
     throw new Error(`Harness evidence unavailable: ${kind}: ${JSON.stringify(doc)}`);
   }
   if (array(doc.issues, "issues").length !== 0) {
@@ -45,18 +47,21 @@ export interface Member {
 }
 export interface RunResult { runId: string; experimentId: string; members: Member[] }
 export function runResult(doc: JsonObject, runId: string): RunResult {
-  const summary = object(doc.summary, "summary");
-  const runs = array(summary.runs, "summary.runs").map((r) => object(r, "run"));
+  const modern = doc.protocol === "niceeval.query/v2";
+  const summary = object(modern ? doc.run : doc.summary, "run evidence");
+  const runs = modern ? [object(summary.value, "run value")]
+    : array(summary.runs, "summary.runs").map((r) => object(r, "run"));
   const run = runs.find((r) => r.runId === runId);
   if (!run || typeof run.experimentId !== "string") throw new Error("Harness evidence unavailable: fixed Run missing");
   if (run.completedAt === undefined || run.completedAt === null) {
     throw new Error("Harness evidence unavailable: fixed Run is still active");
   }
-  const slots = array(run.expectedSlots, "expected slots").map((s) => object(s, "slot"));
-  const members = array(summary.members, "members").map((value) => {
+  const idKey = modern ? "plannedAttemptId" : "slotId";
+  const slots = array(modern ? run.plannedAttempts : run.expectedSlots, "planned attempts").map((s) => object(s, "slot"));
+  const members = array(modern ? summary.plannedAttempts : summary.members, "members").map((value) => {
     const m = object(value, "member");
-    const slot = slots.find((s) => s.slotId === m.slotId);
-    if (!slot || slot.evalId !== m.evalId || m.runId !== runId || typeof m.evalId !== "string" || typeof m.state !== "string") {
+    const slot = slots.find((s) => s[idKey] === m[idKey]);
+    if (!slot || slot.evalId !== m.evalId || (!modern && m.runId !== runId) || typeof m.evalId !== "string" || typeof m.state !== "string") {
       throw new Error("Harness evidence unavailable: member/slot identity mismatch");
     }
     return {
@@ -100,12 +105,16 @@ export function hasFreshExecutions(members: Member[], evalIds: string[]): boolea
 
 /** The child node process supplies stdin without shell interpolation or workspace writes. */
 const QUERY = `const {spawnSync}=require('node:child_process');
-const r=spawnSync('pnpm',['exec','niceeval','query','run','--request','-'],{input:process.argv[1],encoding:'utf8',maxBuffer:16*1024*1024});
+const minor=Number(JSON.parse(require('node:fs').readFileSync('node_modules/niceeval/package.json','utf8')).version.split('.')[1]);
+const operation=JSON.parse(process.argv[1]);
+if(minor>=19)operation.kind=({'runs.list':'run.list','run.summary':'run.get'})[operation.kind]??operation.kind;
+const request={protocol:minor>=19?'niceeval.query/v2':'niceeval.query/v1',operation};
+const r=spawnSync('pnpm',['exec','niceeval','query','run','--request','-'],{input:JSON.stringify(request),encoding:'utf8',maxBuffer:16*1024*1024});
 if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr);
 if(r.error){process.stderr.write(String(r.error));process.exit(2)}process.exit(r.status??2);`;
 export type RunCommand = (cmd: string, args: readonly string[]) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
 export async function publicQuery(runCommand: RunCommand, operation: JsonObject): Promise<JsonObject> {
-  const result = await runCommand("node", ["-e", QUERY, JSON.stringify({ protocol: "niceeval.query/v1", operation })]);
+  const result = await runCommand("node", ["-e", QUERY, JSON.stringify(operation)]);
   if (result.exitCode !== 0) throw new Error(`Harness evidence unavailable: query ${operation.kind}: ${result.stderr || result.stdout}`);
   return queryDocument(result.stdout, String(operation.kind));
 }

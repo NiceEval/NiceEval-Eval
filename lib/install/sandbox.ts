@@ -1,3 +1,4 @@
+import { judgeEvidence } from "../judge-evidence.ts";
 /**
  * 评估sandbox创建（新考项）：agent 有没有把「评估要在隔离、可复现、启动快的环境里跑」
  * 落成**正确创建的** sandbox / 预制制品（E2B template / Docker image / Vercel snapshot）。
@@ -28,7 +29,7 @@
  */
 
 import type { ScoreTestContext } from "niceeval";
-import { closedQA, isTrue, satisfies } from "niceeval/expect";
+import { isTrue, satisfies } from "niceeval/expect";
 import { locateInstallRoot } from "./installation.ts";
 
 /** 文档「用哪个装哪个」表：provider 工厂 → 必须进依赖的 SDK 包名。localSandbox 免装，不在表里。 */
@@ -159,7 +160,7 @@ export async function checkSandboxProvisioning(t: ScoreTestContext, opts: { mate
 
     // judge 三维（纯加分）：预制分层 / 官方基线派生 / 制品引用版本化。
     for (const r of buildSandboxRubrics()) {
-      t.check(judgeMaterial, closedQA(`【${r.key}】${r.criteria}`)).score(1);
+      t.closeQA(judgeEvidence(judgeMaterial), `【${r.key}】${r.criteria}`).score(1);
     }
   });
 }

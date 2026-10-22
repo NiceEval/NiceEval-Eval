@@ -6,7 +6,7 @@ const NICEEVAL_VERSION = await ensureCandidate("0.14.3");
 
 export default defineExperiment({
   description: `niceeval@${NICEEVAL_VERSION}（稳定版，改进后的初始化与随包文档）`,
-  agent: installCodexAgent(),
+  adapter: installCodexAgent(),
   model: "gpt-5.6-terra",
   flags: { candidateVersion: NICEEVAL_VERSION },
   sandbox: installSandbox(),

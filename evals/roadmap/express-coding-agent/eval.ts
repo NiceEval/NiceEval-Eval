@@ -20,7 +20,7 @@ import { sandboxClarifyRubrics } from "../../../fixtures/install/express-coding-
 /** Express sandbox 路径：评的是 coding agent，重点是可复现的预制 sandbox 方案。 */
 export default defineScoreEval({
   description: "为 Express 仓库搭一套评 coding agent 的沙箱评估（考 sandbox/template 创建）",
-  judge: true,
+
   timeoutMs: 35 * 60 * 1000,
   sandbox: sandboxLayer()
     .before(gitCheckout({

@@ -1,3 +1,4 @@
+import { judgeEvidence } from "../../../lib/judge-evidence.ts";
 /**
  * GPT Researcher install 正式评估入口。
  *
@@ -13,7 +14,7 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import { defineScoreEval, type ScoreTestContext } from "niceeval";
-import { closedQA, isTrue, referencesAnyPath, toolMatch } from "niceeval/expect";
+import { isTrue, referencesAnyPath, toolMatch } from "niceeval/expect";
 import {
   actionRef,
   command,
@@ -28,7 +29,7 @@ type Turn = Awaited<ReturnType<ScoreTestContext["send"]>>;
 
 export default defineScoreEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
-  judge: true,
+
   timeoutMs: 50 * 60 * 1000,
   sandbox: sandboxRequirements({
     docker: {
@@ -71,7 +72,7 @@ export default defineScoreEval({
       const discoveredRoot = await locateInstallRoot(t.sandbox);
       const sourceRoot = discoveredRoot ?? ".";
       const authoredSource = await readAuthoredSource(t.sandbox, sourceRoot);
-      const published = await collectPublishedEvidence(t, sourceRoot, handoff.message);
+      const published = await collectPublishedEvidence(t, sourceRoot, handoff.reply);
 
       await scoreSourceQuality(t, authoredSource);
       const assistantMessages = t.events.flatMap((event) =>
@@ -118,10 +119,7 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn): Promise<void> {
       ],
     ] as const;
     for (const [key, label, points, criteria] of clarificationRubrics) {
-      turn.check(
-        { input: turn.input, output: `turn.status=${turn.status}\n${turn.message}` },
-        closedQA(`只判断 agent 写代码前的第一条回复是否做到【${label}】。${criteria} 不要因为其它维度缺失而判 N。`),
-      ).score(points).key(`install.interaction.${key}`).label(label);
+      turn.closeQA(judgeEvidence({ input: turn.input, output: `turn.status=${turn.status}\n${turn.reply}` }), `只判断 agent 写代码前的第一条回复是否做到【${label}】。${criteria} 不要因为其它维度缺失而判 N。`).score(points).key(`install.interaction.${key}`).label(label);
     }
 
     const scopeRubrics = [
@@ -136,10 +134,7 @@ async function scoreFirstTurn(t: ScoreTestContext, turn: Turn): Promise<void> {
       ],
     ] as const;
     for (const [key, label, points, criteria] of scopeRubrics) {
-      turn.check(
-        { input: turn.input, output: turn.message },
-        closedQA(`只判断第一条回复是否做到【${label}】。${criteria} 仓库可确认的事实应由 agent 先提出，不应甩给用户。`),
-      ).score(points).key(`install.interaction.scope.${key}`).label(label);
+      turn.closeQA(judgeEvidence({ input: turn.input, output: turn.reply }), `只判断第一条回复是否做到【${label}】。${criteria} 仓库可确认的事实应由 agent 先提出，不应甩给用户。`).score(points).key(`install.interaction.scope.${key}`).label(label);
     }
   });
 }
@@ -298,33 +293,24 @@ async function scorePublishedEvidence(
     output: `--- source ---\n${published.source.stdout}`,
   };
   await t.group("真实运行与公开证据", async () => {
-    await t.check(evidenceMaterial, closedQA(
+    await t.closeQA(judgeEvidence(evidenceMaterial),
       "【本轮非 dry Experiment membership】Y 当且仅当 overview/execution/source 交叉证明该 locator 属于本轮实际执行的 GPT Researcher Experiment，" +
         "发布了目标 GPT Researcher Eval 的 Attempt，且 source 和 execution 的 Adapter/Eval 身份一致。任意旧 locator、dry plan、通用 agent 或无法确认 Run membership 判 N。",
-    ).atLeast(1)).score(6).key("install.evidence.real-published-attempt")
+    ).gate(1).score(6).key("install.evidence.real-published-attempt")
       .label("本轮真实非 dry Experiment 发布 Attempt").orStop();
-    t.check(evidenceMaterial, closedQA(
-      "【同一 locator 证据链】Y 当且仅当 overview、execution 与 source 显示同一 eval/experiment/agent/attempt，" +
-        "且 source 中的 Adapter/Eval 能解释 execution 中的输入、事件与断言。任一面空白、对象不一致或无法交叉印证判 N。",
-    )).score(6).key("install.evidence.consistent-chain").label("同一 locator 的 overview/execution/source 证据链一致");
-    t.check(evidenceMaterial, closedQA(
-      "【目标响应在 execution】Y 当且仅当 execution 中的 ASSISTANT/message 内容能追溯到 GPT Researcher report 帧的 Adapter 映射，" +
-        "并呈现与 Eval 研究主题有关的实质报告内容与引用。仅有静态 ASSISTANT 文字、输入回显、logs/path/status 或无法与 Adapter 映射对应的文本判 N。",
-    )).score(5).key("install.evidence.target-response").label("execution 含 Adapter 映射的 GPT Researcher 真实报告");
+    t.closeQA(judgeEvidence(evidenceMaterial), "【同一 locator 证据链】Y 当且仅当 overview、execution 与 source 显示同一 eval/experiment/agent/attempt，" +
+        "且 source 中的 Adapter/Eval 能解释 execution 中的输入、事件与断言。任一面空白、对象不一致或无法交叉印证判 N。").score(6).key("install.evidence.consistent-chain").label("同一 locator 的 overview/execution/source 证据链一致");
+    t.closeQA(judgeEvidence(evidenceMaterial), "【目标响应在 execution】Y 当且仅当 execution 中的 ASSISTANT/message 内容能追溯到 GPT Researcher report 帧的 Adapter 映射，" +
+        "并呈现与 Eval 研究主题有关的实质报告内容与引用。仅有静态 ASSISTANT 文字、输入回显、logs/path/status 或无法与 Adapter 映射对应的文本判 N。").score(5).key("install.evidence.target-response").label("execution 含 Adapter 映射的 GPT Researcher 真实报告");
     t.check(
       status === "passed" || status === "failed" || status === "scored",
       isTrue(`Attempt 得到非 errored 的已完成结果（实际：${status ?? "无法识别"}）`),
     ).score(3).key("install.evidence.non-errored").label("Attempt 非 errored 且已完成");
-    handoff.check(
-      {
+    handoff.closeQA(judgeEvidence({
         input: `交接对应的真实 locator 是 ${published.locator}，终态是 ${status ?? "无法识别"}。\n${published.overview.stdout}`,
-        output: handoff.message,
-      },
-      closedQA(
-        "【最终交接】Y 当且仅当最终回复明确引用输入中的真实 locator，提供可复现的 exp/show 命令和主要文件，" +
-          "并与 overview 终态一致地报告通过、失败、计分或局限。漏 locator、只写泛化 show 命令、或把 failed/errored/替代物说成全绿判 N。",
-      ),
-    ).score(3).key("install.evidence.handoff").label("交接引用 locator 并如实报告");
+        output: handoff.reply,
+      }), "【最终交接】Y 当且仅当最终回复明确引用输入中的真实 locator，提供可复现的 exp/show 命令和主要文件，" +
+          "并与 overview 终态一致地报告通过、失败、计分或局限。漏 locator、只写泛化 show 命令、或把 failed/errored/替代物说成全绿判 N。").score(3).key("install.evidence.handoff").label("交接引用 locator 并如实报告");
     t.check(status === "passed", isTrue("候选 agent 自写 Eval 的 verdict 为 passed"))
       .score(1).key("install.evidence.self-eval-passed").label("agent 自写 Eval passed（弱证据）");
   });
@@ -341,80 +327,34 @@ async function scoreSourceQuality(
     output: source || "（无）",
   };
   await t.group("Adapter、Experiment 与 Eval 源码设计", async () => {
-    t.check(
-      material,
-      closedQA(
-        "【真实目标协议】Y 当且仅当 Adapter 连接 GPT Researcher 仓库真实提供的 FastAPI /ws，" +
+    t.closeQA(judgeEvidence(material), "【真实目标协议】Y 当且仅当 Adapter 连接 GPT Researcher 仓库真实提供的 FastAPI /ws，" +
           "按协议发送 `start ` + JSON（含 task/report_type/report_source/tone 等选中字段），并按 logs/images/report/path 帧语义解析；" +
-          "或使用仓库中被源码证明的真实 REST 入口及其实际 shape。假设 OpenAI messages 形状、进程内直调或静态回复判 N。",
-      ),
-    ).score(8).key("install.adapter.target-protocol").label("真实 GPT Researcher 协议与请求响应语义");
-    t.check(
-      material,
-      closedQA(
-        "【真实响应映射】Y 当且仅当 NiceEval 助手消息或标准事件的最终文本来自 GPT Researcher 的 report 帧，" +
-          "并将 logs/images/path 按各自语义处理，不把进度日志或 path 当成报告。返回输入原文、固定 ASSISTANT 文字或仅说任务已提交判 N。",
-      ),
-    ).score(6).key("install.adapter.response-mapping").label("真实 report 映射为 NiceEval 消息或事件");
-    t.check(material, closedQA(
-      "【变量传递】Y 当且仅当 Adapter/lifecycle 真正读取 model 以及所选静态研究配置（如 report_type、tone、report_source），" +
-        "并把它们传入 GPT Researcher 请求或目标进程。只在 Experiment 声明但没有读取，或全部被硬编码覆盖，判 N。",
-    )).score(3).key("install.adapter.variables-forwarded").label("模型、配置与实验变量传到 GPT Researcher");
-    t.check(material, closedQA(
-      "【取消与失败】Y 当且仅当 send 将 NiceEval AbortSignal 或等价取消机制传给 WebSocket/HTTP，有有界超时，" +
-        "并在连接失败、非正常 close、帧解析错误、error 帧或未收到 report 时抛出/映射失败。catch 后改返成功空文本或吞错判 N。",
-    )).score(3).key("install.adapter.failure-semantics").label("取消、超时与错误不被吞掉");
-    t.check(material, closedQA(
-      "【凭证边界】Y 当且仅当 LLM/搜索凭证只从环境/目标服务进程边界读取，不硬编码，不写入工作区，不打印，也不混入 Eval 文本或取证输出。",
-    )).score(2).key("install.adapter.credential-boundary").label("凭证边界正确");
-    t.check(
-      material,
-      closedQA(
-        "【核心能力输入】Y 当且仅当至少一条 Eval 输入要求对具体、可研究的主题自主检索多源资料，产出带引用来源的结构化研究报告正文。" +
+          "或使用仓库中被源码证明的真实 REST 入口及其实际 shape。假设 OpenAI messages 形状、进程内直调或静态回复判 N。").score(8).key("install.adapter.target-protocol").label("真实 GPT Researcher 协议与请求响应语义");
+    t.closeQA(judgeEvidence(material), "【真实响应映射】Y 当且仅当 NiceEval 助手消息或标准事件的最终文本来自 GPT Researcher 的 report 帧，" +
+          "并将 logs/images/path 按各自语义处理，不把进度日志或 path 当成报告。返回输入原文、固定 ASSISTANT 文字或仅说任务已提交判 N。").score(6).key("install.adapter.response-mapping").label("真实 report 映射为 NiceEval 消息或事件");
+    t.closeQA(judgeEvidence(material), "【变量传递】Y 当且仅当 Adapter/lifecycle 真正读取 model 以及所选静态研究配置（如 report_type、tone、report_source），" +
+        "并把它们传入 GPT Researcher 请求或目标进程。只在 Experiment 声明但没有读取，或全部被硬编码覆盖，判 N。").score(3).key("install.adapter.variables-forwarded").label("模型、配置与实验变量传到 GPT Researcher");
+    t.closeQA(judgeEvidence(material), "【取消与失败】Y 当且仅当 send 将 NiceEval AbortSignal 或等价取消机制传给 WebSocket/HTTP，有有界超时，" +
+        "并在连接失败、非正常 close、帧解析错误、error 帧或未收到 report 时抛出/映射失败。catch 后改返成功空文本或吞错判 N。").score(3).key("install.adapter.failure-semantics").label("取消、超时与错误不被吞掉");
+    t.closeQA(judgeEvidence(material), "【凭证边界】Y 当且仅当 LLM/搜索凭证只从环境/目标服务进程边界读取，不硬编码，不写入工作区，不打印，也不混入 Eval 文本或取证输出。").score(2).key("install.adapter.credential-boundary").label("凭证边界正确");
+    t.closeQA(judgeEvidence(material), "【核心能力输入】Y 当且仅当至少一条 Eval 输入要求对具体、可研究的主题自主检索多源资料，产出带引用来源的结构化研究报告正文。" +
           "合格形状是：具体研究主题，输出应包含实质内容、结构化章节和引用 URL。" +
-          "hello、自我介绍或无关常识不合格。",
-      ),
-    ).score(6).key("install.eval.core-input").label("输入覆盖 GPT Researcher 核心能力");
-    t.check(
-      material,
-      closedQA(
-        "【业务结果断言】Y 当且仅当断言检查主题相关的实质结论、可识别的报告结构，以及一个或多个可审查的来源 URL/引用。" +
-          "只检查 succeeded、任务提交回执、非空文本、字数或“报告”字样判 N。",
-      ),
-    ).score(6).key("install.eval.business-assertions").label("断言检查报告内容、结构与引用");
-    t.check(
-      material,
-      closedQA(
-        "【真实负例】Y 当且仅当 Eval 包含一个虚构且不可能有可靠来源的具体主题，并断言系统不得编造引用或写成看似有据的报告。" +
-          "prompt 若直接教它标准拒答，或只把网络失败当负例，判 N。",
-      ),
-    ).score(4).key("install.eval.negative-case").label("真实负例暴露引用编造风险");
-    t.check(material, closedQA(
-      "【开放输出稳健性】Y 当且仅当对可有多种正确章节、结论与引用措辞的报告使用语义 Judge、解析后的 Markdown/引用 URL 结构检查或宽容 matcher。" +
-        "仅匹配一个脆弱短语、完整原文或和业务无关的长度判 N。",
-    )).score(3).key("install.eval.robust-open-output").label("开放报告使用稳健判断");
-    t.check(material, closedQA(
-      "【Eval 生命周期边界】Y 当且仅当 Eval 只描述研究任务和断言，没有在 test 中自行启动、伪造、重启或代管 GPT Researcher 服务。" +
-        "服务 setup/teardown 位于 Experiment/Plugin/Sandbox lifecycle 才判 Y。",
-    )).score(2).key("install.eval.no-service-management").label("Eval 不代管目标服务");
-    t.check(
-      material,
-      closedQA(
-        "【目标耦合】Y 当且仅当 Experiment 实际选择本次 GPT Researcher Adapter，且它选中的 Eval 测试的也是该研究系统，" +
-          "而不是内置/通用/echo agent 或无关 Eval。必须能从导入和 experiment 选择追到同一对定义。",
-      ),
-    ).score(5).key("install.experiment.target-coupling").label("使用本次 GPT Researcher Adapter 与目标 Eval");
-    t.check(material, closedQA(
-      "【配置被消费】Y 当且仅当 Experiment 中的 model、flags 或静态配置有清楚的消费方：Adapter/lifecycle 读取后传给 GPT Researcher。" +
-        "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。未选用 flags 不是错，但仍需证明实际声明的 model/配置被消费。",
-    )).score(3).key("install.experiment.config-consumed").label("模型、flags 与静态配置不是死配置");
-    t.check(material, closedQA(
-      "【服务生命周期】Y 当且仅当 Experiment/Plugin/Sandbox lifecycle 负责启动真实 GPT Researcher、将 /opt/fixture-secrets/target-app.env 只注入目标服务进程、" +
-        "等待 WebSocket/HTTP 可用，并在结束或失败时可靠清理进程/容器。仅假设外部已启动、把凭证 source 到 agent shell，或无清理判 N。",
-    )).score(3).key("install.experiment.lifecycle").label("目标服务生命周期、环境与清理合理");
-    t.check(material, closedQA(
-      "【首跑规模】Y 当且仅当可实际执行的首跑选择是一个 Experiment × 一条 Eval × 一次 Attempt，没有隐式矩阵扩张或多次 attempts。",
-    )).score(1).key("install.experiment.first-run-scale").label("首跑规模符合预算");
+          "hello、自我介绍或无关常识不合格。").score(6).key("install.eval.core-input").label("输入覆盖 GPT Researcher 核心能力");
+    t.closeQA(judgeEvidence(material), "【业务结果断言】Y 当且仅当断言检查主题相关的实质结论、可识别的报告结构，以及一个或多个可审查的来源 URL/引用。" +
+          "只检查 succeeded、任务提交回执、非空文本、字数或“报告”字样判 N。").score(6).key("install.eval.business-assertions").label("断言检查报告内容、结构与引用");
+    t.closeQA(judgeEvidence(material), "【真实负例】Y 当且仅当 Eval 包含一个虚构且不可能有可靠来源的具体主题，并断言系统不得编造引用或写成看似有据的报告。" +
+          "prompt 若直接教它标准拒答，或只把网络失败当负例，判 N。").score(4).key("install.eval.negative-case").label("真实负例暴露引用编造风险");
+    t.closeQA(judgeEvidence(material), "【开放输出稳健性】Y 当且仅当对可有多种正确章节、结论与引用措辞的报告使用语义 Judge、解析后的 Markdown/引用 URL 结构检查或宽容 matcher。" +
+        "仅匹配一个脆弱短语、完整原文或和业务无关的长度判 N。").score(3).key("install.eval.robust-open-output").label("开放报告使用稳健判断");
+    t.closeQA(judgeEvidence(material), "【Eval 生命周期边界】Y 当且仅当 Eval 只描述研究任务和断言，没有在 test 中自行启动、伪造、重启或代管 GPT Researcher 服务。" +
+        "服务 setup/teardown 位于 Experiment/Plugin/Sandbox lifecycle 才判 Y。").score(2).key("install.eval.no-service-management").label("Eval 不代管目标服务");
+    t.closeQA(judgeEvidence(material), "【目标耦合】Y 当且仅当 Experiment 实际选择本次 GPT Researcher Adapter，且它选中的 Eval 测试的也是该研究系统，" +
+          "而不是内置/通用/echo agent 或无关 Eval。必须能从导入和 experiment 选择追到同一对定义。").score(5).key("install.experiment.target-coupling").label("使用本次 GPT Researcher Adapter 与目标 Eval");
+    t.closeQA(judgeEvidence(material), "【配置被消费】Y 当且仅当 Experiment 中的 model、flags 或静态配置有清楚的消费方：Adapter/lifecycle 读取后传给 GPT Researcher。" +
+        "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。未选用 flags 不是错，但仍需证明实际声明的 model/配置被消费。").score(3).key("install.experiment.config-consumed").label("模型、flags 与静态配置不是死配置");
+    t.closeQA(judgeEvidence(material), "【服务生命周期】Y 当且仅当 Experiment/Plugin/Sandbox lifecycle 负责启动真实 GPT Researcher、将 /opt/fixture-secrets/target-app.env 只注入目标服务进程、" +
+        "等待 WebSocket/HTTP 可用，并在结束或失败时可靠清理进程/容器。仅假设外部已启动、把凭证 source 到 agent shell，或无清理判 N。").score(3).key("install.experiment.lifecycle").label("目标服务生命周期、环境与清理合理");
+    t.closeQA(judgeEvidence(material), "【首跑规模】Y 当且仅当可实际执行的首跑选择是一个 Experiment × 一条 Eval × 一次 Attempt，没有隐式矩阵扩张或多次 attempts。").score(1).key("install.experiment.first-run-scale").label("首跑规模符合预算");
   });
 }
 
