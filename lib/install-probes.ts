@@ -8,7 +8,6 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ScoreTestContext } from "niceeval";
-import { publicQuery, runRefs, runResult, type Member, type RunCommand } from "./harness/public-results.ts";
 
 type Sandbox = ScoreTestContext["sandbox"];
 
@@ -42,37 +41,6 @@ done`,
     { cwd: root },
   );
   return result.stdout.trim();
-}
-
-const ATTEMPT_LOCATOR = /(?<![A-Za-z0-9])@[0-9A-HJKMNP-TV-Z]{13}(?![A-Za-z0-9])/g;
-
-/**
- * 交接里明确写出、且能在候选公开 query 中找到的最后一个 Attempt。
- * 不从「最新一条结果」猜本轮产物；交接没写 locator，或候选 CLI 解析不到，就是没有。
- * 仍在 active 或读不完整的 Run 跳过，不让 agent 留下的中断 Run 把外层 Attempt 变成 errored。
- */
-export async function findHandoffAttempt(
-  sandbox: Sandbox,
-  root: string,
-  handoff: string,
-): Promise<(Member & { locator: string; experimentId: string }) | null> {
-  const locators = (handoff.match(ATTEMPT_LOCATOR) ?? []).reverse();
-  if (locators.length === 0) return null;
-  const runCommand: RunCommand = (cmd, args) => sandbox.runCommand(cmd, args, { cwd: root });
-  const refs = await publicQuery(runCommand, { kind: "runs.list" }).then(runRefs, () => []);
-  const runs = [];
-  for (const { runId } of refs) {
-    const run = await publicQuery(runCommand, { kind: "run.summary", runId })
-      .then((doc) => runResult(doc, runId), () => null);
-    if (run !== null) runs.push(run);
-  }
-  for (const locator of locators) {
-    for (const run of runs) {
-      const member = run.members.find((m) => m.locator === locator);
-      if (member) return { ...member, locator, experimentId: run.experimentId };
-    }
-  }
-  return null;
 }
 
 const AGENT_OUTPUT_ROOT = resolve(import.meta.dirname, "../.agent-output");

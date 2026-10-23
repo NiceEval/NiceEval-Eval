@@ -12,8 +12,8 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 | 目录 | 回答的问题 | 当前配置 |
 | --- | --- | --- |
-| `experiments/install/` | coding agent 能否按该版本文档在真实宿主中完成从零接入 | `v0.14.0`、`v0.14.3`、`v0.19.0`、`canary` |
-| `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `v0.14.0`、`v0.14.3`、`v0.19.0`、`canary` |
+| `experiments/install/` | coding agent 只拿到一句 prompt 和该版本 INIT.md，能否在真实宿主中完成从零接入 | `latest` |
+| `experiments/harness/` | 已装好的项目里，coding agent 能否只靠随包文档运行、诊断和修复 NiceEval 工作流 | `v0.19.0`、`canary` |
 
 版本是 experiment 的配置维度，题目类型不各自建 experiment 目录。
 
@@ -28,8 +28,9 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 `install/` 的每道题都采用 `<case>/eval.ts` 目录入口，路径本身给出稳定 Eval ID（例如
 `install/db-gpt`）。每道题自己持有宿主 fixture、续轮回答与全部判据，读一个文件就能看到它测什么、
-什么算通过；[`lib/install-probes.ts`](lib/install-probes.ts) 只放不登记检查的取证探针与归档，
-交接 locator 的终态经候选的公开 `niceeval query` 读取。
+什么算通过；[`lib/install-probes.ts`](lib/install-probes.ts) 只放不登记检查的取证探针与归档。
+运行结果一律经被测项目自己的 `niceeval query` / `exp --json` 读取，[`lib/query.ts`](lib/query.ts)
+只做传输，不认识业务字段。
 
 ## harness/ 的共享基建与独立 repo
 
@@ -63,13 +64,11 @@ pnpm run typecheck
 pnpm exec niceeval list
 ```
 
-宿主已迁移到 0.19 的 `adapter`、`judgeProvider`、`reply` 与 Query v2 API。
-本次新增 `install/v0.19.0` 和 `harness/v0.19.0`；后者覆盖 debug、修复与 authoring 工作流。
 
 只生成计划、不启动付费 agent：
 
 ```sh
-pnpm --silent exec niceeval exp install/v0.19.0 --dry --json
+pnpm --silent exec niceeval exp install/latest --dry --json
 pnpm --silent exec niceeval exp harness/v0.19.0 --dry --json
 ```
 
@@ -135,12 +134,11 @@ red（例如 `incus-undeployed`）。本机开发检查用
 
 ## 候选版本与实验矩阵
 
-安装实验族从 0.14 API 开始，当前有三个稳定版与 canary 四格：
-
-- `install/v0.14.0`：固定 `niceeval@0.14.0` 稳定基线；
-- `install/v0.14.3`：固定 `niceeval@0.14.3` 历史对照；
-- `install/v0.19.0`：固定 `niceeval@0.19.0` 当前候选；
-- `install/canary`：每次加载时从 npm 全部已发布版本按 semver 取最大值（含预发布版，不依赖 canary dist-tag；同一 core 下正式版优先）。
+- `install/latest`：npm latest。agent 收到的就是官网首页那句 prompt，URL 指向该版本 tag 下的
+  INIT.md；INIT 让 agent 安装 latest，所以 install 只评 latest。
+- `harness/v0.19.0`：固定 `niceeval@0.19.0` 稳定版；
+- `harness/canary`：每次加载时从 npm 全部已发布版本按 semver 取最大值（含预发布版，同一 core 下正式版优先）。
+  Harness 的项目已装好候选并运行过 `niceeval init`，agent 只能依靠随包文档。
 
 每个 experiment 都通过 `ensureCandidate()` 物化候选清单，并把解析后的精确版本放进
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
@@ -153,9 +151,9 @@ Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEv
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 
-Harness 当前启用 `harness/v0.14.0`、`harness/v0.14.3`、`harness/v0.19.0` 与 `harness/canary`；后者采用与 `install/canary` 相同的最新已发布版本解析规则。
+Harness 当前启用 `harness/v0.19.0` 与 `harness/canary`。
 每个候选运行四个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。
-完整矩阵最多 16 个 coding-agent attempts，另计 Judge 调用。全仓并发上限为 2；
+完整矩阵最多 8 个 coding-agent attempts，另计 Judge 调用。全仓并发上限为 2；
 只想检查计划时使用 `--dry`。新评分基线与发布比较见上方 Harness 说明。
 
 ## 安装评估如何计分
@@ -192,11 +190,11 @@ provider-native SetupPrefix artifact 发布并按其声明式 identity 复用；
 仓库不验证 NiceEval 核心实现本身；核心 API、CLI 或报告问题应在相邻 `NiceEval/` 修复。
 这里也不自动跑全量或付费实验：更换候选、作废结果或批量重跑前必须先确认成本。
 
-## 0.19 迁移验证与历史结果
+## 本地验证与历史结果
 
-`pnpm run typecheck` 与 `pnpm test` 验证宿主类型和公开 CLI 的运行、修复、沿用及
-失效重跑链路，不调用付费模型。内层 fixture 根据候选版本选择 `agent` / `adapter`；结果检查
-按候选选择 Query v1 / v2，避免破坏 0.14 对照。0.19 的 `run.get` 同时提供计划、结果和用量。
+`pnpm run typecheck` 与 `pnpm test` 验证宿主类型，并用真实本地 CLI 固定各 Eval 读取的
+`niceeval.query/v2` 字段（当前结果、局部修复、沿用与判据失效），不调用付费模型。
+候选最低为 0.19；低于 0.19 的对照组已停用。
 
 若旧 `.niceeval` 报 `record-schema-unsupported` 或旧 ProjectDatabase owner 未释放，保留完整
 现场，按随包 `tutorials/agent-feedback-loop.mdx` 与 `troubleshooting/debugging.mdx` 在不含

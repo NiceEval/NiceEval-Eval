@@ -1,34 +1,34 @@
 import { spawnSync } from "node:child_process";
-import { array, object, publicQuery, type RunCommand } from "../lib/harness/public-results.ts";
+import { query, type Shell } from "../lib/query.ts";
 
 const runIds = process.argv.slice(2);
 if (runIds.length === 0 || runIds.some((id) => id.startsWith("-")) || new Set(runIds).size !== runIds.length) {
   throw new Error("Usage: pnpm harness-report <fixed-run-id> [<fixed-run-id> ...] (no latest, no duplicate Run)");
 }
-const runCommand: RunCommand = async (cmd, args) => {
-  const r = spawnSync(cmd, [...args], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
+const shell: Shell = async (script) => {
+  const r = spawnSync("sh", ["-c", script], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
   if (r.error) throw r.error;
   return { exitCode: r.status ?? 2, stdout: r.stdout, stderr: r.stderr };
 };
 const reports = [];
 for (const runId of runIds) {
-  const get = object((await publicQuery(runCommand, { kind: "run.get", runId })).run, "run");
-  const value = object(get.value, "run value");
-  const context = object(value.context, "run context");
-  const execution = object(context.execution, "execution context");
-  const flags = object(execution.flags, "flags");
+  const doc = await query(shell, { kind: "run.get", runId });
+  if (doc === null) throw new Error(`Run ${runId} 不存在`);
+  const get = doc.run;
+  const value = get.value;
+  const execution = value.context.execution;
+  const flags = execution.flags;
   const overview = get;
-  const sourceMembers = array(get.members, "Run members").map((m) => object(m, "Run member"));
-  const rows = array(overview.plannedAttempts, "planned attempts").map((m) => {
-    const member = object(m, "member");
+  const sourceMembers: Record<string, any>[] = get.members;
+  const rows = (overview.plannedAttempts as Record<string, any>[]).map((member) => {
     const slot = member;
     const source = sourceMembers.find((s) => s.plannedAttemptId === slot.plannedAttemptId);
-    const ref = source?.attempt == null ? undefined : object(source.attempt, "attempt ref");
+    const ref = source?.attempt ?? undefined;
     return {
       evalId: slot.evalId, attemptOrdinal: slot.attemptOrdinal, locator: member.locator,
-      state: member.state, originRunId: ref?.originRunId, attemptId: ref?.attemptId,
-      newSample: member.state === "executed" && ref?.originRunId === runId,
-      outcome: member.outcome, score: member.score, coverage: member.coverage, usage: member.usage,
+      action: source?.action, originRunId: ref?.originRunId, attemptId: ref?.attemptId,
+      newSample: source?.action === "executed" && ref?.originRunId === runId,
+      outcome: member.outcome, verdict: member.verdict, score: member.score, coverage: member.coverage, usage: member.usage,
       // Score alone never proves the non-scored scope/control assertions passed.
       boundaryReview: "inspect named assertions; not inferred from score",
     };
@@ -39,8 +39,8 @@ for (const runId of runIds) {
     model: execution.model, reasoningEffort: execution.reasoningEffort,
     denominator: overview.denominator,
     executed: rows.filter((r) => r.newSample).length,
-    carried: rows.filter((r) => r.state === "carried").length,
-    accepted: rows.filter((r) => r.state === "accepted").length,
+    carried: rows.filter((r) => r.action === "carried").length,
+    accepted: rows.filter((r) => r.action === "accepted").length,
     rows,
   });
 }

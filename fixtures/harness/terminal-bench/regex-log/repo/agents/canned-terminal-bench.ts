@@ -1,38 +1,18 @@
 import { readFileSync } from "node:fs";
-import * as niceevalAdapter from "niceeval/adapter";
-import * as niceevalSandbox from "niceeval/sandbox";
+import { completeEvidenceCoverage, defineSandboxAgent } from "niceeval/adapter";
+import { command } from "niceeval/sandbox";
 
-const adapter = niceevalAdapter as unknown as Record<string, unknown>;
-const sandbox = niceevalSandbox as unknown as Record<string, unknown>;
-const defineSandboxAgent = adapter.defineSandboxAgent as ((definition: Record<string, unknown>) => unknown) | undefined;
-const completeCoverage = adapter.completeEvidenceCoverage ?? adapter.completeCoverage;
-const modernCoverage = adapter.completeEvidenceCoverage !== undefined;
-const command = sandbox.command as ((executable: string, args: readonly string[]) => unknown) | undefined;
 const processDataBase64 = readFileSync(new URL("../tasks/fix-permissions/process_data.sh", import.meta.url)).toString("base64");
 const classifierCodeBase64 = readFileSync(new URL("../tasks/classifier-debug/code.py", import.meta.url)).toString("base64");
 
-if (defineSandboxAgent === undefined || completeCoverage === undefined || (modernCoverage && command === undefined)) {
-  throw new Error("installed niceeval lacks the sandbox-agent compatibility surface required by this fixture");
-}
-
-type SandboxContext = {
-  sandbox: {
-    runShell(script: string, options?: { root?: boolean; user?: string }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
-  };
-};
-
 export default defineSandboxAgent({
   name: "terminal-bench-canned-runtime",
-  ...(modernCoverage
-    ? {
-        evidenceCoverage: completeCoverage,
-        ensure: {
-          identity: { agent: "terminal-bench-canned-runtime", version: "1", revision: "1" },
-          probe: command!("node", ["--version"]),
-        },
-      }
-    : { coverage: completeCoverage }),
-  async send(input: { text: string }, ctx: SandboxContext) {
+  evidenceCoverage: completeEvidenceCoverage,
+  ensure: {
+    identity: { agent: "terminal-bench-canned-runtime", version: "1", revision: "1" },
+    probe: command("node", ["--version"]),
+  },
+  async send(input, ctx) {
     let script: string | undefined;
     let message: string;
 
@@ -64,7 +44,7 @@ REGEX_EOF`;
       };
     }
 
-    const run = await ctx.sandbox.runShell(script, { root: true, user: "root" });
+    const run = await ctx.sandbox.runShell(script, { user: "root" });
     if (run.exitCode !== 0) {
       return {
         status: "failed",
@@ -77,4 +57,4 @@ REGEX_EOF`;
       events: [{ type: "message", role: "assistant", text: message }],
     };
   },
-}) as never;
+});

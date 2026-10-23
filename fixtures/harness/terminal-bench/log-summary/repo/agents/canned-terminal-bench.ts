@@ -1,39 +1,19 @@
 import { readFileSync } from "node:fs";
-import * as niceevalAdapter from "niceeval/adapter";
-import * as niceevalSandbox from "niceeval/sandbox";
+import { completeEvidenceCoverage, defineSandboxAgent } from "niceeval/adapter";
+import { command } from "niceeval/sandbox";
 
-const adapter = niceevalAdapter as unknown as Record<string, unknown>;
-const sandbox = niceevalSandbox as unknown as Record<string, unknown>;
-const defineSandboxAgent = adapter.defineSandboxAgent as ((definition: Record<string, unknown>) => unknown) | undefined;
-const completeCoverage = adapter.completeEvidenceCoverage ?? adapter.completeCoverage;
-const modernCoverage = adapter.completeEvidenceCoverage !== undefined;
-const command = sandbox.command as ((executable: string, args: readonly string[]) => unknown) | undefined;
 const classifierCodeBase64 = readFileSync(new URL("../tasks/classifier-debug/code.py", import.meta.url)).toString("base64");
 const applicationLogBase64 = readFileSync(new URL("../tasks/log-summary/log-data/application.txt", import.meta.url)).toString("base64");
 const workerLogBase64 = readFileSync(new URL("../tasks/log-summary/log-data/worker.txt", import.meta.url)).toString("base64");
 
-if (defineSandboxAgent === undefined || completeCoverage === undefined || (modernCoverage && command === undefined)) {
-  throw new Error("installed niceeval lacks the sandbox-agent compatibility surface required by this fixture");
-}
-
-type SandboxContext = {
-  sandbox: {
-    runShell(script: string, options?: { root?: boolean; user?: string }): Promise<{ exitCode: number; stdout: string; stderr: string }>;
-  };
-};
-
 export default defineSandboxAgent({
   name: "terminal-bench-canned-triage",
-  ...(modernCoverage
-    ? {
-        evidenceCoverage: completeCoverage,
-        ensure: {
-          identity: { agent: "terminal-bench-canned-triage", version: "1", revision: "1" },
-          probe: command!("node", ["--version"]),
-        },
-      }
-    : { coverage: completeCoverage }),
-  async send(input: { text: string }, ctx: SandboxContext) {
+  evidenceCoverage: completeEvidenceCoverage,
+  ensure: {
+    identity: { agent: "terminal-bench-canned-triage", version: "1", revision: "1" },
+    probe: command("node", ["--version"]),
+  },
+  async send(input, ctx) {
     let script: string | undefined;
     let message: string;
 
@@ -62,7 +42,7 @@ cat /app/summary.csv`;
       };
     }
 
-    const run = await ctx.sandbox.runShell(script, { root: true, user: "root" });
+    const run = await ctx.sandbox.runShell(script, { user: "root" });
     if (run.exitCode !== 0) {
       return {
         status: "failed",
@@ -75,4 +55,4 @@ cat /app/summary.csv`;
       events: [{ type: "message", role: "assistant", text: `${message}${run.stdout.trim() ? `\n${run.stdout.trim()}` : ""}` }],
     };
   },
-}) as never;
+});

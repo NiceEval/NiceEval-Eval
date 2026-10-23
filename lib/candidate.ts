@@ -1,18 +1,16 @@
 /**
  * 候选版本。
  *
- * 被评的对象是「某个具体版本的 niceeval + 它随包发布的文档」，而不是 npm 上的 latest。
- * 所以每个 experiment 明确指定版本号或解析规则，eval 让 agent 装解析出的精确版本。
+ * 被评的对象是「某个具体版本的 niceeval + 它随包发布的文档」。每个 experiment 指定版本号
+ * 或解析规则（latest、canary），加载时解析成精确版本放进 flags.candidateVersion。
  *
  * 一个候选在宿主机上只有一个文件：`.candidate/<version>/manifest.json`，记版本号与随包
  * 文档清单，由 ensureCandidate 在实验加载时按需物化。没有 tarball——候选一律是已发布
  * 版本，npm 的同一个版本号不可重发，版本号本身就是完整的身份，manifest 只是可随时重新
  * 推导的缓存，永不过期。
  *
- * 安装前引导文档 INIT.md 不缓存到本地：它按 tag 存档在 GitHub 上（见 candidateInitDocUrl），
- * eval 让 agent 直接读那个 URL，不由 harness 转发。ensureCandidate 首次物化一个版本时
- * 仍会探一次这个 URL 有没有 200——链接失效要在实验加载这一步就响（任何沙箱启动之前），
- * 不能等到某次评估中途才被 agent 读空。
+ * INIT.md 随版本变化，install 题让 agent 读候选 tag 下的那份（见 candidateInitDocUrl）。
+ * ensureCandidate 首次物化时探一次这个 URL，链接失效在实验加载时就报错。
  */
 
 import { execFileSync } from "node:child_process";
@@ -47,12 +45,9 @@ async function fetchWithRetry(url: string, init?: RequestInit, attempts = 3): Pr
 /** 候选根目录，每个版本一个子目录，由 ensureCandidate 写入 */
 const CANDIDATE_ROOT = resolve(import.meta.dirname, "../.candidate");
 
-/** niceeval 自己的仓库，候选版本按 tag 存档的地方 */
-const NICEEVAL_REPO = "CorrectRoadH/niceeval";
-
-/** 某个版本发布时的安装前引导文档，按 tag 直接指向 GitHub raw；agent 在 send() 里直接读这个 URL。 */
+/** 候选版本发布时的 INIT.md（按 tag 存档）。 */
 export function candidateInitDocUrl(version: string): string {
-  return `https://raw.githubusercontent.com/${NICEEVAL_REPO}/v${version}/INIT.md`;
+  return `https://raw.githubusercontent.com/NiceEval/NiceEval/v${version}/INIT.md`;
 }
 
 function parseVersion(version: string): { core: string[]; prerelease: string[] } {
@@ -139,15 +134,8 @@ export async function ensureCandidate(target: string): Promise<string> {
     rmSync(scratch, { force: true });
   }
 
-  // 只探活，不落盘：eval 运行时让 agent 直接读这个 URL
-  const initDocUrl = candidateInitDocUrl(version);
-  const initDoc = await fetchWithRetry(initDocUrl, { method: "HEAD" });
-  if (!initDoc.ok) {
-    throw new Error(
-      `探活 ${initDocUrl} 失败：HTTP ${initDoc.status}。` +
-        `niceeval@${version} 对应的 GitHub tag 可能没有 INIT.md，或 tag 名与版本号对不上。`,
-    );
-  }
+  const initDoc = await fetchWithRetry(candidateInitDocUrl(version), { method: "HEAD" });
+  if (!initDoc.ok) throw new Error(`niceeval@${version} 的 INIT.md 不可读：${candidateInitDocUrl(version)} HTTP ${initDoc.status}`);
 
   mkdirSync(dir, { recursive: true });
   writeFileSync(manifest, JSON.stringify({ version, source: `npm:niceeval@${version}`, pages }, null, 2) + "\n");

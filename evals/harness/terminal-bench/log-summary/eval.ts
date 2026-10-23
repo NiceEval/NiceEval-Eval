@@ -5,7 +5,7 @@ import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/
 
 import { loadCriteria } from "niceeval/loaders";
 import { yesNo } from "../../../../lib/judge.ts";
-import { collectResults, currentMembers, verdicts } from "../../../../lib/harness/public-results.ts";
+import { exp, query } from "../../../../lib/query.ts";
 
 await loadCriteria({ pattern: "../../../../fixtures/harness/terminal-bench/log-summary/repo/**/*", relativeTo: new URL(import.meta.url) });
 
@@ -30,32 +30,29 @@ export default defineScoreEval({
     changeFrequency: changeFrequency.normal,
   })),
   async test(t) {
-    // 先由 fixture 跑完 experiment，再让 agent 接手已经停稳的 Record。Agent 可以从安装版本的
-    // bundled docs 学公开命令，但历史事实仍必须来自 compact show 与 locator 证据切片。
-    // 不开 stream：这里需要完整公开汇总做前置判定，避免流式 tee 的返回值缺少尾部内容。
-    const initialRun = await t.sandbox.runCommand(
-      "pnpm",
-      ["exec", "niceeval", "exp", "local"],
+    // 先由 fixture 跑完 experiment，再让 agent 接手已经停稳的 Record。
+    const shell = (script: string) => t.sandbox.runShell(script);
+    const initial = await exp(shell, ["local"]);
+    const local = await query(shell, { kind: "experiment.get", experimentId: "local" });
+    const initialResults = Object.fromEntries(
+      (local?.experiment.cells ?? []).map((c: { evalId: string; members: { publication?: { verdict?: string } }[] }) =>
+        [c.evalId, c.members[0]?.publication?.verdict ?? null]),
     );
-    const before = await collectResults((cmd, args) => t.sandbox.runCommand(cmd, args));
     const expected = {
-      "terminal-bench/hello-world": "passed",
       "terminal-bench/classifier-debug": "failed",
+      "terminal-bench/hello-world": "passed",
       "terminal-bench/log-summary": "failed",
     };
-    const initialResults = verdicts(currentMembers(before.runs, "local"));
-    if (initialRun.exitCode !== 1 || !isDeepStrictEqual(initialResults, expected)) {
-      throw new Error("log-summary fixture 未形成完整的 1 passed / 2 failed 初始结果，不能对 agent 判分");
+    if (initial.exitCode !== 1 || !isDeepStrictEqual(initialResults, expected)) {
+      throw new Error(`log-summary fixture 未形成 1 passed / 2 failed 初始结果（实际：${JSON.stringify(initialResults)}），不能对 agent 判分`);
     }
 
     // 用户只要求归因，没有授权改文件；failed 是已完成的业务结论，不应重跑或“修绿”。
     const input = "刚才的 local 评估已经跑完了，定位一下为什么有两个失败。只分析已有结果，不修改项目、不重新运行评估。";
     const turn = await t.send(input);
-    const after = await collectResults((cmd, args) => t.sandbox.runCommand(cmd, args));
-    t.check(after.runIds, equals(before.runIds))
+    const runs = await query(shell, { kind: "run.list" });
+    t.check(runs.runs.map((r: { runId: string }) => r.runId), equals(initial.runIds))
       .key("harness.log-summary.no-new-runs").label("只读任务没有新发布 Run");
-    t.log(JSON.stringify({ rubric: "harness-v2", initialRunIds: before.runIds, finalRunIds: after.runIds }));
-
 
     turn.notCalledTool(
       toolMatch({ input: referencesAnyPath([".niceeval"]) }),

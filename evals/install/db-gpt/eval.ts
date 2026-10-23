@@ -12,12 +12,12 @@ import { actionRef, command, gitCheckout, sandboxRequirements } from "niceeval/s
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
 import {
   archiveAgentOutput,
-  findHandoffAttempt,
   locateInstallRoot,
   readAuthoredSource,
   runCandidateCli,
 } from "../../../lib/install-probes.ts";
 import { YES, yesNo } from "../../../lib/judge.ts";
+import { query } from "../../../lib/query.ts";
 
 const GIB = 1024 ** 3;
 
@@ -120,8 +120,7 @@ const TASTE_RUBRICS = [
 
 const FOLLOW_UP =
   "确认：选 Tier 1，首跑不接 OTel/OTLP；目标模型沿用服务默认配置，不做 experiment flags；" +
-  "首跑只允许一格一次。Sandbox 可以访问互联网；cache.invalid/niceeval-install/runtime:python " +
-  "只是预载的基础运行时，可以按 DB-GPT 上游方式联网安装依赖或拉取固定版本镜像。" +
+  "首跑只允许一格一次。这台机器可以联网，可以按 DB-GPT 上游方式安装依赖或拉取镜像。" +
   "凭证仅从 /opt/fixture-secrets/target-app.env 注入目标服务进程，不得输出或复制进工作区。请按计划继续完成接入与验证。";
 
 /** 只回答 request 实际问到的选择，不主动泄露实现答案。 */
@@ -133,7 +132,7 @@ function answerRequestedChoice(question: string): string {
   }
   if (/budget|attempt|cost|time|预算|费用|时间|规模|并发/i.test(question)) answers.push("首跑预算只允许一格一次。");
   if (/image|sandbox|docker|incus|镜像|沙箱|运行时/i.test(question)) {
-    answers.push("Sandbox 可以访问互联网；cache.invalid/niceeval-install/runtime:python 只是预载基础运行时，可以按上游方式联网安装依赖或拉取固定版本镜像。");
+    answers.push("这台机器可以联网，可以按上游方式安装依赖或拉取镜像。");
   }
   if (/credential|secret|key|token|凭证|密钥|令牌/i.test(question)) {
     answers.push("目标服务凭证在 /opt/fixture-secrets/target-app.env，只能注入目标服务进程，不得输出或复制进工作区。");
@@ -174,10 +173,8 @@ export default defineScoreEval({
       version,
     );
 
-    const firstTurn = await t.send(
-      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\n` +
-      `This machine must end up with niceeval@${version} exactly — not whatever version is latest.`,
-    );
+    // 官网首页给用户复制的同一句 prompt（NiceEval apps/site/lib/content.ts），只把 URL 换成候选 tag 下的 INIT.md。
+    const firstTurn = await t.send(`READ ${candidateInitDocUrl(version)} and install niceeval for this repo.`);
 
     try {
       // ── 文档与首轮理解 ──
@@ -239,7 +236,7 @@ export default defineScoreEval({
         "node", ["-p", "require('./node_modules/niceeval/package.json').version"], { cwd: at },
       );
       await t.check(installed.stdout.trim(), equals(version))
-        .key("install.gate.exact-version").label(`gate · 项目依赖精确解析为 niceeval@${version}`).orStop();
+        .key("install.gate.exact-version").label(`gate · 项目依赖是当前 npm latest（niceeval@${version}）`).orStop();
 
       const list = await runCandidateCli(t.sandbox, at, ["list"]);
       await t.check(list, commandSucceeded())
@@ -252,11 +249,20 @@ export default defineScoreEval({
         equals({ cells: 1, attempts: 1, total: 1, evals: 1, configs: 1 }),
       ).key("install.gate.dry-plan").label("gate · exp --dry --json 恰好一格一次").orStop();
 
-      // ── 交接引用的真实 Attempt 与公开证据 ──
-      const attempt = await findHandoffAttempt(t.sandbox, at, handoff.reply);
-      await t.check(attempt, isDefined<typeof attempt>())
-        .key("install.gate.locator").label("gate · 交接引用的 Attempt locator 能被候选 query 解析").orStop();
-      const { locator } = attempt!;
+      // ── agent 自己的真实运行与公开证据 ──
+      // 被测项目没有预置 Record：这里的每个 Run 都是 agent 本次自己跑的，取最后一个。
+      const shell = (script: string) => t.sandbox.runShell(script, { cwd: at });
+      const runs: { runId: string; experimentId: string; startedAt: string }[] = (await query(shell, { kind: "run.list" }))?.runs ?? [];
+      const lastRun = runs.toSorted((a, b) => Date.parse(a.startedAt) - Date.parse(b.startedAt)).at(-1);
+      await t.check(lastRun, isDefined<typeof lastRun>()).gate().score(6)
+        .key("install.evidence.real-run").label("agent 真实运行过自己的 Experiment").orStop();
+      const planned: { evalId: string; locator?: string; verdict?: string }[] =
+        (await query(shell, { kind: "run.get", runId: lastRun!.runId })).run.plannedAttempts;
+      const published = planned.find((a) => a.locator !== undefined);
+      await t.check(published, isDefined<typeof published>())
+        .key("install.gate.published-attempt").label("gate · 最后一次运行发布了 Attempt").orStop();
+      const attempt = { experimentId: lastRun!.experimentId, evalId: published!.evalId, locator: published!.locator!, verdict: published!.verdict ?? null };
+      const { locator } = attempt;
       const [overview, execution, sourceSlice] = await Promise.all([
         runCandidateCli(t.sandbox, at, ["show", locator]),
         runCandidateCli(t.sandbox, at, ["show", locator, "--execution"]),
@@ -267,32 +273,29 @@ export default defineScoreEval({
         equals({ overview: 0, execution: 0, source: 0 }),
       ).key("install.gate.evidence-commands").label(`gate · ${locator} 的 overview/--execution/--source 都成功`).orStop();
 
-      const published = {
+      const evidence = {
         attempt,
         overview: overview.stdout,
         execution: execution.stdout,
         source: sourceSlice.stdout,
       };
       await t.group("真实运行与公开证据", async () => {
-        // query 的 state 区分本轮新执行与沿用旧结果；dry plan 不产生 Attempt。
-        await t.check(attempt!.state, equals("executed")).gate().score(6)
-          .key("install.evidence.executed").label("交接的 Attempt 是本轮新执行").orStop();
         // 真实目标响应同时是替代物屏障：stub/mock/echo/进程内替代拿不到这一项，后续证据分随之停止。
-        await t.judge(published, yesNo("install.evidence.target-response",
+        await t.judge(evidence, yesNo("install.evidence.target-response",
           "Y 当且仅当execution 中的助手消息来自 DB-GPT 真实 JSON/SSE 响应的 Adapter 解析，并呈现与 Eval 数据问答有关的具体结果。" +
           "source 或 execution 显示用 stub/mock/fake/echo agent、临时协议桩或进程内函数替代真实 DB-GPT 时判 N；" +
           "仅有静态文字、输入回显、启动日志或 status 判 N。"))
           .gate(YES).score(5).key("install.evidence.target-response").label("execution 含 DB-GPT 的真实响应").orStop();
-        t.judge(published, yesNo("install.evidence.source-explains-execution",
+        t.judge(evidence, yesNo("install.evidence.source-explains-execution",
           "Y 当且仅当 source 中的 Adapter 与 Eval 能解释 execution 中的输入、事件与断言结果。任一面空白或两者对不上判 N。"))
           .score(6).key("install.evidence.source-explains-execution").label("source 能解释 execution");
-        t.check(attempt!.verdict, or(equals("passed"), equals("failed")))
+        t.check(attempt.verdict, or(equals("passed"), equals("failed")))
           .score(3).key("install.evidence.completed").label("Attempt 形成 passed 或 failed，而不是 errored");
         t.judge({ attempt, handoff: handoff.reply }, yesNo("install.evidence.handoff",
-          "Y 当且仅当最终回复明确引用 attempt.locator，提供可复现的 exp/show 命令和主要文件，" +
-          "并与 attempt 的 verdict 一致地报告通过、失败或局限。漏 locator、只写泛化 show 命令、或把 failed/errored/替代物说成全绿判 N。"))
+          "attempt 是 agent 最后一次真实运行的结果。Y 当且仅当最终回复给出这次运行的 locator 或等价的可复现查看命令，" +
+          "说明主要文件，并与 attempt 的 verdict 一致地报告通过、失败或局限。漏 locator、只写泛化 show 命令、或把 failed/errored/替代物说成全绿判 N。"))
           .score(3).key("install.evidence.handoff").label("交接引用 locator 并如实报告");
-        t.check(attempt!.verdict, equals("passed"))
+        t.check(attempt.verdict, equals("passed"))
           .score(1).key("install.evidence.self-eval-passed").label("agent 自写 Eval passed（弱证据）");
       });
     } finally {

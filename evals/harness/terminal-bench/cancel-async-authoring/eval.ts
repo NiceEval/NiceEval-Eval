@@ -3,7 +3,7 @@ import { commandSucceeded, equals, referencesAnyPath, toolMatch } from "niceeval
 import { loadCriteria, loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { collectResults, currentMembers, executeAndInspect, verdicts } from "../../../../lib/harness/public-results.ts";
+import { exp, query, type Shell } from "../../../../lib/query.ts";
 
 const GIB = 1024 ** 3;
 
@@ -46,21 +46,19 @@ export default defineScoreEval({
     changeFrequency: changeFrequency.normal,
   })),
   async test(t) {
-    const input = `仓库里有一份从 Terminal-Bench 裁出的 cancel-async-tasks 原始题包，但还没有接入 NiceEval。
-
-请只创建 ${TARGET_EVAL}，把它做成正式 Eval：保持 task/task.yaml 的官方题意，使用 task/fixture/Dockerfile，并把未经修改的官方 tests 作为唯一业务判据。tests、run-tests 脚本和 solution 都是隐藏判据或参考答案，必须在被测 agent 收工以后才进入 task sandbox，不能进入 Docker build context，也不能提前出现在 agent 可见的文件系统里。隐藏测试及 runner 还必须进入这条 Eval 的 fingerprint，判据内容改变后不能复用旧结果。
-
-当前 Harness 可以访问互联网；请使用未经修改的官方 task/run-tests.sh 安装固定版本测试依赖并执行官方 tests。预载 runtime 只是构建缓存，不是离线限制。不要修改 task/、agents/、experiments/ 或其它文件。
-
-请把 oracle 和 leak-probe 两格都实际跑完并用公开 NiceEval 结果核对：oracle 应 passed；leak-probe 应 ordinary failed 而不是 errored。完成后告诉我结果。`;
+    // 像真实用户一样只交代目标与硬约束；隐藏判据怎么接、指纹怎么进，由随包文档引导。
+    const input = `task/ 里是我从 Terminal-Bench 拿来的 cancel-async-tasks 题，还没接进 NiceEval。
+帮我把它写成 ${TARGET_EVAL}，用官方 tests 判分。tests 和 solution 是答案，别让被测 agent 看到；task/、agents/、experiments/ 里的文件别改。
+写好后用 oracle 和 leak-probe 两个 experiment 各跑一次，告诉我结果。`;
     const turn = await t.send(input);
-    // Observe student runs before the outer verifier creates any Run of its own.
-    const student = await collectResults((cmd, args) => t.sandbox.runCommand(cmd, args));
-    t.log(JSON.stringify({ rubric: "harness-v2", studentRunIds: student.runIds, studentRuns: student.runs }));
-    t.check({
-      oracle: verdicts(currentMembers(student.runs, "oracle")),
-      "leak-probe": verdicts(currentMembers(student.runs, "leak-probe")),
-    }, equals({
+    const shell: Shell = (script) => t.sandbox.runShell(script);
+    // 先读 agent 自己跑出的结果，外层探针运行之后这些结果会被覆盖。
+    const student = {
+      oracle: currentVerdicts(await query(shell, { kind: "experiment.get", experimentId: "oracle" })),
+      "leak-probe": currentVerdicts(await query(shell, { kind: "experiment.get", experimentId: "leak-probe" })),
+    };
+    t.log(JSON.stringify({ rubric: "harness-v2", student }));
+    t.check(student, equals({
       oracle: { "terminal-bench/cancel-async-tasks": "passed" },
       "leak-probe": { "terminal-bench/cancel-async-tasks": "failed" },
     })).key("harness.cancel-async-authoring.student-runs").label("Agent 自己完成正反运行（外层验收不补此事实）");
@@ -97,12 +95,11 @@ export default defineScoreEval({
       .key("harness.cancel-async-authoring.discovery")
       .label("目标 Eval 可发现并可完成 link plan");
 
-    const runCommand = (cmd: string, args: readonly string[]) => t.sandbox.runCommand(cmd, args);
     const expectPassed = { "terminal-bench/cancel-async-tasks": "passed" };
     const expectFailed = { "terminal-bench/cancel-async-tasks": "failed" };
-    const oracle = await executeAndInspect(runCommand, "oracle", ["--rerun", "all"]);
+    const oracle = await inspect(shell, ["oracle", "--rerun", "all"]);
     t.log(JSON.stringify({ outerProbe: "oracle", ...oracle }));
-    t.check(outcome(oracle), equals({ exitCode: 0, results: expectPassed }))
+    t.check({ exitCode: oracle.exitCode, results: oracle.results }, equals({ exitCode: 0, results: expectPassed }))
       .score(6).key("harness.cancel-async-authoring.oracle-passes")
       .label("官方参考实现通过完整官方判据");
 
@@ -113,29 +110,29 @@ export default defineScoreEval({
       await t.sandbox.writeText(officialTestsPath,
         `${originalOfficialTests}\n# Harness fingerprint probe: behavior intentionally unchanged.\n`);
       // No rerun flag: this specifically tests criteria invalidation.
-      const fingerprint = await executeAndInspect(runCommand, "oracle");
+      const fingerprint = await inspect(shell, ["oracle"]);
       t.log(JSON.stringify({ outerProbe: "fingerprint", ...fingerprint }));
       // Score invalidation separately: a fresh attempt that times out still proves
       // the old result was not reused. Keep its completion status visible below.
-      t.check(fingerprint.run?.members.map((m) => m.state) ?? [], equals(["executed"]))
+      t.check(fingerprint.actions, equals(["executed"]))
         .score(2).key("harness.cancel-async-authoring.criteria-fingerprint")
         .label("隐藏判据变化会自动作废旧结果");
-      t.check(outcome(fingerprint), equals({ exitCode: 0, results: expectPassed }))
+      t.check({ exitCode: fingerprint.exitCode, results: fingerprint.results }, equals({ exitCode: 0, results: expectPassed }))
         .key("harness.cancel-async-authoring.fingerprint-probe-completed")
         .label("无行为变化的判据探针运行完成且参考实现仍通过");
 
-      const leak = await executeAndInspect(runCommand, "leak-probe", ["--rerun", "all"]);
+      const leak = await inspect(shell, ["leak-probe", "--rerun", "all"]);
       t.log(JSON.stringify({ outerProbe: "leak-probe", ...leak }));
-      t.check(outcome(leak), equals({ exitCode: 1, results: expectFailed }))
+      t.check({ exitCode: leak.exitCode, results: leak.results }, equals({ exitCode: 1, results: expectFailed }))
         .score(3).key("harness.cancel-async-authoring.leak-probe-fails")
         .label("未见隐藏材料的负向探针保持 ordinary failed");
 
       // Independent mutation catches skipped tests and ignored verifier exit codes.
       await t.sandbox.writeText(officialTestsPath,
         `${originalOfficialTests}\n\ndef test_harness_verifier_must_execute():\n    assert False, "outer harness verifier sentinel"\n`);
-      const sentinel = await executeAndInspect(runCommand, "oracle", ["--rerun", "all"]);
+      const sentinel = await inspect(shell, ["oracle", "--rerun", "all"]);
       t.log(JSON.stringify({ outerProbe: "verifier-sentinel", ...sentinel }));
-      t.check(outcome(sentinel), equals({ exitCode: 1, results: expectFailed }))
+      t.check({ exitCode: sentinel.exitCode, results: sentinel.results }, equals({ exitCode: 1, results: expectFailed }))
         .score(2).key("harness.cancel-async-authoring.verifier-enforced")
         .label("真实测试新增失败会使 oracle ordinary failed，而非忽略退出码");
     } finally {
@@ -144,7 +141,24 @@ export default defineScoreEval({
   },
 });
 
-/** 一次外层 exp 的可比较结果：退出码与该 Run 内每条 Eval 的终态。 */
-function outcome(probe: Awaited<ReturnType<typeof executeAndInspect>>) {
-  return { exitCode: probe.exitCode, results: verdicts(probe.run?.members ?? []) };
+type Cell = { evalId: string; members: { publication?: { verdict?: string } }[] };
+type PlannedAttempt = { evalId: string; verdict?: string; publication?: { action?: string } };
+
+/** experiment.get 的当前结果：evalId → 已发布 verdict（每格 1 次 Attempt）。没跑过为空表。 */
+function currentVerdicts(doc: { experiment: { cells: Cell[] } } | null) {
+  return Object.fromEntries((doc?.experiment.cells ?? []).map((c) => [c.evalId, c.members[0]?.publication?.verdict ?? null]));
+}
+
+/** 外层跑一次 exp，再用 receipt 里唯一的 Run 读取这次的终态与 publication action。 */
+async function inspect(shell: Shell, args: string[]) {
+  const { exitCode, runIds } = await exp(shell, args);
+  if (runIds.length !== 1) throw new Error(`niceeval exp ${args.join(" ")} 应创建恰好一个 Run，实际 ${JSON.stringify(runIds)}`);
+  const run = await query(shell, { kind: "run.get", runId: runIds[0] });
+  const attempts: PlannedAttempt[] = run.run.plannedAttempts;
+  const result = {
+    exitCode,
+    results: Object.fromEntries(attempts.map((a) => [a.evalId, a.verdict ?? null])),
+    actions: attempts.map((a) => a.publication?.action ?? null),
+  };
+  return result;
 }

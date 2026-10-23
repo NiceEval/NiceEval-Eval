@@ -2,14 +2,16 @@
 
 这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
 可信评估。当前是 **三个任务家族、四个独立条件**，不是四种独立能力样本。
-候选安装和 `init` 已由 Harness 完成；安装前 `INIT.md` 的效果另由 `evals/install/` 测量。
+候选安装和 `init` 已由 Harness 完成，agent 只能依靠随包文档（`node_modules/niceeval/INDEX.md`）；
+安装前 `INIT.md` 的效果另由 `evals/install/` 测量。题面用真实用户的说法，只交代目标和硬约束，
+不提示隐藏判据怎么接、指纹怎么进这类做法。
 
 | 条件 | 请求与起始状态 | 分值 |
 | --- | --- | --- |
 | regex-log | 自主完成；首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 10 |
 | regex-log-authorized | 相同 fixture，明确要求修复执行错误后复验 | 10 |
 | log-summary | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
-| cancel-async-authoring | 编写正式 Eval，隐藏判据、真实正反控制及 fingerprint | 18 |
+| cancel-async-authoring | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 18 |
 
 满分合计 52。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
@@ -21,9 +23,8 @@ failed。每个控制用例正确各 1 分，真实恢复 regex-log 3 分，区�
 如实交接 2 分。只诊断未修复者仍能取得诊断、诚实交接与已完成控制项的分数。
 不奖励特定镜像字符串或 `show` 命令拼写；允许在 `experiments/local.ts` 中配置等价运行环境。
 
-外层在 agent 结束后仅用公开 `runs.list` 固定 Run 集合，再读取逐个固定 `run.summary`，
-以时间顺序取 local 的各用例最后一个 Member。只复跑受影响用例也可完成任务；旧控制项保留
-它们的 Run ID、locator 和 executed/carried/accepted 状态。后续退步不能挑旧成功来遮盖。
+外层在 agent 结束后用公开 `experiment.get` 读取 local 每条用例的当前结果。只复跑受影响用例
+也可完成任务；后续退步会覆盖较早的成功，不能挑旧成功来遮盖。
 原有题面、Agent 与判据若被改写，结果分不给分。外层不会替 A 重跑、accept 或 migrate。
 
 B 每个失败仍是公开证据 2、任务事实 2、责任归因 3 分。`show` 与 `query` 的等价证据都接受，
@@ -35,7 +36,7 @@ C 不使用 Judge，18 分来自：只改目标文件 1、官方资产未改 2�
 fingerprint 自动新执行 2、leak-probe ordinary failed 3、强制失败判据确实使 oracle failed 2。
 最后一项由外层在官方测试末尾增加必失败测试，检验未执行 tests 或忽略退出码的假成功；
 探针结束后在 finally 恢复测试文件。oracle 与 leak-probe 用 `--rerun all` 保证外层实际验收，
-fingerprint 探针刻意不加重跑参数。结果来自固定 Run 的公开 JSON，不解析终端汇总文案。
+fingerprint 探针刻意不加重跑参数。每次外层运行从 `exp --json` receipt 取唯一 Run，再用 `run.get` 读结果，不解析终端汇总文案。
 agent 自己是否跑过正反两格在外层验收开始前单独取证，不能由外层运行补作业。
 
 ## 分数与完成必须分开报告
