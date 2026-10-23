@@ -202,6 +202,8 @@ provider-native SetupPrefix artifact 发布并按其声明式 identity 复用；
 
 ## 本地验证与历史结果
 
+本次真实运行、评分修复、历史结果与费用限制见 [2026-10-23 全范围验收](docs/validation-2026-10-23.md)。
+
 `pnpm run typecheck` 与 `pnpm test` 验证宿主类型，并用真实本地 CLI 固定各 Eval 读取的
 `niceeval.query/v2` 字段（当前结果、局部修复、沿用与判据失效），不调用付费模型。
 候选最低为 0.19；低于 0.19 的对照组已停用。
