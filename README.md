@@ -150,6 +150,11 @@ SetupPrefix 从固定 digest 构建并验证联网 Sandbox 中的本地缓存镜
 Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEval、应用依赖、服务、
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
+安装题不限制被测 agent 的格数、Attempt 数或运行轮次；它可自主诊断、修复和重试，
+无需追加运行授权。代理不设累计请求上限或独立的会话倒计时，随 Attempt 回收；
+并发与单次传输保护仍保留。外层每个候选的一次 coding-agent 采样与内层自主多轮运行不同。
+成本比较计入所有运行的实际可用用量；缺失费用保持未知，不按零计算。
+多轮取证与回收规则见[安装题自主运行](docs/install-autonomous-runs.md)。
 
 Harness 当前启用 `harness/v0.19.0` 与 `harness/canary`。
 每个候选运行四个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。

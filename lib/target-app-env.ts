@@ -6,14 +6,13 @@
  * base URL 只留在 NiceEval 宿主进程的 closure。沙箱里只有：
  *
  * - 一个 Attempt 生命周期内有效的随机 Bearer token；
- * - 只允许固定模型、固定接口和有限请求数的代理地址；
+ * - 只允许固定模型、固定接口的代理地址；
  * - TARGET_APP_MODEL 这个非敏感配置。
  *
  * 代理在宿主进程内按 Attempt 启动 Node HTTP server，host 强制绑定 Incus bridge
  * gateway `10.89.53.1`，不可覆写。端口默认 18080，可用 TARGET_APP_PROXY_PORT
  * 覆写以对齐宿主配置。不绑定其它地址、0.0.0.0、公网或 loopback。
- * setup 任一步失败都会撤销 token，teardown 再做幂等回收；release / abort /
- * 40 分钟硬结束会 abort 所有进行中的 upstream fetch。WeakMap 仍按 sandbox facade 工作。
+ * setup 任一步失败都会撤销 token，teardown 再做幂等回收；release / abort会 abort 所有进行中的 upstream fetch。WeakMap 仍按 sandbox facade 工作。
  */
 
 import { randomBytes } from "node:crypto";
@@ -37,10 +36,8 @@ const REQUIRED_HOST_VARS = [
 
 const PROXY_HOST = "10.89.53.1";
 const DEFAULT_PROXY_PORT = 18080;
-const MAX_REQUESTS = 96;
 const MAX_CONCURRENCY = 8;
 const MAX_REQUEST_BYTES = 1024 * 1024;
-const HARD_STOP_MS = 40 * 60 * 1000;
 const UPSTREAM_TIMEOUT_MS = 10 * 60 * 1000;
 
 /** Agent 只会看到这份短期配置，不会看到宿主侧真实 key/base URL。 */
@@ -52,10 +49,8 @@ interface ProxySession {
   model: string;
   apiKey: string;
   baseUrl: URL;
-  requests: number;
   active: number;
   abort: AbortController;
-  hardStop: ReturnType<typeof setTimeout>;
 }
 
 interface ProxyHandle {
@@ -175,14 +170,9 @@ async function startProxy(config: { apiKey: string; baseUrl: URL; model: string 
       model: config.model,
       apiKey: config.apiKey,
       baseUrl: config.baseUrl,
-      requests: 0,
       active: 0,
       abort: new AbortController(),
-      hardStop: setTimeout(() => {
-        void releaseSession(token);
-      }, HARD_STOP_MS),
     };
-    session.hardStop.unref();
     shared.sessions.set(token, session);
 
     return {
@@ -244,7 +234,6 @@ async function releaseSession(token: string): Promise<void> {
   if (!current) return;
   const session = current.sessions.get(token);
   if (session) {
-    clearTimeout(session.hardStop);
     session.abort.abort();
     current.sessions.delete(token);
   }
@@ -254,7 +243,7 @@ async function releaseSession(token: string): Promise<void> {
   try {
     await closeServer(current.server);
   } catch {
-    // 幂等：abort / 40 分钟硬结束可能已经关掉同一 listener。
+    // 幂等：abort / release可能已经关掉同一 listener。
   }
 }
 
@@ -350,14 +339,13 @@ async function handleProxyRequest(
       sendJson(response, 404, { error: { message: "target proxy only permits /v1/chat/completions" } });
       return;
     }
-    if (session.requests >= MAX_REQUESTS || session.active >= MAX_CONCURRENCY) {
-      sendJson(response, 429, { error: { message: "target proxy attempt budget exhausted" } });
+    if (session.active >= MAX_CONCURRENCY) {
+      sendJson(response, 429, { error: { message: "target proxy concurrency limit reached" } });
       return;
     }
 
     const payload = JSON.parse(await readBody(request)) as { model?: string };
     payload.model = session.model;
-    session.requests += 1;
     session.active += 1;
     try {
       const upstream = await fetch(upstreamUrl(session.baseUrl, url), {

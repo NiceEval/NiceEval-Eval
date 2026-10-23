@@ -60,6 +60,16 @@ send(){throw new Error('No model invocation is allowed in this contract test')}}
     const repaired = await run(["local", "broken", "--rerun", "all"]);
     assert.deepEqual({ exitCode: repaired.exitCode, results: repaired.results }, { exitCode: 0, results: { broken: "passed" } });
     assert.deepEqual(await current(), { broken: "passed", business: "failed", good: "passed" }, "局部修复与较早的对照结果组合成当前结果");
+    const project = (await query(shell, { kind: "project.get" })).project;
+    const publications = project.cells.flatMap((cell: { evalId: string; members: { publication: { attemptLocator?: string; verdict?: string; originRunId?: string } }[] }) =>
+      cell.members.map((member) => ({ evalId: cell.evalId, ...member.publication })),
+    );
+    assert.deepEqual(Object.fromEntries(publications.map((p: { evalId: string; verdict?: string }) => [p.evalId, p.verdict])),
+      { broken: "passed", business: "failed", good: "passed" });
+    assert.ok(publications.every((p: { attemptLocator?: string }) => typeof p.attemptLocator === "string"));
+    assert.equal(publications.find((p: { evalId: string }) => p.evalId === "broken")?.originRunId, repaired.runId);
+    assert.equal(publications.find((p: { evalId: string }) => p.evalId === "good")?.originRunId, first.runId);
+
 
     const reused = await run(["local", "broken"]);
     assert.deepEqual(reused.actions, ["carried"]);
