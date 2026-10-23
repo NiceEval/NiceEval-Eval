@@ -28,5 +28,5 @@ INIT.md + 随包 INDEX.md 这套文档对 AI 的实际效果；它同时也是�
 **只在 `main` 上工作。** 直接在 `main` 上提交，不要新建分支，也不要因为「当前在默认分支」
 就自动切出一条特性分支——这条规则覆盖任何默认的先开分支行为。
 
-NiceEval 问题按[工作区问题上报规则](../AGENTS.md#niceeval-问题上报)，直接在 [NiceEval Issues](https://github.com/NiceEval/NiceEval/issues) 查重后创建 issue。
+NiceEval 问题按工作区 [`../AGENTS.md`](../AGENTS.md)「问题与反馈」处理；本仓库是 NiceEval 的 dogfood 场，遇到 NiceEval 的缺口就提，不在这里写 workaround。
 
