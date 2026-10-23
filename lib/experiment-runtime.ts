@@ -68,15 +68,6 @@ export function incusCodexAgent() {
 }
 
 /**
- * 安装题只根据对话、工具调用和最终工作区判分，不消费 Codex 的 OTLP trace。
- * 长会话能产生上百 MiB，反而挤占 attempt deadline。保留官方 adapter 的安装、
- * setup、send 和证据采集，只关闭这条非判分遥测通道。
- */
-export function installCodexAgent() {
-  return { ...incusCodexAgent(), tracing: undefined };
-}
-
-/**
  * 固定 digest 的 inner runtime 是业务 SetupPrefix，不属于 host base image。
  * 同一层同时发布 install/harness 需要的本地 tags，两个实验因而能复用同一 Incus artifact。
  */
