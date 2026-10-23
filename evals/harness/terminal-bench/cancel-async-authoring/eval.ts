@@ -46,10 +46,8 @@ export default defineScoreEval({
     changeFrequency: changeFrequency.normal,
   })),
   async test(t) {
-    // 像真实用户一样只交代目标与硬约束；隐藏判据怎么接、指纹怎么进，由随包文档引导。
-    const input = `task/ 里是我从 Terminal-Bench 拿来的 cancel-async-tasks 题，还没接进 NiceEval。
-帮我把它写成 ${TARGET_EVAL}，用官方 tests 判分。tests 和 solution 是答案，别让被测 agent 看到；task/、agents/、experiments/ 里的文件别改。
-写好后用 oracle 和 leak-probe 两个 experiment 各跑一次，告诉我结果。`;
+    // 真实用户只说要什么；隐藏判据、指纹和不改题包，都应由随包文档和 agent 的判断补上。
+    const input = `把 task/ 这道 Terminal-Bench 题写成 ${TARGET_EVAL}，用官方 tests 判分。写好后用 oracle 和 leak-probe 各跑一次，告诉我结果。`;
     const turn = await t.send(input);
     const shell: Shell = (script) => t.sandbox.runShell(script);
     // 先读 agent 自己跑出的结果，外层探针运行之后这些结果会被覆盖。
