@@ -2,7 +2,7 @@
  * 候选版本。
  *
  * 被评的对象是「某个具体版本的 niceeval + 它随包发布的文档」，而不是 npm 上的 latest。
- * 所以每个 experiment 明确钉一个版本号或 dist-tag，eval 让 agent 装的就是它。
+ * 所以每个 experiment 明确指定版本号或解析规则，eval 让 agent 装解析出的精确版本。
  *
  * 一个候选在宿主机上只有一个文件：`.candidate/<version>/manifest.json`，记版本号与随包
  * 文档清单，由 ensureCandidate 在实验加载时按需物化。没有 tarball——候选一律是已发布
@@ -55,16 +55,53 @@ export function candidateInitDocUrl(version: string): string {
   return `https://raw.githubusercontent.com/${NICEEVAL_REPO}/v${version}/INIT.md`;
 }
 
+function parseVersion(version: string): { core: string[]; prerelease: string[] } {
+  const match = /^(0|[1-9]\d*)\.(0|[1-9]\d*)\.(0|[1-9]\d*)(?:-([0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*))?(?:\+[0-9A-Za-z-]+(?:\.[0-9A-Za-z-]+)*)?$/.exec(version);
+  const prerelease = match?.[4]?.split(".") ?? [];
+  if (!match || prerelease.some((part) => /^\d+$/.test(part) && part.length > 1 && part.startsWith("0"))) {
+    throw new Error(`无效的 semver 版本号：${version}`);
+  }
+  return { core: match.slice(1, 4), prerelease };
+}
+
+/** 按 semver 比较已发布版本；build metadata 不影响优先级。 */
+export function compareCandidateVersions(left: string, right: string): number {
+  const a = parseVersion(left);
+  const b = parseVersion(right);
+  for (let i = 0; i < 3; i++) {
+    const x = BigInt(a.core[i]!);
+    const y = BigInt(b.core[i]!);
+    if (x !== y) return x > y ? 1 : -1;
+  }
+  if (!a.prerelease.length || !b.prerelease.length) {
+    return Number(!a.prerelease.length) - Number(!b.prerelease.length);
+  }
+  for (let i = 0; i < Math.max(a.prerelease.length, b.prerelease.length); i++) {
+    const x = a.prerelease[i];
+    const y = b.prerelease[i];
+    if (x === y) continue;
+    if (x === undefined) return -1;
+    if (y === undefined) return 1;
+    const xNumeric = /^\d+$/.test(x);
+    const yNumeric = /^\d+$/.test(y);
+    if (xNumeric && yNumeric) return BigInt(x) > BigInt(y) ? 1 : -1;
+    if (xNumeric !== yNumeric) return xNumeric ? -1 : 1;
+    return x > y ? 1 : -1;
+  }
+  return 0;
+}
+
 /**
  * 把一个版本号或 dist-tag 变成可用的候选：解析成具体版本，本地没有 manifest 就现场物化
  * 一份，返回解析后的版本号。实验文件在加载时 await 它——上游随时发新 canary，这边下一次
  * 跑自动跟上，没有手工 pin 步骤。已物化过的精确版本直接命中缓存，不碰网络。
  *
- * dist-tag（canary/latest）每次都要问 registry「现在指向哪版」：tag 是移动靶，不在本地
- * 落任何指针文件；解析出的具体版本一旦物化过就复用。
+ * canary 每次从 registry 的全部已发布版本按 semver 取最大值（含预发布版），不依赖
+ * canary dist-tag。其它 dist-tag 仍按 registry 指向解析；不落本地指针文件，解析出的
+ * 具体版本一旦物化过就复用。
  */
 export async function ensureCandidate(target: string): Promise<string> {
-  if (existsSync(candidatePaths(target).manifest)) return target;
+  if (target !== "canary" && existsSync(candidatePaths(target).manifest)) return target;
 
   const res = await fetchWithRetry("https://registry.npmjs.org/niceeval");
   if (!res.ok) throw new Error(`解析候选「${target}」失败：拉取 niceeval 包元数据 HTTP ${res.status}`);
@@ -72,7 +109,11 @@ export async function ensureCandidate(target: string): Promise<string> {
     "dist-tags": Record<string, string>;
     versions: Record<string, { dist: { tarball: string } }>;
   };
-  const version = packument["dist-tags"][target] ?? target;
+  const version = target === "canary"
+    ? Object.keys(packument.versions).reduce((newest, current) =>
+        compareCandidateVersions(current, newest) > 0 ? current : newest,
+      )
+    : packument["dist-tags"][target] ?? target;
   const versionMeta = packument.versions[version];
   if (!versionMeta) throw new Error(`registry 上没有 niceeval@${target}`);
 

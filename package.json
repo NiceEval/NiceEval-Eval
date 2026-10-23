@@ -12,7 +12,8 @@
     "show": "niceeval show",
     "view": "niceeval view",
     "test:harness": "tsx --test scripts/test-harness-results.ts",
-    "harness-report": "tsx scripts/harness-report.ts"
+    "harness-report": "tsx scripts/harness-report.ts",
+    "test:candidate": "tsx --test scripts/test-candidate.ts"
   },
   "devEngines": {
     "packageManager": {
