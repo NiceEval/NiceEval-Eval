@@ -22,7 +22,7 @@ import { query } from "../../../lib/query.ts";
 const GIB = 1024 ** 3;
 
 /**
- * [key, label, points, question]：交给首轮 Turn 的完整历史（消息、工具调用与 HITL 请求）。
+ * [key, label, points, question]：交给首轮的任务、命令输入、HITL 请求与回复。
  * 每项只问一件可以独立缺失的事，报告里能直接看到缺的是哪一项。
  */
 const FIRST_TURN_QUESTIONS = [
@@ -178,9 +178,17 @@ export default defineScoreEval({
 
     try {
       // ── 文档与首轮理解 ──
+      // Codex 适配器会截断过长的工具输出，完整 Turn 历史是 partial；这里只交完整的部分。
+      const firstTurnFacts = {
+        task: firstTurn.input,
+        status: firstTurn.status,
+        commands: firstTurn.toolCalls.map(({ name, input, status }) => ({ name, input, status })),
+        inputRequests: firstTurn.events.flatMap((e) => e.type === "input.requested" ? [e.request] : []),
+        reply: firstTurn.reply,
+      };
       await t.group("文档与首轮理解", async () => {
         for (const [key, label, points, question] of FIRST_TURN_QUESTIONS) {
-          firstTurn.closeQA(question, { maxMaterialBytes: 2 * 1024 * 1024, maxAuditBytes: 4 * 1024 * 1024 })
+          t.judge(firstTurnFacts, yesNo(key, `只根据首轮的 commands、inputRequests 与 reply 回答：${question}`))
             .score(points).key(key).label(label);
         }
         firstTurn.toolOrder([
@@ -194,7 +202,7 @@ export default defineScoreEval({
         ]).score(3).key("install.docs.index-to-relevant-page").label("从随包 INDEX 路由到相关页面");
       });
 
-      const inputRequests = firstTurn.events.flatMap((e) => e.type === "input.requested" ? [e.request] : []);
+      const { inputRequests } = firstTurnFacts;
 
       // 只有 agent 真正提出 input.requested 时按问题作答；否则给一条最小确认。
       const handoff = firstTurn.status === "waiting" && inputRequests.length > 0

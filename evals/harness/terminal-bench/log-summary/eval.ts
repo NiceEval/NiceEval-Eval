@@ -67,14 +67,14 @@ export default defineScoreEval({
       .key("harness.log-summary.no-changes")
       .label("工作区保持不变");
 
-    // 证据链看完整 Turn 历史（消息与工具调用）；事实与归因只看最终回复。
-    const evidenceOptions = { maxMaterialBytes: 1024 * 1024, maxAuditBytes: 4 * 1024 * 1024 };
+    // Codex 适配器会截断过长的工具输出，完整 Turn 历史是 partial。证据链只需命令输入（完整）与最终回复。
+    const commands = turn.toolCalls.map(({ name, input, status }) => ({ name, input, status }));
     const reply = { task: input, reply: turn.reply };
 
     // 每个失败各 7 分：公开证据链 2 分、最终任务事实 2 分、责任归因 3 分。
     // 两题都不能只凭复述 actual / expected mismatch 获得归因分；最终回复必须
     // 明确判断责任在错误的 agent 结果，还是在拒绝合法结果的过紧 Eval。
-    turn.closeQA("【classifier-debug 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：使用公开 niceeval show 或 query 的等价结果，固定本次 local Run 及 classifier-debug 的 Attempt，确认整体 1 passed、2 failed、0 errored，并从公开执行、源码或断言详情确认 agent 写入 B、正确答案与断言要求都是 A。", evidenceOptions)
+    t.judge({ ...reply, commands }, yesNo("classifier-evidence", "【classifier-debug 公开证据】只根据 commands 与 reply 判断 agent 是否形成这条公开证据链：使用公开 niceeval show 或 query 的等价结果，固定本次 local Run 及 classifier-debug 的 Attempt，确认整体 1 passed、2 failed、0 errored，并从公开执行、源码或断言详情确认 agent 写入 B、正确答案与断言要求都是 A。"))
       .score(2)
       .key("harness.log-summary.classifier-evidence")
       .label("classifier-debug 公开证据完整");
@@ -89,7 +89,7 @@ export default defineScoreEval({
       .key("harness.log-summary.classifier-agent-attribution")
       .label("classifier-debug 最终归因 agent 答案错误");
 
-    turn.closeQA("【log-summary 公开证据】只判断完整有序 Turn 是否形成这条公开证据链：使用公开 niceeval show 或 query 固定本次 local Run 的 log-summary Attempt，再从公开执行、源码或断言详情确认 agent 生成四行合法 CSV，ERROR/WARNING/INFO 为 4/3/8，实际差异只是 CSV 字段带有允许的双引号，而 exact Assertion 要求无引号文本。", evidenceOptions)
+    t.judge({ ...reply, commands }, yesNo("log-evidence", "【log-summary 公开证据】只根据 commands 与 reply 判断 agent 是否形成这条公开证据链：使用公开 niceeval show 或 query 固定本次 local Run 的 log-summary Attempt，再从公开执行、源码或断言详情确认 agent 生成四行合法 CSV，ERROR/WARNING/INFO 为 4/3/8，实际差异只是 CSV 字段带有允许的双引号，而 exact Assertion 要求无引号文本。"))
       .score(2)
       .key("harness.log-summary.log-evidence")
       .label("log-summary 公开证据完整");
