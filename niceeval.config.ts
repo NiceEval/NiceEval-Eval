@@ -19,8 +19,8 @@ export default defineConfig({
   // Docker provider 的通用默认并发 10 会先耗尽本机资源，因此这里固定整仓吞吐上限。
   maxConcurrency: 2,
   judgeProvider: OpenAIProvider({
-    // 裁判与各 Experiment 的被测 Agent 统一使用 GPT-6.1 Sol。
-    model: "gpt-6.1-sol",
+    // 裁判使用 GPT-6 Astra；各 Experiment 的被测 Agent 使用 GPT-6.1 Sol。
+    model: "gpt-6-astra",
     // 复用被测 codexAgent() 那把 CODEX_API_KEY/网关，不单独开一份 judge 凭证。
     // baseUrl 必须显式给：judge 的解析链曾经在省略时按 NICEEVAL_JUDGE_BASE → CODEX_BASE_URL →
     // OPENAI_BASE_URL 找，2026-07-25 起收敛成「只认 config 里的 judge.baseUrl，省略即官方端点」
