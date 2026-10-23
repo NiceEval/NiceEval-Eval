@@ -23,10 +23,11 @@
 不过，最后一项测的是“成功修复后的报告”，不是一般的“报告是否诚实”；这次报告原始运行结果是诚实的。
 
 审计限制：A/B 的部分 assertion material 保留不完整，不能由此推断 Judge 当时也收到截断输入。
-负向工具断言 `ae_1e6d1a044150db51031e` 的公开 detail 连续两次读取失败，已记录
-`.agents/friction-log/20260905123056-public-assertion-detail/`。该失败不影响已读出的六项得分，
+负向工具断言 `ae_1e6d1a044150db51031e` 的公开 detail 当时连续两次读取失败；2026-10-23
+通过 0.19.0 的公开 query 复查时，该 locator 返回 `inspection-selection-missing`，无法复现原错误，
+因此未新建 issue，也不能判定原问题已修复。该历史读取失败不影响已读出的六项得分，
 但不支持声称所有范围检查已完整审计。Show 还给这个 2/18 的 Score Eval 显示 `Verdict passed`；
-不能把它解释为任务成功，这类问题已有 friction `20260818155734-default-overview-reports`。
+不能把它解释为任务成功；同类展示问题见 [NiceEval #218](https://github.com/NiceEval/NiceEval/issues/218)（已关闭）。
 
 复核入口：
 
