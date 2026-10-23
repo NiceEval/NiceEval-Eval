@@ -2,7 +2,7 @@
  * 候选版本。
  *
  * 被评的对象是「某个具体版本的 niceeval + 它随包发布的文档」。每个 experiment 指定版本号
- * 或解析规则（latest、canary），加载时解析成精确版本放进 flags.candidateVersion。
+ * 或 canary，加载时解析成精确版本放进 flags.candidateVersion。
  *
  * 一个候选在宿主机上只有一个文件：`.candidate/<version>/manifest.json`，记版本号与随包
  * 文档清单，由 ensureCandidate 在实验加载时按需物化。没有 tarball——候选一律是已发布

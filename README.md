@@ -12,7 +12,7 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 | 目录 | 回答的问题 | 当前配置 |
 | --- | --- | --- |
-| `experiments/install/` | coding agent 只拿到一句 prompt 和该版本 INIT.md，能否在真实宿主中完成从零接入 | `latest` |
+| `experiments/install/` | coding agent 只拿到一句 prompt 和该版本 INIT.md，能否在真实宿主中完成从零接入 | `v0.19.0`、`canary` |
 | `experiments/harness/` | 已装好的项目里，coding agent 能否只靠随包文档运行、诊断和修复 NiceEval 工作流 | `v0.19.0`、`canary` |
 
 版本是 experiment 的配置维度，题目类型不各自建 experiment 目录。
@@ -68,7 +68,7 @@ pnpm exec niceeval list
 只生成计划、不启动付费 agent：
 
 ```sh
-pnpm --silent exec niceeval exp install/latest --dry --json
+pnpm --silent exec niceeval exp install/v0.19.0 --dry --json
 pnpm --silent exec niceeval exp harness/v0.19.0 --dry --json
 ```
 
@@ -134,8 +134,8 @@ red（例如 `incus-undeployed`）。本机开发检查用
 
 ## 候选版本与实验矩阵
 
-- `install/latest`：npm latest。agent 收到的就是官网首页那句 prompt，URL 指向该版本 tag 下的
-  INIT.md；INIT 让 agent 安装 latest，所以 install 只评 latest。
+- `install/v0.19.0`、`install/canary`：agent 收到官网首页那句 prompt，URL 指向该版本 tag 下的 INIT.md，
+  另加一句版本要求（INIT.md 默认安装 npm latest）。
 - `harness/v0.19.0`：固定 `niceeval@0.19.0` 稳定版；
 - `harness/canary`：每次加载时从 npm 全部已发布版本按 semver 取最大值（含预发布版，同一 core 下正式版优先）。
   Harness 的项目已装好候选并运行过 `niceeval init`，agent 只能依靠随包文档。

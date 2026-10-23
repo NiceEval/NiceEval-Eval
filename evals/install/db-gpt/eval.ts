@@ -173,8 +173,12 @@ export default defineScoreEval({
       version,
     );
 
-    // 官网首页给用户复制的同一句 prompt（NiceEval apps/site/lib/content.ts），只把 URL 换成候选 tag 下的 INIT.md。
-    const firstTurn = await t.send(`READ ${candidateInitDocUrl(version)} and install niceeval for this repo.`);
+    // 官网首页给用户复制的同一句 prompt（NiceEval apps/site/lib/content.ts），URL 换成候选 tag 下的 INIT.md。
+    // INIT.md 让 agent 装 npm latest；评的是候选版本，所以只多一句版本要求。
+    const firstTurn = await t.send(
+      `READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\n` +
+      `Use niceeval@${version} exactly.`,
+    );
 
     try {
       // ── 文档与首轮理解 ──
@@ -244,7 +248,7 @@ export default defineScoreEval({
         "node", ["-p", "require('./node_modules/niceeval/package.json').version"], { cwd: at },
       );
       await t.check(installed.stdout.trim(), equals(version))
-        .key("install.gate.exact-version").label(`gate · 项目依赖是当前 npm latest（niceeval@${version}）`).orStop();
+        .key("install.gate.exact-version").label(`gate · 项目依赖精确为 niceeval@${version}`).orStop();
 
       const list = await runCandidateCli(t.sandbox, at, ["list"]);
       await t.check(list, commandSucceeded())
