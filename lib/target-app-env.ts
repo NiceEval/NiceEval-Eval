@@ -363,7 +363,8 @@ async function handleProxyRequest(
       });
       const headers: Record<string, string> = {};
       for (const [name, value] of upstream.headers) {
-        if (!["connection", "content-length", "keep-alive", "transfer-encoding", "upgrade"].includes(name.toLowerCase())) {
+        // fetch 已解压响应体，不能再让目标客户端按上游编码重复解压。
+        if (!["connection", "content-encoding", "content-length", "keep-alive", "transfer-encoding", "upgrade"].includes(name.toLowerCase())) {
           headers[name] = value;
         }
       }

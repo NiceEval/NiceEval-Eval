@@ -177,6 +177,11 @@ Harness 当前启用 `harness/v0.19.0` 与 `harness/canary`。
 sparse checkout 排除与接入无关的大型文档和资源目录。agent 写出的产物会复制到 gitignored
 的 `.agent-output/` 供人工复核。
 
+GPT Researcher 的运行选择使用内置 DuckDuckGo 搜索，目标模型沿用服务默认值，不依赖
+Tavily key。真实响应评分结合 agent 交接时的 Adapter/Eval 源码与各当前 Attempt 的公开执行
+证据，要求至少一个正向核心用例产生真实业务响应；预期负例允许拒答或合法错误。所有当前
+结果仍须能由源码解释，且任何 mock、echo 或替代目标服务的实现都不能通过真实响应门槛。
+
 `INIT.md` 在产品中的位置等同于一条 create-eval 入口：用户只说安装，完成标准却是写出并跑通
 第一条真实 Eval。因此 DB-GPT 与 GPT Researcher 还会检查 agent 是否先和用户定清评估面、
 真实数据、成功与失败判据、运行约束和候选范围，并在结束时如实交代首跑结果、复现入口与下一步。

@@ -117,7 +117,7 @@ const TASTE_RUBRICS = [
 ] as const;
 
 const FOLLOW_UP =
-  "确认：选 Tier 1，首跑不接 OTel 或 LangSmith；目标模型与搜索配置沿用服务默认值，不做 experiment flags；" +
+  "确认：选 Tier 1，首跑不接 OTel 或 LangSmith；目标模型沿用服务默认值，搜索使用内置 DuckDuckGo，不做 experiment flags；" +
   "可以自主运行、诊断、修复和重试，不限制格数、Attempt 数或运行轮次，无需再次申请运行授权；实际成本计入评估。这台机器可以联网，可以按 GPT Researcher 上游方式安装依赖或拉取镜像。" +
   "凭证仅从 /opt/fixture-secrets/target-app.env 注入目标服务进程，不得输出或复制进工作区。请按计划继续完成接入与验证。";
 
@@ -125,8 +125,8 @@ const FOLLOW_UP =
 function answerRequestedChoice(question: string): string {
   const answers: string[] = [];
   if (/tier|otel|otlp|trac|telemetry|langsmith|观测|追踪/i.test(question)) answers.push("选 Tier 1；首跑不接 OTel 或 LangSmith。");
-  if (/model|judge|flag|variant|report.type|tone|source|模型|裁判|变体|配置/i.test(question)) {
-    answers.push("目标模型与搜索配置沿用目标服务默认值；没有可用 Judge key，不做 experiment flags。");
+  if (/model|judge|flag|variant|report.type|tone|source|search|retriev|tavily|duckduckgo|模型|裁判|变体|配置|搜索|检索/i.test(question)) {
+    answers.push("目标模型沿用目标服务默认值，搜索使用内置 DuckDuckGo；没有可用 Judge key，不做 experiment flags。");
   }
   if (/budget|attempt|cost|time|预算|费用|时间|规模|并发/i.test(question)) answers.push("不限制格数、Attempt 数或运行轮次，可自主诊断、修复和重试，无需再次申请运行授权；实际成本计入评估。");
   if (/image|sandbox|docker|incus|镜像|沙箱|运行时/i.test(question)) {
@@ -280,7 +280,7 @@ export default defineScoreEval({
         .key("install.gate.current-attempts").label("gate · 当前格包含 Attempt").orStop();
       await t.check(attempts.map((attempt) => attempt.locator), countWhere(isDefined(), equals(attempts.length)))
         .key("install.gate.published-attempt").label("gate · 当前格的所有 Attempt 均已发布").orStop();
-      const evidence: { attempt: (typeof attempts)[number]; overview: string; execution: string; source: string }[] = [];
+      const evidence: { attempt: (typeof attempts)[number]; overview: string; execution: string }[] = [];
       const commandResults = [];
       for (const attempt of attempts) {
         const locator = attempt.locator!;
@@ -290,20 +290,22 @@ export default defineScoreEval({
           runCandidateCli(t.sandbox, at, ["show", locator, "--source"]),
         ]);
         commandResults.push(overview, execution, sourceSlice);
-        evidence.push({ attempt, overview: overview.stdout, execution: execution.stdout, source: sourceSlice.stdout });
+        evidence.push({ attempt, overview: overview.stdout, execution: execution.stdout });
       }
       await t.check(commandResults, countWhere(commandSucceeded(), equals(commandResults.length)))
         .key("install.gate.evidence-commands").label("gate · 所有当前 Attempt 的 overview/--execution/--source 都成功").orStop();
 
       await t.group("真实运行与公开证据", async () => {
         // 真实目标响应同时是替代物屏障：stub/mock/echo/进程内替代拿不到这一项，后续证据分随之停止。
-        await t.judge(evidence, yesNo("install.evidence.target-response",
-          "逐项审阅 evidence 数组中的所有当前结果，全部满足才判 Y。Y 当且仅当execution 中的助手消息来自 GPT Researcher report 帧的 Adapter 映射，并呈现与 Eval 研究主题有关的实质报告内容与引用。" +
-          "source 或 execution 显示用 stub/mock/fake/echo agent、临时协议桩或进程内函数替代真实 GPT Researcher 时判 N；" +
+        await t.judge({ authoredSource: source, attempts: evidence }, yesNo("install.evidence.target-response",
+          "材料中的 authoredSource 是 agent 交接时的实际源码，attempts 是公开 CLI 读取的当前结果。结合源码核对 Adapter 到目标服务的请求和响应映射。" +
+          "Y 当且仅当至少一个正向核心用例满足以下真实响应要求。其它当前结果若是预期负例，合法错误或拒答不因缺少正向业务内容而单独判 N。" +
+          "execution 中的助手消息来自 GPT Researcher report 帧的 Adapter 映射，并呈现与 Eval 研究主题有关的实质报告内容与引用。" +
+          "authoredSource 或 execution 显示用 stub/mock/fake/echo agent、临时协议桩或进程内函数替代真实 GPT Researcher 时判 N；" +
           "仅有静态文字、输入回显、启动日志或 status 判 N。"))
           .gate(YES).score(5).key("install.evidence.target-response").label("execution 含 GPT Researcher 的真实响应").orStop();
-        t.judge(evidence, yesNo("install.evidence.source-explains-execution",
-          "逐项审阅 evidence 数组中的所有当前结果，全部满足才判 Y。Y 当且仅当 source 中的 Adapter 与 Eval 能解释 execution 中的输入、事件与断言结果。任一面空白或两者对不上判 N。"))
+        t.judge({ authoredSource: source, attempts: evidence }, yesNo("install.evidence.source-explains-execution",
+          "逐项审阅 attempts 数组中的所有当前结果，全部满足才判 Y。Y 当且仅当 authoredSource 中的 Adapter 与 Eval 能解释各 execution 中的输入、事件与断言结果，包括预期负例的拒答或合法错误。任一面空白或两者对不上判 N。"))
           .score(6).key("install.evidence.source-explains-execution").label("source 能解释 execution");
         t.check(attempts.map((attempt) => attempt.verdict), countWhere(or(equals("passed"), equals("failed")), equals(attempts.length)))
           .score(3).key("install.evidence.completed").label("Attempt 形成 passed 或 failed，而不是 errored");

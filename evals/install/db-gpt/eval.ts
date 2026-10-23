@@ -283,7 +283,7 @@ export default defineScoreEval({
         .key("install.gate.current-attempts").label("gate · 当前格包含 Attempt").orStop();
       await t.check(attempts.map((attempt) => attempt.locator), countWhere(isDefined(), equals(attempts.length)))
         .key("install.gate.published-attempt").label("gate · 当前格的所有 Attempt 均已发布").orStop();
-      const evidence: { attempt: (typeof attempts)[number]; overview: string; execution: string; source: string }[] = [];
+      const evidence: { attempt: (typeof attempts)[number]; overview: string; execution: string }[] = [];
       const commandResults = [];
       for (const attempt of attempts) {
         const locator = attempt.locator!;
@@ -293,20 +293,22 @@ export default defineScoreEval({
           runCandidateCli(t.sandbox, at, ["show", locator, "--source"]),
         ]);
         commandResults.push(overview, execution, sourceSlice);
-        evidence.push({ attempt, overview: overview.stdout, execution: execution.stdout, source: sourceSlice.stdout });
+        evidence.push({ attempt, overview: overview.stdout, execution: execution.stdout });
       }
       await t.check(commandResults, countWhere(commandSucceeded(), equals(commandResults.length)))
         .key("install.gate.evidence-commands").label("gate · 所有当前 Attempt 的 overview/--execution/--source 都成功").orStop();
 
       await t.group("真实运行与公开证据", async () => {
         // 真实目标响应同时是替代物屏障：stub/mock/echo/进程内替代拿不到这一项，后续证据分随之停止。
-        await t.judge(evidence, yesNo("install.evidence.target-response",
-          "逐项审阅 evidence 数组中的所有当前结果，全部满足才判 Y。Y 当且仅当execution 中的助手消息来自 DB-GPT 真实 JSON/SSE 响应的 Adapter 解析，并呈现与 Eval 数据问答有关的具体结果。" +
-          "source 或 execution 显示用 stub/mock/fake/echo agent、临时协议桩或进程内函数替代真实 DB-GPT 时判 N；" +
+        await t.judge({ authoredSource: source, attempts: evidence }, yesNo("install.evidence.target-response",
+          "材料中的 authoredSource 是 agent 交接时的实际源码，attempts 是公开 CLI 读取的当前结果。结合源码核对 Adapter 到目标服务的请求和响应映射。" +
+          "Y 当且仅当至少一个正向核心用例满足以下真实响应要求。其它当前结果若是预期负例，合法错误或拒答不因缺少正向业务内容而单独判 N。" +
+          "execution 中的助手消息来自 DB-GPT 真实 JSON/SSE 响应的 Adapter 解析，并呈现与 Eval 数据问答有关的具体结果。" +
+          "authoredSource 或 execution 显示用 stub/mock/fake/echo agent、临时协议桩或进程内函数替代真实 DB-GPT 时判 N；" +
           "仅有静态文字、输入回显、启动日志或 status 判 N。"))
           .gate(YES).score(5).key("install.evidence.target-response").label("execution 含 DB-GPT 的真实响应").orStop();
-        t.judge(evidence, yesNo("install.evidence.source-explains-execution",
-          "逐项审阅 evidence 数组中的所有当前结果，全部满足才判 Y。Y 当且仅当 source 中的 Adapter 与 Eval 能解释 execution 中的输入、事件与断言结果。任一面空白或两者对不上判 N。"))
+        t.judge({ authoredSource: source, attempts: evidence }, yesNo("install.evidence.source-explains-execution",
+          "逐项审阅 attempts 数组中的所有当前结果，全部满足才判 Y。Y 当且仅当 authoredSource 中的 Adapter 与 Eval 能解释各 execution 中的输入、事件与断言结果，包括预期负例的拒答或合法错误。任一面空白或两者对不上判 N。"))
           .score(6).key("install.evidence.source-explains-execution").label("source 能解释 execution");
         t.check(attempts.map((attempt) => attempt.verdict), countWhere(or(equals("passed"), equals("failed")), equals(attempts.length)))
           .score(3).key("install.evidence.completed").label("Attempt 形成 passed 或 failed，而不是 errored");
