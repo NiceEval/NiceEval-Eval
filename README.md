@@ -12,27 +12,24 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 | 目录 | 回答的问题 | 当前配置 |
 | --- | --- | --- |
-| `experiments/install/` | coding agent 能否按该版本文档在普通与复杂宿主中完成从零接入 | `v0.14.0`、`v0.14.3`、`v0.19.0`、`canary` |
+| `experiments/install/` | coding agent 能否按该版本文档在真实宿主中完成从零接入 | `v0.14.0`、`v0.14.3`、`v0.19.0`、`canary` |
 | `experiments/harness/` | coding agent 能否用该版本运行、诊断和修复 NiceEval 工作流 | `v0.14.0`、`v0.14.3`、`v0.19.0`、`canary` |
 
-版本是 experiment 的配置维度，题目类型不再各自建 experiment 目录。`roadmap/` 中已实现的
-复杂安装题仍可被 discovery 发现；只保留 Markdown 的未来设计不会被 discovery。
+版本是 experiment 的配置维度，题目类型不各自建 experiment 目录。
 
 ## 评估用例分区
 
-`evals/` 按用户所处阶段分成三组，全仓共 10 道可发现评估用例：
+`evals/` 按用户所处阶段分成两组，全仓共 6 道可发现评估用例：
 
 | 目录 | 类型 | 回答的问题 | 当前场景 |
 | --- | --- | --- | --- |
 | `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher（2 道） |
-| `roadmap/` | 扩展路线与未来设计 | 复杂第三方接入与暂缓实现的评估方向 | Express Sandbox、Letta、OpenHands、Skyvern（4 道） |
 | `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | 三个任务家族、四个独立条件（含自主/明确授权修复配对） |
 
-`install/` 与 `roadmap/` 的每道可运行题都采用 `<case>/eval.ts` 目录入口，因此路径本身继续
-给出稳定 Eval ID（例如 `roadmap/openhands`）。场景脚本只保留 setup、任务、检查阶段与收口；
-宿主 repo/ref、协议和长 rubric 在 `fixtures/install/<case>/`，跨题机制在
-[`lib/install/`](lib/install/README.md)。`roadmap/harness/*.md` 仍只是未来设计；`harness/`
-物理上只放当前四个可运行条件。
+`install/` 的每道题都采用 `<case>/eval.ts` 目录入口，路径本身给出稳定 Eval ID（例如
+`install/db-gpt`）。每道题自己持有宿主 fixture、续轮回答与全部判据，读一个文件就能看到它测什么、
+什么算通过；[`lib/install-probes.ts`](lib/install-probes.ts) 只放不登记检查的取证探针与归档，
+交接 locator 的终态经候选的公开 `niceeval query` 读取。
 
 ## harness/ 的共享基建与独立 repo
 
@@ -148,7 +145,7 @@ red（例如 `incus-undeployed`）。本机开发检查用
 每个 experiment 都通过 `ensureCandidate()` 物化候选清单，并把解析后的精确版本放进
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
 
-当前 install Experiment 选择 `install/` 的两道普通安装题；`roadmap/` 的四道复杂安装题保留为可发现用例。
+当前 install Experiment 选择 `install/` 的两道安装题。
 安装实验统一使用一次性 Incus VM（Docker-in-disposable-VM，V1 DestroyOnly）。共享业务
 SetupPrefix 从固定 digest 构建并验证联网 Sandbox 中的本地缓存镜像
 `cache.invalid/niceeval-install/runtime:python`；后续

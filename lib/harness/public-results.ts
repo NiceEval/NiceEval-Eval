@@ -86,21 +86,18 @@ export function currentMembers(runs: RunResult[], experimentId: string): Member[
   }
   return [...current.values()].sort((a, b) => a.evalId.localeCompare(b.evalId));
 }
-export function matchesResults(members: Member[], expected: Record<string, string>): boolean {
-  return members.length === Object.keys(expected).length
-    && new Set(members.map((m) => m.evalId)).size === members.length
-    && members.every((m) =>
-    expected[m.evalId] === m.verdict && m.outcome === "completed"
-      && ["executed", "carried", "accepted"].includes(m.state) && typeof m.locator === "string",
-  );
-}
-
-/** Fresh execution proves invalidation even when that execution subsequently errors. */
-export function hasFreshExecutions(members: Member[], evalIds: string[]): boolean {
-  return members.length === evalIds.length && evalIds.length > 0
-    && new Set(members.map((m) => m.evalId)).size === members.length
-    && members.every((m) => evalIds.includes(m.evalId)
-      && m.state === "executed" && typeof m.locator === "string");
+/**
+ * evalId → 完成的 verdict；未完成时写成 `<state>:<outcome>`，让 equals 的失败证据直接显示实际终态。
+ * 只有 completed、带 locator 的 executed/carried/accepted 才算终态。
+ */
+export function resultTable(members: Member[]): Record<string, string> {
+  const table: Record<string, string> = {};
+  for (const m of members) {
+    const settled = m.outcome === "completed" && ["executed", "carried", "accepted"].includes(m.state)
+      && typeof m.locator === "string" && m.verdict !== undefined;
+    table[m.evalId] = settled ? m.verdict! : `${m.state}:${m.outcome ?? "none"}`;
+  }
+  return table;
 }
 
 /** The child node process supplies stdin without shell interpolation or workspace writes. */
@@ -109,7 +106,7 @@ const minor=Number(JSON.parse(require('node:fs').readFileSync('node_modules/nice
 const operation=JSON.parse(process.argv[1]);
 if(minor>=19)operation.kind=({'runs.list':'run.list','run.summary':'run.get'})[operation.kind]??operation.kind;
 const request={protocol:minor>=19?'niceeval.query/v2':'niceeval.query/v1',operation};
-const r=spawnSync('pnpm',['exec','niceeval','query','run','--request','-'],{input:JSON.stringify(request),encoding:'utf8',maxBuffer:16*1024*1024});
+const r=spawnSync('./node_modules/.bin/niceeval',['query','run','--request','-'],{input:JSON.stringify(request),encoding:'utf8',maxBuffer:16*1024*1024});
 if(r.stdout)process.stdout.write(r.stdout);if(r.stderr)process.stderr.write(r.stderr);
 if(r.error){process.stderr.write(String(r.error));process.exit(2)}process.exit(r.status??2);`;
 export type RunCommand = (cmd: string, args: readonly string[]) => Promise<{ exitCode: number; stdout: string; stderr: string }>;

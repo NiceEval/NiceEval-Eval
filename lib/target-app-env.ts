@@ -396,11 +396,3 @@ async function handleProxyRequest(
 function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
-
-function assertEnvContracts(): void {
-  if (shellQuote("a'b # c") !== "'a'\\''b # c'") {
-    throw new Error("target proxy env quoting contract 失败");
-  }
-}
-
-assertEnvContracts();

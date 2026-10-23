@@ -21,12 +21,8 @@ export default defineConfig({
   judgeProvider: OpenAIProvider({
     // 裁判使用 GPT-6 Astra；各 Experiment 的被测 Agent 使用 GPT-6.1 Sol。
     model: "gpt-6-astra",
-    // 复用被测 codexAgent() 那把 CODEX_API_KEY/网关，不单独开一份 judge 凭证。
-    // baseUrl 必须显式给：judge 的解析链曾经在省略时按 NICEEVAL_JUDGE_BASE → CODEX_BASE_URL →
-    // OPENAI_BASE_URL 找，2026-07-25 起收敛成「只认 config 里的 judge.baseUrl，省略即官方端点」
-    // （niceeval src/scoring/judge.ts）。不给的话 judge 会拿着网关的 key 打 api.openai.com，
-    // 整个 run 在 precheck 阶段 401 硬失败。读同一个环境变量而不是手写字面量——网关地址仍然
-    // 只有 .env 一处，跟 codexAgent() 用的是同一个值。
+    // 复用被测 codexAgent() 的 CODEX_API_KEY 与网关。judge 不从环境推断端点，
+    // 省略 baseUrl 会拿网关 key 打官方端点并在 precheck 401。
     baseUrl: process.env.CODEX_BASE_URL,
     apiKeyEnv: "CODEX_API_KEY",
   }),

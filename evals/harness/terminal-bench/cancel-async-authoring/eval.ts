@@ -3,7 +3,7 @@ import { commandSucceeded, equals, referencesAnyPath, toolMatch } from "niceeval
 import { loadCriteria, loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { collectResults, currentMembers, executeAndInspect, hasFreshExecutions, matchesResults } from "../../../../lib/harness/public-results.ts";
+import { collectResults, currentMembers, executeAndInspect, resultTable } from "../../../../lib/harness/public-results.ts";
 
 const GIB = 1024 ** 3;
 
@@ -57,11 +57,13 @@ export default defineScoreEval({
     // Observe student runs before the outer verifier creates any Run of its own.
     const student = await collectResults((cmd, args) => t.sandbox.runCommand(cmd, args));
     t.log(JSON.stringify({ rubric: "harness-v2", studentRunIds: student.runIds, studentRuns: student.runs }));
-    t.check(
-      matchesResults(currentMembers(student.runs, "oracle"), { "terminal-bench/cancel-async-tasks": "passed" })
-        && matchesResults(currentMembers(student.runs, "leak-probe"), { "terminal-bench/cancel-async-tasks": "failed" }),
-      equals(true),
-    ).key("harness.cancel-async-authoring.student-runs").label("Agent 自己完成正反运行（外层验收不补此事实）");
+    t.check({
+      oracle: resultTable(currentMembers(student.runs, "oracle")),
+      "leak-probe": resultTable(currentMembers(student.runs, "leak-probe")),
+    }, equals({
+      oracle: { "terminal-bench/cancel-async-tasks": "passed" },
+      "leak-probe": { "terminal-bench/cancel-async-tasks": "failed" },
+    })).key("harness.cancel-async-authoring.student-runs").label("Agent 自己完成正反运行（外层验收不补此事实）");
 
     turn.succeeded()
       .key("harness.cancel-async-authoring.turn-succeeded")
@@ -77,14 +79,11 @@ export default defineScoreEval({
       .key("harness.cancel-async-authoring.target-only")
       .label("只创建目标 Eval");
 
-    const protectedAssetsUnchanged = (
-      await Promise.all(
-        protectedContents.map(async ([path, expected]) =>
-          (await t.sandbox.readText(path).catch(() => undefined)) === expected
-        ),
-      )
-    ).every(Boolean);
-    t.check(protectedAssetsUnchanged, equals(true))
+    const changedAssets: string[] = [];
+    for (const [path, expected] of protectedContents) {
+      if ((await t.sandbox.readText(path).catch(() => undefined)) !== expected) changedAssets.push(path);
+    }
+    t.check(changedAssets, equals([]))
       .score(2)
       .key("harness.cancel-async-authoring.assets-unchanged")
       .label("官方题面、判据与参考答案保持原样");
@@ -103,7 +102,7 @@ export default defineScoreEval({
     const expectFailed = { "terminal-bench/cancel-async-tasks": "failed" };
     const oracle = await executeAndInspect(runCommand, "oracle", ["--rerun", "all"]);
     t.log(JSON.stringify({ outerProbe: "oracle", ...oracle }));
-    t.check(oracle.exitCode === 0 && matchesResults(oracle.run?.members ?? [], expectPassed), equals(true))
+    t.check(outcome(oracle), equals({ exitCode: 0, results: expectPassed }))
       .score(6).key("harness.cancel-async-authoring.oracle-passes")
       .label("官方参考实现通过完整官方判据");
 
@@ -118,17 +117,16 @@ export default defineScoreEval({
       t.log(JSON.stringify({ outerProbe: "fingerprint", ...fingerprint }));
       // Score invalidation separately: a fresh attempt that times out still proves
       // the old result was not reused. Keep its completion status visible below.
-      t.check(hasFreshExecutions(fingerprint.run?.members ?? [], Object.keys(expectPassed)), equals(true))
+      t.check(fingerprint.run?.members.map((m) => m.state) ?? [], equals(["executed"]))
         .score(2).key("harness.cancel-async-authoring.criteria-fingerprint")
         .label("隐藏判据变化会自动作废旧结果");
-      t.check(fingerprint.exitCode === 0
-        && matchesResults(fingerprint.run?.members ?? [], expectPassed), equals(true))
+      t.check(outcome(fingerprint), equals({ exitCode: 0, results: expectPassed }))
         .key("harness.cancel-async-authoring.fingerprint-probe-completed")
         .label("无行为变化的判据探针运行完成且参考实现仍通过");
 
       const leak = await executeAndInspect(runCommand, "leak-probe", ["--rerun", "all"]);
       t.log(JSON.stringify({ outerProbe: "leak-probe", ...leak }));
-      t.check(leak.exitCode === 1 && matchesResults(leak.run?.members ?? [], expectFailed), equals(true))
+      t.check(outcome(leak), equals({ exitCode: 1, results: expectFailed }))
         .score(3).key("harness.cancel-async-authoring.leak-probe-fails")
         .label("未见隐藏材料的负向探针保持 ordinary failed");
 
@@ -137,7 +135,7 @@ export default defineScoreEval({
         `${originalOfficialTests}\n\ndef test_harness_verifier_must_execute():\n    assert False, "outer harness verifier sentinel"\n`);
       const sentinel = await executeAndInspect(runCommand, "oracle", ["--rerun", "all"]);
       t.log(JSON.stringify({ outerProbe: "verifier-sentinel", ...sentinel }));
-      t.check(sentinel.exitCode === 1 && matchesResults(sentinel.run?.members ?? [], expectFailed), equals(true))
+      t.check(outcome(sentinel), equals({ exitCode: 1, results: expectFailed }))
         .score(2).key("harness.cancel-async-authoring.verifier-enforced")
         .label("真实测试新增失败会使 oracle ordinary failed，而非忽略退出码");
     } finally {
@@ -145,3 +143,8 @@ export default defineScoreEval({
     }
   },
 });
+
+/** 一次外层 exp 的可比较结果：退出码与该 Run 内每条 Eval 的终态。 */
+function outcome(probe: Awaited<ReturnType<typeof executeAndInspect>>) {
+  return { exitCode: probe.exitCode, results: resultTable(probe.run?.members ?? []) };
+}
