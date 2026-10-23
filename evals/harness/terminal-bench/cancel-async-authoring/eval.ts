@@ -3,7 +3,7 @@ import { commandSucceeded, equals, referencesAnyPath, toolMatch } from "niceeval
 import { loadCriteria, loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { collectResults, currentMembers, executeAndInspect, resultTable } from "../../../../lib/harness/public-results.ts";
+import { collectResults, currentMembers, executeAndInspect, verdicts } from "../../../../lib/harness/public-results.ts";
 
 const GIB = 1024 ** 3;
 
@@ -58,8 +58,8 @@ export default defineScoreEval({
     const student = await collectResults((cmd, args) => t.sandbox.runCommand(cmd, args));
     t.log(JSON.stringify({ rubric: "harness-v2", studentRunIds: student.runIds, studentRuns: student.runs }));
     t.check({
-      oracle: resultTable(currentMembers(student.runs, "oracle")),
-      "leak-probe": resultTable(currentMembers(student.runs, "leak-probe")),
+      oracle: verdicts(currentMembers(student.runs, "oracle")),
+      "leak-probe": verdicts(currentMembers(student.runs, "leak-probe")),
     }, equals({
       oracle: { "terminal-bench/cancel-async-tasks": "passed" },
       "leak-probe": { "terminal-bench/cancel-async-tasks": "failed" },
@@ -146,5 +146,5 @@ export default defineScoreEval({
 
 /** 一次外层 exp 的可比较结果：退出码与该 Run 内每条 Eval 的终态。 */
 function outcome(probe: Awaited<ReturnType<typeof executeAndInspect>>) {
-  return { exitCode: probe.exitCode, results: resultTable(probe.run?.members ?? []) };
+  return { exitCode: probe.exitCode, results: verdicts(probe.run?.members ?? []) };
 }

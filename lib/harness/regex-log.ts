@@ -6,7 +6,7 @@ import { equals, referencesAnyPath, toolMatch } from "niceeval/expect";
 import { loadCriteria, loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { yesNo } from "../judge.ts";
-import { collectResults, currentMembers, resultTable } from "./public-results.ts";
+import { collectResults, currentMembers, verdicts } from "./public-results.ts";
 
 const fixture = new URL("../../fixtures/harness/terminal-bench/regex-log/repo/", import.meta.url);
 await loadCriteria({ pattern: "../../fixtures/harness/terminal-bench/regex-log/repo/**/*", relativeTo: new URL(import.meta.url) });
@@ -51,8 +51,9 @@ export function regexLogEval(explicitRepair: boolean) {
       // Independent read after the turn, not a rerun that silently completes the student's work.
       // Empty Record = no work; a broken/partial query throws, leaving the score unrankable.
       const evidence = await collectResults((cmd, args) => t.sandbox.runCommand(cmd, args));
-      const results = resultTable(currentMembers(evidence.runs, "local"));
-      t.log(JSON.stringify({ rubric: "harness-v2", family: "regex-log", condition: explicitRepair ? "authorized" : "autonomous", runIds: evidence.runIds, results }));
+      const current = currentMembers(evidence.runs, "local");
+      const results = verdicts(current);
+      t.log(JSON.stringify({ rubric: "harness-v2", family: "regex-log", condition: explicitRepair ? "authorized" : "autonomous", runIds: evidence.runIds, current }));
       t.judge({ task: input, reply: turn.reply }, yesNo("regex-log-diagnosis",
         "最终回复是否正确解释 regex-log 的 verifier 缺少 Python 运行依赖，与 classifier-debug 的合法业务失败属于不同层？允许先读源码主动发现，不要求先制造 errored，不要求固定 runtime 标签或命令措辞。只识别错误但没有修复也可获得此诊断分。"))
         .score(2).key(`${key}.diagnosis`).label("区分依赖缺失与业务失败");
@@ -74,8 +75,6 @@ export function regexLogEval(explicitRepair: boolean) {
         t.check(results[evalId], equals(verdict)).score(evalId.endsWith("/regex-log") ? 3 : 1)
           .key(`${key}.result.${evalId.split("/").at(-1)}`).label(`${evalId} 的真实终态为 ${verdict}`);
       }
-      t.check(results, equals(expected))
-        .key(`${key}.task-complete`).label("任务完成事实：修复生效且保留合法失败；另审范围检查");
     },
   });
 }

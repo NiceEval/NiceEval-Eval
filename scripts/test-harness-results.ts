@@ -6,14 +6,14 @@ import { resolve, join } from "node:path";
 import { spawnSync } from "node:child_process";
 import { test } from "node:test";
 import {
-  collectResults, currentMembers, executeAndInspect, resultTable,
+  collectResults, currentMembers, executeAndInspect, verdicts,
   object, publicQuery, queryDocument, runRefs, runResult,
   type JsonObject, type RunCommand,
 } from "../lib/harness/public-results.ts";
 
-const matchesResults = (members: Parameters<typeof resultTable>[0], expected: Record<string, string>) =>
-  isDeepStrictEqual(resultTable(members), expected);
-const hasFreshExecutions = (members: Parameters<typeof resultTable>[0], evalIds: string[]) =>
+const matchesResults = (members: Parameters<typeof verdicts>[0], expected: Record<string, string>) =>
+  isDeepStrictEqual(verdicts(members), expected);
+const hasFreshExecutions = (members: Parameters<typeof verdicts>[0], evalIds: string[]) =>
   evalIds.length > 0 && isDeepStrictEqual(members.map((m) => [m.evalId, m.state]), evalIds.map((id) => [id, "executed"]));
 
 // Real local CLI boundary, deterministic Assertions, no LLM, Docker, network service or paid attempts.

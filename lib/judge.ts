@@ -1,8 +1,11 @@
 import { defineJudge } from "niceeval/expect";
 
+/** 二值 rubric 只有 0 与 1 两个 anchor，gate 取两者中点：判为满足才放行。 */
+export const YES = 0.5;
+
 /**
  * 二值验收 Judge：材料由调用方用语义字段显式给出（`t.judge({ reply, overview }, yesNo(...))`），
- * rubric 写明满足条件。默认材料上限放宽到能装下一份三件套源码或一组 show 切片；
+ * rubric 写明满足条件。材料上限放宽到能装下一份三件套源码或一组 show 切片；
  * 超限时 NiceEval 记 unavailable，不截断后打分。
  */
 export function yesNo(name: string, rubric: string) {

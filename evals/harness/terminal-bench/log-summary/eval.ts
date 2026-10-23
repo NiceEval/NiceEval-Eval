@@ -5,7 +5,7 @@ import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/
 
 import { loadCriteria } from "niceeval/loaders";
 import { yesNo } from "../../../../lib/judge.ts";
-import { collectResults, currentMembers, resultTable } from "../../../../lib/harness/public-results.ts";
+import { collectResults, currentMembers, verdicts } from "../../../../lib/harness/public-results.ts";
 
 await loadCriteria({ pattern: "../../../../fixtures/harness/terminal-bench/log-summary/repo/**/*", relativeTo: new URL(import.meta.url) });
 
@@ -43,7 +43,7 @@ export default defineScoreEval({
       "terminal-bench/classifier-debug": "failed",
       "terminal-bench/log-summary": "failed",
     };
-    const initialResults = resultTable(currentMembers(before.runs, "local"));
+    const initialResults = verdicts(currentMembers(before.runs, "local"));
     if (initialRun.exitCode !== 1 || !isDeepStrictEqual(initialResults, expected)) {
       throw new Error("log-summary fixture 未形成完整的 1 passed / 2 failed 初始结果，不能对 agent 判分");
     }

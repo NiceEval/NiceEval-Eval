@@ -6,14 +6,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsx scripts/typecheck.ts",
-    "install-eval": "niceeval exp install",
-    "canary": "niceeval exp install/canary",
-    "harness-eval": "niceeval exp harness",
-    "show": "niceeval show",
-    "view": "niceeval view",
-    "test:harness": "tsx --test scripts/test-harness-results.ts",
-    "harness-report": "tsx scripts/harness-report.ts",
-    "test:candidate": "tsx --test scripts/test-candidate.ts"
+    "test": "tsx --test scripts/test-*.ts",
+    "harness-report": "tsx scripts/harness-report.ts"
   },
   "devEngines": {
     "packageManager": {

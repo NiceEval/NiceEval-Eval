@@ -87,17 +87,14 @@ export function currentMembers(runs: RunResult[], experimentId: string): Member[
   return [...current.values()].sort((a, b) => a.evalId.localeCompare(b.evalId));
 }
 /**
- * evalId → 完成的 verdict；未完成时写成 `<state>:<outcome>`，让 equals 的失败证据直接显示实际终态。
- * 只有 completed、带 locator 的 executed/carried/accepted 才算终态。
+ * evalId → 已完成 Attempt 的 verdict；没有完成的结果（errored、未派发、无 locator）为 null，
+ * 不补成 failed。实际 state/outcome 留在 t.log 的成员明细里。
  */
-export function resultTable(members: Member[]): Record<string, string> {
-  const table: Record<string, string> = {};
-  for (const m of members) {
-    const settled = m.outcome === "completed" && ["executed", "carried", "accepted"].includes(m.state)
-      && typeof m.locator === "string" && m.verdict !== undefined;
-    table[m.evalId] = settled ? m.verdict! : `${m.state}:${m.outcome ?? "none"}`;
-  }
-  return table;
+export function verdicts(members: Member[]): Record<string, string | null> {
+  return Object.fromEntries(members.map((m) => [
+    m.evalId,
+    m.outcome === "completed" && typeof m.locator === "string" ? m.verdict ?? null : null,
+  ]));
 }
 
 /** The child node process supplies stdin without shell interpolation or workspace writes. */

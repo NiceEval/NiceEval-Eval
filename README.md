@@ -76,8 +76,8 @@ pnpm --silent exec niceeval exp harness/v0.19.0 --dry --json
 明确决定花费后再运行实验：
 
 ```sh
-pnpm run install-eval
-pnpm run harness-eval
+pnpm exec niceeval exp install
+pnpm exec niceeval exp harness
 ```
 
 结果诊断可优先使用公共 CLI：
@@ -194,7 +194,7 @@ provider-native SetupPrefix artifact 发布并按其声明式 identity 复用；
 
 ## 0.19 迁移验证与历史结果
 
-`pnpm run typecheck` 与 `pnpm run test:harness` 验证宿主类型和公开 CLI 的运行、修复、沿用及
+`pnpm run typecheck` 与 `pnpm test` 验证宿主类型和公开 CLI 的运行、修复、沿用及
 失效重跑链路，不调用付费模型。内层 fixture 根据候选版本选择 `agent` / `adapter`；结果检查
 按候选选择 Query v1 / v2，避免破坏 0.14 对照。0.19 的 `run.get` 同时提供计划、结果和用量。
 

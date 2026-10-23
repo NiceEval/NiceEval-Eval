@@ -65,12 +65,12 @@ A 配对能区分任务理解/自主恢复和明确授权后的执行能力。�
 
 ```sh
 pnpm run typecheck
-pnpm run test:harness
+pnpm test
 pnpm exec niceeval exp harness/canary --dry
 pnpm harness-report <fixed-run-id> [<fixed-run-id> ...]
 ```
 
-`test:harness` 用临时项目真实运行确定性 CLI，不使用 LLM 或 Docker，不写本项目历史 Record。
+`pnpm test` 用临时项目真实运行确定性 CLI，不使用 LLM 或 Docker，不写本项目历史 Record。
 它验证空结果、合法 failed、执行错误、局部修复、沿用、后续退步和证据结构错误。
 `harness-report` 只读取指定 Run，输出逐题分数、来源、覆盖和用量；不从 Score 推断边界合规，
 不将 carried/accepted 当新样本。同一 Attempt ID 跨多个 Run 出现时也只算一个独立样本。
