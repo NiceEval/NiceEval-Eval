@@ -50,9 +50,9 @@ export function regexLogEval(explicitRepair: boolean) {
         .key(`${key}.changed-only-config`).label("范围检查：只允许修改运行配置");
       // agent 收工后独立读取 local 的当前结果，不替它重跑。没跑过就是没有 cell。
       const local = await query((script) => t.sandbox.runShell(script), { kind: "experiment.get", experimentId: "local" });
-      const cells: { evalId: string; members: { publication?: { verdict?: string; attemptLocator?: string } }[] }[] =
+      const cells: { evalId: string; members: { verdict?: string; publication?: { verdict?: string; attemptLocator?: string } }[] }[] =
         local?.experiment.cells ?? [];
-      const results = Object.fromEntries(cells.map((c) => [c.evalId, c.members[0]?.publication?.verdict ?? null]));
+      const results = Object.fromEntries(cells.map((c) => [c.evalId, c.members[0]?.verdict ?? c.members[0]?.publication?.verdict ?? null]));
       const verified = { runIds: local?.selection.selectedRunIds ?? [], results };
       t.log(JSON.stringify({ rubric: "harness-v2", family: "regex-log", condition: explicitRepair ? "authorized" : "autonomous", ...verified }));
       t.judge({ task: input, reply: turn.reply }, yesNo("regex-log-diagnosis",

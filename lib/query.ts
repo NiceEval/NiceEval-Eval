@@ -1,5 +1,5 @@
 /**
- * 在被测项目里调用它自己安装的 niceeval CLI。只负责传输：返回 `niceeval.query/v2` 文档或
+ * 在被测项目里调用它自己安装的 niceeval CLI。只负责传输：发现协议版本后返回 Query 文档或
  * `exp --json` receipt 原样字段，不认识任何业务概念；判据写在各 Eval 正文里。
  *
  * `shell` 在被测项目根目录执行一段 sh（Eval 里是 `(s) => t.sandbox.runShell(s)`）。
@@ -8,10 +8,28 @@
 
 export type Shell = (script: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
 
-// query 文档是 CLI 的公开 JSON；字段按 niceeval.query/v2 直接读取。
+// query 文档是 CLI 的公开 JSON；稳定版 v2 与 Canary v3 的字段由各判据按协议读取。
 export type QueryDocument = any;
 
 const CLI = "./node_modules/.bin/niceeval";
+const discoveries = new WeakMap<Shell, Promise<{ protocol: string; operations: { id: string }[] }>>();
+
+async function discover(shell: Shell) {
+  let pending = discoveries.get(shell);
+  if (pending === undefined) {
+    pending = (async () => {
+      const result = await shell(`${CLI} query discover`);
+      const doc = JSON.parse(result.stdout);
+      if (result.exitCode !== 0 || doc.outcome !== "discovery" ||
+          !["niceeval.query/v2", "niceeval.query/v3"].includes(doc.protocol) || !Array.isArray(doc.operations)) {
+        throw new Error(`niceeval query discovery 不支持：${result.stderr || result.stdout}`);
+      }
+      return doc as { protocol: string; operations: { id: string }[] };
+    })();
+    discoveries.set(shell, pending);
+  }
+  return pending;
+}
 
 function quote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
@@ -23,7 +41,11 @@ function quote(value: string): string {
  * 让外层 Attempt 记为 errored，而不是把读不到的证据当成零分。
  */
 export async function query(shell: Shell, operation: Record<string, unknown>): Promise<QueryDocument | null> {
-  const request = JSON.stringify({ protocol: "niceeval.query/v2", operation });
+  const discovery = await discover(shell);
+  if (!discovery.operations.some(({ id }) => id === operation.kind)) {
+    throw new Error(`niceeval query 未提供 operation：${operation.kind}`);
+  }
+  const request = JSON.stringify({ protocol: discovery.protocol, operation });
   const result = await shell(`printf '%s' ${quote(request)} | ${CLI} query run --request -`);
   let doc: QueryDocument;
   try {

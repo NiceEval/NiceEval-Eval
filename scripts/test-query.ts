@@ -7,7 +7,7 @@ import { test } from "node:test";
 import { exp, query, type Shell } from "../lib/query.ts";
 
 // 真实本地 CLI，确定性断言，不调用 LLM、Docker 或付费 Attempt。
-// 这里固定的是各 Eval 直接读取的 niceeval.query/v2 字段与 exp receipt 语义。
+// 这里固定的是各 Eval 直接读取的 稳定版 v2 / Canary v3 的公开字段与 exp receipt 语义。
 test("Eval 读取的 query 字段：当前结果、局部修复、沿用与判据失效", { timeout: 120_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "niceeval-query-contract-"));
   const shell: Shell = async (script) => {
@@ -19,8 +19,8 @@ test("Eval 读取的 query 字段：当前结果、局部修复、沿用与判�
 export default defineEval({test(t){${body}}});\n`;
   const current = async () => Object.fromEntries(
     ((await query(shell, { kind: "experiment.get", experimentId: "local" }))?.experiment.cells ?? [])
-      .map((c: { evalId: string; members: { publication?: { verdict?: string } }[] }) =>
-        [c.evalId, c.members[0]?.publication?.verdict ?? null]),
+      .map((c: { evalId: string; members: { verdict?: string; publication?: { verdict?: string } }[] }) =>
+        [c.evalId, c.members[0]?.verdict ?? c.members[0]?.publication?.verdict ?? null]),
   );
   const run = async (args: string[]) => {
     const { exitCode, runIds } = await exp(shell, args);
@@ -61,8 +61,8 @@ send(){throw new Error('No model invocation is allowed in this contract test')}}
     assert.deepEqual({ exitCode: repaired.exitCode, results: repaired.results }, { exitCode: 0, results: { broken: "passed" } });
     assert.deepEqual(await current(), { broken: "passed", business: "failed", good: "passed" }, "局部修复与较早的对照结果组合成当前结果");
     const project = (await query(shell, { kind: "project.get" })).project;
-    const publications = project.cells.flatMap((cell: { evalId: string; members: { publication: { attemptLocator?: string; verdict?: string; originRunId?: string } }[] }) =>
-      cell.members.map((member) => ({ evalId: cell.evalId, ...member.publication })),
+    const publications = project.cells.flatMap((cell: { evalId: string; members: { verdict?: string; publication: { attemptLocator?: string; verdict?: string; originRunId?: string } }[] }) =>
+      cell.members.map((member) => ({ evalId: cell.evalId, ...member.publication, verdict: member.verdict ?? member.publication.verdict })),
     );
     assert.deepEqual(Object.fromEntries(publications.map((p: { evalId: string; verdict?: string }) => [p.evalId, p.verdict])),
       { broken: "passed", business: "failed", good: "passed" });
@@ -93,7 +93,7 @@ t.check(true, equals(true));}});\n`);
 
     const runIds = (await query(shell, { kind: "run.list" })).runs.map((r: { runId: string }) => r.runId);
     assert.ok(runIds.includes(first.runId));
-    await assert.rejects(query(shell, { kind: "no.such.operation" }), /证据不可用|JSON/);
+    await assert.rejects(query(shell, { kind: "no.such.operation" }), /未提供 operation/);
   } finally {
     await rm(root, { recursive: true, force: true });
   }

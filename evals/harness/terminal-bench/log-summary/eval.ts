@@ -35,8 +35,8 @@ export default defineScoreEval({
     const initial = await exp(shell, ["local"]);
     const local = await query(shell, { kind: "experiment.get", experimentId: "local" });
     const initialResults = Object.fromEntries(
-      (local?.experiment.cells ?? []).map((c: { evalId: string; members: { publication?: { verdict?: string } }[] }) =>
-        [c.evalId, c.members[0]?.publication?.verdict ?? null]),
+      (local?.experiment.cells ?? []).map((c: { evalId: string; members: { verdict?: string; publication?: { verdict?: string } }[] }) =>
+        [c.evalId, c.members[0]?.verdict ?? c.members[0]?.publication?.verdict ?? null]),
     );
     const expected = {
       "terminal-bench/classifier-debug": "failed",

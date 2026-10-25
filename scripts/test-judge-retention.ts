@@ -75,14 +75,21 @@ export default defineScoreEval({async test(t){
     const discovery = JSON.parse((await cli(["query", "discover"])).stdout);
     assert.ok(discovery.operations.some((operation: { id: string }) => operation.id === "run.get"));
     await writeFile(join(root, "request.json"), JSON.stringify({
-      protocol: "niceeval.query/v2", operation: { kind: "run.get", runId: receipt.createdRunIds[0] },
+      protocol: discovery.protocol, operation: { kind: "run.get", runId: receipt.createdRunIds[0] },
     }));
     const result = JSON.parse((await cli(["query", "run", "--request", join(root, "request.json")])).stdout);
     assert.equal(result.outcome, "success");
     assert.deepEqual(result.issues, []);
     assert.equal(result.run.plannedAttempts.length, 1);
     assert.equal(result.run.plannedAttempts[0].verdict, "passed");
-    assert.deepEqual(result.run.plannedAttempts[0].score, { earned: 34, possible: 34, state: "complete" });
+    const score = result.run.plannedAttempts[0].score;
+    if (discovery.protocol === "niceeval.query/v3") {
+      assert.equal(score.state, "available");
+      assert.equal(score.value, 34);
+      assert.equal(score.bounds.max, 34);
+    } else {
+      assert.deepEqual(score, { earned: 34, possible: 34, state: "complete" });
+    }
     assert.equal(calls, 34);
     assert.deepEqual(errors, []);
   } finally {

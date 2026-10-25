@@ -30,7 +30,6 @@ import { loadRepoEnv } from "./env.ts";
 import {
   TARGET_APP_ENV_PATH,
   provisionTargetAppEnv,
-  teardownTargetAppProxy,
 } from "./target-app-env.ts";
 
 const GIB = 1024 ** 3;
@@ -250,10 +249,6 @@ const provisionTargetAppCommand = defineSandboxCommand(
   },
   async (sandbox, context) => {
     await provisionTargetAppEnv(sandbox, context);
-    // 捕获同一个 facade，避免 cleanup 阶段的新 facade 破坏 helper 以对象 identity 记的 WeakMap。
-    context.onCleanup(async () => {
-      await teardownTargetAppProxy(sandbox);
-    });
   },
 );
 

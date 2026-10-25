@@ -268,12 +268,12 @@ export default defineScoreEval({
         .key("install.evidence.real-run").label("agent 真实运行过自己的 Experiment").orStop();
       const project = (await query(shell, { kind: "project.get" })).project;
       const attempts: { experimentId: string; evalId: string; locator?: string; verdict?: string }[] = project.cells.flatMap(
-        (cell: { experimentId: string; evalId: string; members: { publication: { attemptLocator?: string; verdict?: string } }[] }) =>
+        (cell: { experimentId: string; evalId: string; members: { verdict?: string; publication: { attemptLocator?: string; verdict?: string } }[] }) =>
           cell.members.map((member) => ({
             experimentId: cell.experimentId,
             evalId: cell.evalId,
             locator: member.publication.attemptLocator,
-            verdict: member.publication.verdict,
+            verdict: member.verdict ?? member.publication.verdict,
           })),
       );
       await t.check(attempts.length, greaterThan(0))

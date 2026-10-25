@@ -73,8 +73,8 @@ let listener: SharedListener | undefined;
 let listenerReady: Promise<SharedListener> | undefined;
 
 type TargetAppContext = Pick<
-  Omit<SandboxCommandContext, "onCleanup">,
-  "signal" | "progress"
+  SandboxCommandContext,
+  "signal" | "progress" | "onCleanup"
 >;
 
 /** 创建宿主进程内 Attempt 级代理，并把可安全泄漏的连接信息写进 sandbox。 */
@@ -82,6 +82,7 @@ export async function provisionTargetAppEnv(
   sandbox: SandboxCommandTarget,
   ctx: TargetAppContext,
 ): Promise<void> {
+  ctx.signal.throwIfAborted();
   loadRepoEnv();
   for (const name of REQUIRED_HOST_VARS) {
     if (!process.env[name]) throw new Error(`${ENV_FILE} 里缺 ${name}，目标应用没有可用的 LLM 出口。`);
@@ -98,11 +99,12 @@ export async function provisionTargetAppEnv(
     model: process.env.TARGET_APP_MODEL!,
   });
   proxies.set(sandbox, handle);
-
-  const abort = () => { void closeProxy(sandbox); };
-  handle.detachAbort = () => ctx.signal.removeEventListener("abort", abort);
-  ctx.signal.addEventListener("abort", abort, { once: true });
   try {
+    ctx.onCleanup(() => closeProxy(sandbox));
+    const abort = () => { void closeProxy(sandbox); };
+    handle.detachAbort = () => ctx.signal.removeEventListener("abort", abort);
+    ctx.signal.addEventListener("abort", abort, { once: true });
+    ctx.signal.throwIfAborted();
     await sandbox.writeText(
       TARGET_APP_ENV_PATH,
       [
@@ -112,6 +114,7 @@ export async function provisionTargetAppEnv(
         "",
       ].join("\n"),
     );
+    ctx.signal.throwIfAborted();
 
     let health = await sandbox.runCommand(
       "curl",
@@ -127,6 +130,7 @@ export async function provisionTargetAppEnv(
     if (health.exitCode !== 0 || health.stdout.trim() !== handle.healthNonce) {
       throw new Error("目标应用短期代理无法从 Incus sandbox 访问；这是环境 setup 问题。");
     }
+    ctx.signal.throwIfAborted();
     ctx.progress({ message: "目标应用短期 LLM 代理已就绪" });
   } catch (error) {
     await closeProxy(sandbox);
