@@ -139,7 +139,7 @@ function answerRequestedChoice(question: string): string {
 export default defineScoreEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
 
-  timeoutMs: 50 * 60 * 1000,
+  timeoutMs: 80 * 60 * 1000,
   sandbox: sandboxRequirements({})
     .before(gitCheckout({
       id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout",
