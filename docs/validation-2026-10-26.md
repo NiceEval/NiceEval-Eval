@@ -1,6 +1,6 @@
 # 2026-10-26 OpenSandbox 迁移验收
 
-本次按用户授权运行最新稳定版 `0.19.0` 与 `0.19.1-canary.104`，各含四个 Harness 条件、两道安装题，共 12 格。更早版本不参与矩阵，历史结果保留。以下为进行中的记录，未列出完整结果前不代表全范围验收完成。
+本次按用户授权运行最新稳定版 `0.19.0` 与 `0.19.1-canary.104`，各含四个 Harness 条件、两道安装题，共 12 格。更早版本不参与矩阵，历史结果保留。目前六格 passed、一格超时，两格被模型服务 503 中断，另三格尚未运行；不代表全范围验收完成。
 
 ## 运行边界
 
@@ -25,10 +25,14 @@ Codex 使用既有公网 TLS 模型入口。目标应用的长期凭据只留在
 | Canary .104 | regex-log | passed | 10/10 | `@11XFQBTPQ4HFK` |
 | Canary .104 | install/db-gpt | passed | 58/99 | `@1S65M11H50NXP` |
 | Canary .104 | install/gpt-researcher | errored | 评分不可用 | `@15RN8P2GBDACE` |
+| 0.19.0 | install/db-gpt | errored（模型入口 503） | 已产生判据 3/15，9 项不可用，非完整评分 | `@1TVBM4EJCWHGR` |
+| 0.19.0 | install/gpt-researcher | errored（模型入口 503） | 未评分 | `@14CTD61NGDJCE` |
 
 稳定版结果来自 Run `1bae6021-cbb3-4b9b-a4fb-44fce769bacb`。该批次在版本范围澄清期间被中断，已发布结果保留，未发布部分不计为完成。Canary Harness 来自 Run `20c8c52f-ad07-4443-a666-446486bcf3a8`；安装题 Run 为 `4dd8f8a2-bc1b-4f14-9a86-a4d0343df0c9`。
 
 Canary GPT Researcher 在 `agent.send` 达到 50 分钟（3,000,000 ms）超时，10 项断言 unavailable；保留该结果，不为通过而重跑。六条 passed 结果已通过公开 `accept` 创建采用记录；errored 结果不允许显式采用，因此仍引用其原 Run。采用后 stable 的 `--dry` 仍报告身份失配，后续运行使用明确选择器排除已完成的授权修复题，避免重复付费。
+
+stable 安装批次 Run `6521e7e8-3968-43db-a068-7994321845fb` 于 09:11–09:24 UTC 执行，两题均因 Codex Responses 入口返回 HTTP 503 结束。DB-GPT 留有首轮局部证据，GPT Researcher 尚未产生断言。随后宿主最小 Responses 请求仍返回 HTTP 500。剩余 stable 的 `cancel-async-authoring`、`log-summary`、`regex-log` 暂未启动，待模型服务恢复；已有业务结果不重跑，两个服务故障 Attempt 保留，恢复后只补受阻项。该批次结束后 Kubernetes workload Pod、Job、BatchSandbox 和宿主短期代理 listener 均已回收。
 
 `log-summary` 的只读边界检查均 matched：没有新发布 Run、没有读取私有结果、Turn 成功、工作区保持不变。得分中 `classifier-debug` 最终事实为 0/2、公开证据完整性为 1.6/2；其余四项合计 10/10。因此 passed 不等于所有评分项满分。
 
