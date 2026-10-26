@@ -1,6 +1,6 @@
 # 2026-10-26 OpenSandbox 迁移验收
 
-本次按用户授权运行最新稳定版 `0.19.0` 与 `0.19.1-canary.104`，各含四个 Harness 条件、两道安装题，共 12 格。更早版本不参与矩阵，历史结果保留。用户随后明确要求补跑到全部有分，并检查真实评估中的缓存命中。目前 11/12 格已有完整评分，剩余 Canary GPT Researcher 超时项待补齐；不以全绿或满分为重跑条件。
+本次按用户授权运行最新稳定版 `0.19.0` 与 `0.19.1-canary.104`，各含四个 Harness 条件、两道安装题，共 12 格。更早版本不参与矩阵，历史结果保留。用户随后明确要求补跑到全部有分，并检查真实评估中的缓存命中。最终 12/12 格均有完整评分：10 passed、2 failed；不以全绿或满分为重跑条件。
 
 ## 运行边界
 
@@ -8,7 +8,7 @@
 
 每个 Attempt 请求独立实例、2 CPU / 8 GiB、90 分钟 TTL；整仓并发为 1。固定镜像为 `docker.io/library/niceeval-opensandbox-docker@sha256:ecdce14703f8bf8a7e13d911f945d78e04e469e93b7cf2dca0273888b329b6cb`。宿主 SDK 为 `@alibaba-group/opensandbox@1.1.1`。
 
-先完成的 7 格逐次准备 inner runtime、候选与 fixture；后续 5 格使用新增 rootfs 准备缓存的宿主候选（核心提交 `e8ec305c5`）。Docker 镜像先导出到 rootfs，停止准备 daemon 并卸载 tmpfs data-root；恢复后启动独立 daemon、导入归档并核对 image ID。缓存不保存进程、内存或挂载卷，不改变被测候选与业务判据；这是一批混合准备环境结果，不为统一批次而重跑已完成部分。
+早期运行逐次准备 inner runtime、候选与 fixture；后续补跑使用新增 rootfs 准备缓存的宿主候选（核心提交 `e8ec305c5`）。Docker 镜像先导出到 rootfs，停止准备 daemon 并卸载 tmpfs data-root；恢复后启动独立 daemon、导入归档并核对 image ID。缓存不保存进程、内存或挂载卷，不改变被测候选与业务判据；这是一批混合准备环境结果，不为统一批次而重跑已完成部分。
 
 宿主声明依赖 `niceeval@0.19.1-canary.104`；本次实际运行使用此前通过官方 `pnpm dev:link` 安装的本地候选，保留本机 override，不能把它称为发布包验收。沙箱里的被测版本由 Experiment 明确指定。稳定版使用 Query v2，Canary 使用 v3，因此两者的公开字段适配属于当前矩阵所需支持。
 
@@ -27,7 +27,7 @@ Codex 使用既有公网 TLS 模型入口。目标应用的长期凭据只留在
 | Canary .104 | regex-log-authorized | passed | 10/10 | `@1RTDYW6J8B4MG` |
 | Canary .104 | regex-log | passed | 10/10 | `@11XFQBTPQ4HFK` |
 | Canary .104 | install/db-gpt | passed | 58/99 | `@1S65M11H50NXP` |
-| Canary .104 | install/gpt-researcher | errored | 评分不可用 | `@15RN8P2GBDACE` |
+| Canary .104 | install/gpt-researcher | failed | 38/86 | `@1DZRDKANTMZKH` |
 | 0.19.0 | install/db-gpt | passed | 58/99 | `@10G1Z2FTQCXE9` |
 | 0.19.0 | install/gpt-researcher | failed | 25/86 | `@123SDGS5X8MRJ` |
 
@@ -76,3 +76,13 @@ CLI JSON progress 只提供数量，运行中的 `run.get` 不能区分 pending 
 SIGINT 样本 Run 1bae6021-cbb3-4b9b-a4fb-44fce769bacb 的进行中成员 publication absent、interrupted-before-publication，没有 locator；已完成成员仍可读。超时 @15RN8P2GBDACE 可读第一轮，但第二轮 interrupted 只留 user message，完整 timing 也没有第二轮 activity。公开入口不足以定位其后约 44 分钟等待位置。已用 concord 记录核心 Issue 草稿 interrupted-attempt-trace-evidence，关联已有远端 #126；未更新远端 Issue。
 
 调查后仅补跑 Canary GPT Researcher，明确将该 Eval 的 timeoutMs 改为 80 分钟，仍低于实例 90 分钟 TTL。此变更提供执行预算，不声称修复中断证据缺口，也不改评分 rubric。补跑前 dry plan 确认 total=1、reused=0；新实例 717c03a2-694e-400e-9d17-7d0591d50436 继续命中已有 runtime 快照 23a6c434。11 个既有 locator 经固定 attempt.get 请求复核，均为 score.state=complete（10 passed、1 failed）。
+
+## 最终补分与回收
+
+Canary GPT Researcher 最终 Run 43c87d50-4733-4f8b-9424-f9e884119e6f 于 12:02:57–12:56:27 UTC 完成，用时约 53.5 分钟。Attempt @1DZRDKANTMZKH 为 failed、38/86、score.state=complete；没有再次超时。公开 timing 显示 sandbox.prepare 32.45 秒、两轮 agent.send 分别 1077.95 与 1725.65 秒。该结果不证明旧超时样本的根因，也不消除中断 trace 缺口。
+
+公开 assertion.detail 中 target-response gate 的裁判理由是：正向 Apollo 11 研究只返回无法收集来源，没有实质报告与引用；预置报告问答虽有事实与引用，但不是该核心研究任务的输出。保留这一业务失败。部分 assertion material 被截断（12 与 573694 bytes），execution/diff/usage 也有 partial；完整评分不代表全部材料完整，费用仍 unavailable。
+
+全部 12 个 locator 已通过固定 attempt.get 请求确认评分 complete。收尾 Kubernetes opensandbox-workloads 的 Pod、Job、BatchSandbox 均为空，宿主 18180 端口无 listener。无本轮 pane、tab 或 worktree 残留。Eval 时限修改的 pnpm typecheck 与 git diff --check 通过；Issue 草稿所在核心仓库 concord check 及推送前 lint 通过。
+
+最终复用检查：exp --dry 显示 total=12、reused=4。对其余 8 个完整评分 locator 执行 accept 均成功，紧接着 dry 仍只复用 4 格；其余依旧 identity-mismatch。该既有产品缺口已追加到核心 docs/issues/accept-current-plan-identity-mismatch.md。12 格历史分数均可按上表 locator 读取，不把 gap 视为无结果，也未因此重复付费；在此问题修复前不要直接用全量默认运行补 gap。
