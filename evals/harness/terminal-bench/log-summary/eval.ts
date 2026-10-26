@@ -9,21 +9,12 @@ import { exp, query } from "../../../../lib/query.ts";
 
 await loadCriteria({ pattern: "../../../../fixtures/harness/terminal-bench/log-summary/repo/**/*", relativeTo: new URL(import.meta.url) });
 
-const GIB = 1024 ** 3;
-
 export default defineScoreEval({
   description: "只凭公开结果区分 Terminal-Bench agent 产出错误与过紧 eval",
   tags: ["harness", "harness-v2", "terminal-bench", "diagnosis", "failed", "single-turn"],
   timeoutMs: 20 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
-  sandbox: sandboxRequirements({
-    docker: {
-      api: "docker/v1",
-      compose: "v2",
-      isolation: "dedicated-kernel/v1",
-      minimumDataBytes: 4 * GIB,
-    },
-  }).before(uploadDirectory({
+  sandbox: sandboxRequirements({}).before(uploadDirectory({
     id: "niceeval-eval.harness.log-summary.fixture",
     source: new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url),
     to: ".",

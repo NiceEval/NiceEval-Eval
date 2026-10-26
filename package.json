@@ -18,10 +18,8 @@
   },
   "devDependencies": {
     "@alibaba-group/opensandbox": "1.1.1",
-    "@types/dockerode": "^3.3.47",
     "@types/node": "^26.1.1",
-    "dockerode": "^4.0.12",
-    "niceeval": "0.19.0",
+    "niceeval": "0.19.1-canary.104",
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "tsx": "^4.23.1",

@@ -25,7 +25,8 @@ for (const runId of runIds) {
     const source = sourceMembers.find((s) => s.plannedAttemptId === slot.plannedAttemptId);
     const ref = source?.attempt ?? undefined;
     return {
-      evalId: slot.evalId, attemptOrdinal: slot.attemptOrdinal, locator: member.locator,
+      evalId: slot.evalId, attemptOrdinal: slot.attemptOrdinal,
+      locator: member.publication?.attemptLocator ?? member.locator,
       action: source?.action, originRunId: ref?.originRunId, attemptId: ref?.attemptId,
       newSample: source?.action === "executed" && ref?.originRunId === runId,
       outcome: member.outcome, verdict: member.verdict, score: member.score, coverage: member.coverage, usage: member.usage,

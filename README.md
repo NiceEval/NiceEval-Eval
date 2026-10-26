@@ -3,8 +3,8 @@
 用 NiceEval 评估 coding agent 是否能正确安装、迁移和实际使用 NiceEval。这里评的是
 NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试。
 
-主仓库固定消费 npm 发布的 `niceeval@0.19.0`，不再通过 workspace override 链接相邻源码。
-进入 sandbox 的被测候选仍由各 Experiment 明确指定，旧版对照继续保留。
+主仓库依赖固定为 npm 发布的 `niceeval@0.19.1-canary.104`；本地候选验证可使用官方 `pnpm dev:link`。
+被测对象保留最新稳定版 `0.19.0` 与 Canary；Canary 在 Experiment 加载时解析为精确版本。更早版本不参与矩阵。
 
 ## 实验入口
 
@@ -34,11 +34,11 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 ## harness/ 的共享基建与独立 repo
 
-Install 与 Harness 使用同一份只含 Node、pnpm、Docker/Compose 和 guest-init 的通用 Incus base。
-Experiment 的声明式 TS action 从固定 digest 构建 inner runtime tags、上传项目 seed，再按版本安装候选
-NiceEval、运行 `niceeval init` 并物化 workspace；NiceEval 在 Attempt 派发前逐层发布并复用这些业务 artifact。
-base 本身的固定 Ubuntu 输入、构建、block volume 启动验证和安全升级流程位于
-[`sandbox/incus-base/`](sandbox/incus-base/README.md)。
+Install 与 Harness 使用 it-infra 部署的固定 digest OpenSandbox/Kata 镜像。
+每个 Attempt 独立创建沙箱，显式启动 guest Docker，并检查 Node、pnpm、Docker 和 Compose。
+Experiment 的声明式 TS action 从固定 digest 准备 inner runtime tags、上传项目 seed，再按版本安装候选
+NiceEval、运行 `niceeval init` 并物化 workspace。支持 rootfs Snapshot 的本地 NiceEval 候选可缓存这些准备步骤；
+inner runtime 先导出为镜像归档，停止准备用的 Docker daemon 并卸载临时 data-root，恢复后再启动独立 daemon 导入归档。
 三个任务家族分别维护 `fixtures/harness/<case>/repo/`，fixture action 只把所属小 repo 覆盖进已准备
 workspace，不在镜像里共享业务 fixture。项目不携带
 `.niceeval`，结果仍由被测 agent 当场运行产生。完整设计见
@@ -68,8 +68,8 @@ pnpm exec niceeval list
 只生成计划、不启动付费 agent：
 
 ```sh
-pnpm --silent exec niceeval exp install/v0.19.0 --dry --json
-pnpm --silent exec niceeval exp harness/v0.19.0 --dry --json
+pnpm --silent exec niceeval exp install/canary --dry --json
+pnpm --silent exec niceeval exp harness/canary --dry --json
 ```
 
 明确决定花费后再运行实验：
@@ -104,39 +104,27 @@ Judge 使用 `turn.closeQA(judgeEvidence(material), criteria)` 或
 材料只是公开 Turn 的传输形状，不匹配 `show` JSON，也不替 agent 重跑 experiment。
 canned agent 只用于稳定复现，不代表真实模型智力。
 
-## 本地 Incus dogfood
+## 本地 OpenSandbox 运行
 
-本机默认走 development Incus domain：`project` `niceeval-eval-dev`、`storagePool`
-`niceeval-sandbox-dev`，并显式 `acceptDevelopmentDomain: true`。这条路径的结果
-**non-comparable**，不能当成 reference 通过。实验直接固定 it-infra 已部署并信任的通用
-`niceeval-eval-base@sha256:...`；不需要项目 `.env`。NiceEval 不 build / import / pull base，
-也不接受 `ubuntu:latest` 一类可变引用；业务 SetupPrefix 可以在 guest 内拉取固定 digest 的
-inner runtime。可复现 builder 与升级步骤见
-[`sandbox/incus-base/`](sandbox/incus-base/README.md)。
+宿主配置 `OPEN_SANDBOX_DOMAIN` 与 `OPEN_SANDBOX_API_KEY`，只用于连接服务，不传入 guest。
+`lib/experiment-runtime.ts` 固定已部署镜像 digest，申请 2 CPU / 8 GiB 和 90 分钟 TTL；
+每个 Attempt 正常结束立即调用销毁，整仓并发为 1，以匹配当前部署配额。
 
-被测 Codex Agent 默认使用只向 Incus VM 暴露 Responses API 的集群专用 TLS endpoint
-`https://sub2api.350124.xyz:18443/v1`。每个 Attempt 在命中业务缓存后重放受控 hosts
-映射并验证系统 CA、固定 ClusterIP 和精确路由；映射不会进入 SetupPrefix artifact。
-`NICEEVAL_INCUS_CODEX_BASE_URL` 可覆盖 base URL：
+2026-10-26 用户明确接受普通执行路径，不要求 `docker/v1` 强生命周期保证。
+因此 Eval 不声明该 capability；仍实际验证 Docker/Compose，保留所有业务判据。
+Kubernetes 异步删除与创建响应丢失的上游边界仍存在，运行成功不作为强终止保证的认证。
+历史 Incus 构建材料保留在 `sandbox/incus-base/`，不参与当前运行。
 
-```sh
-export NICEEVAL_INCUS_CODEX_BASE_URL='https://sub2api.350124.xyz:18443/v1'
-```
-
-隔离 VM 无法访问仅限内网或 Tailnet 的 endpoint，不能把宿主 Tailscale 地址
-`100.67.1.82:443` 配给它。鉴权仍只通过 `CODEX_API_KEY` 进入 Attempt；不要把 token 写进
-SetupPrefix、镜像、声明式 action 或文档。
-
-reference domain（`niceeval-eval` / `niceeval-evals`）若未部署，
-`niceeval sandbox provider doctor incus` 与未接受 development 的 dry plan 会给出 typed
-red（例如 `incus-undeployed`）。本机开发检查用
-`niceeval sandbox provider doctor incus --development`。
+被测 Codex 使用 `https://s2a.niceeval.com/v1`，可通过
+`NICEEVAL_OPENSANDBOX_CODEX_BASE_URL` 显式覆盖。`CODEX_API_KEY` 仍由官方 adapter 注入。
+目标应用长期 key 只留在宿主；Attempt 级代理绑定 `10.42.0.1:18180`，guest 仅持有短期 token。
+现有 Tailnet 信任规则仍适用，代理通过 token 认证；不把绑定地址当作独占入站接口保证。
 
 ## 候选版本与实验矩阵
 
 - `install/v0.19.0`、`install/canary`：agent 收到官网首页那句 prompt，URL 指向该版本 tag 下的 INIT.md，
   另加一句版本要求（INIT.md 默认安装 npm latest）。
-- `harness/v0.19.0`：固定 `niceeval@0.19.0` 稳定版；
+- `harness/v0.19.0`：固定最新稳定版 `niceeval@0.19.0`；
 - `harness/canary`：每次加载时从 npm 全部已发布版本按 semver 取最大值（含预发布版，同一 core 下正式版优先）。
   Harness 的项目已装好候选并运行过 `niceeval init`，agent 只能依靠随包文档。
 
@@ -144,8 +132,7 @@ red（例如 `incus-undeployed`）。本机开发检查用
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
 
 当前 install Experiment 选择 `install/` 的两道安装题。
-安装实验统一使用一次性 Incus VM（Docker-in-disposable-VM，V1 DestroyOnly）。共享业务
-SetupPrefix 从固定 digest 构建并验证联网 Sandbox 中的本地缓存镜像
+安装实验统一使用一次性 OpenSandbox/Kata 实例。准备步骤从固定 digest 构建并验证本地镜像
 `cache.invalid/niceeval-install/runtime:python`；后续
 Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEval、应用依赖、服务、
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
@@ -156,9 +143,9 @@ Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 成本比较计入所有运行的实际可用用量；缺失费用保持未知，不按零计算。
 多轮取证与回收规则见[安装题自主运行](docs/install-autonomous-runs.md)。
 
-Harness 当前启用 `harness/v0.19.0` 与 `harness/canary`。
+Harness 启用 `harness/v0.19.0` 与 `harness/canary`。
 每个候选运行四个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。
-完整矩阵最多 8 个 coding-agent attempts，另计 Judge 调用。全仓并发上限为 2；
+Harness 共 8 个 coding-agent attempts，全仓共 12 格，另计 Judge 调用。全仓并发上限为 1；
 只想检查计划时使用 `--dry`。新评分基线与发布比较见上方 Harness 说明。
 
 ## 安装评估如何计分
@@ -191,10 +178,9 @@ Tavily key。真实响应评分结合 agent 交接时的 Adapter/Eval 源码与�
 
 `terminal-bench/regex-log` 与 `terminal-bench/log-summary` 各有自己的
 `fixtures/harness/<case>/repo/`。
-它们共享唯一的通用 Incus base，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果。
+它们使用同一个通用 OpenSandbox 镜像，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果。
 Experiment 的声明式 `before` action 从固定 digest 准备 inner runtime tag、上传项目 seed、按候选
-版本运行 `niceeval init` 并物化只读依赖树，随后才上传所属 fixture。每一层成功准备后都作为
-provider-native SetupPrefix artifact 发布并按其声明式 identity 复用；本地 tag 的
+版本运行 `niceeval init` 并物化只读依赖树，随后才上传所属 fixture。每个 Attempt 都重新准备；本地 tag 的
 `--pull=never` 冒烟仍验证 node/git/python3 与 `.invalid` 缺失即失败的契约。
 
 仓库不验证 NiceEval 核心实现本身；核心 API、CLI 或报告问题应在相邻 `NiceEval/` 修复。
@@ -202,13 +188,14 @@ provider-native SetupPrefix artifact 发布并按其声明式 identity 复用；
 
 ## 本地验证与历史结果
 
-本次真实运行、评分修复、历史结果与费用限制见 [2026-10-23 全范围验收](docs/validation-2026-10-23.md)。
+OpenSandbox 迁移的当前进展、得分与限制见 [2026-10-26 验收记录](docs/validation-2026-10-26.md)。
+此前真实运行、评分修复、历史结果与费用限制见 [2026-10-23 全范围验收](docs/validation-2026-10-23.md)。
 
 `pnpm run typecheck` 与 `pnpm test` 验证宿主类型，并用真实本地 CLI 固定各 Eval 读取的
-`niceeval.query/v2` 字段（当前结果、局部修复、沿用与判据失效），不调用付费模型。
-候选最低为 0.19；低于 0.19 的对照组已停用。
+`niceeval.query/v2` / `v3` 字段（当前结果、局部修复、沿用与判据失效），不调用付费模型。
+历史对照结果保留，经当前宿主 CLI 读取。最新稳定版仍使用 Query v2，因此保留 v2/v3 的薄适配；不再维护更早版本的运行配置。
 
 若旧 `.niceeval` 报 `record-schema-unsupported` 或旧 ProjectDatabase owner 未释放，保留完整
 现场，按随包 `tutorials/agent-feedback-loop.mdx` 与 `troubleshooting/debugging.mdx` 在不含
-`.niceeval` 的项目副本验证。不要删除锁或历史结果来绕过检查。静态计划通过不代表真实 Incus
+`.niceeval` 的项目副本验证。不要删除锁或历史结果来绕过检查。静态计划通过不代表真实 OpenSandbox
 或模型评估已通过；真实运行仍需明确成本授权。

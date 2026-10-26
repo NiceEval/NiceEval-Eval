@@ -25,16 +25,16 @@ sandbox agent 在固定 runtime 缓存里确定性重放 task 产出；authoring
 
 共享的是运行基建，不是题目内容：
 
-- 唯一的通用 Incus base 只提供 Node、pnpm、Docker/Compose 与 guest-init；它不按 install 或
+- 通用 OpenSandbox 镜像只提供 Node、pnpm、Python、Docker/Compose 与启动工具；它不按 install 或
   harness 区分，也不携带项目 seed、候选 NiceEval、inner runtime 或任何题目资产；
 - Experiment 的声明式 TS `before` action 依次从固定 digest 准备 inner runtime tag、上传项目
   seed、以解析后的精确版本运行 `pnpm add` / `niceeval init`、清理生成物并物化只读
   `node_modules` symlink；版本、命令与依赖关系都进入 action identity；
-- 每一层成功后由 provider-native SetupPrefix artifact 发布，后续具有相同 identity 的 Attempt
-  逐层复用；准备顺序固定为 runtime → seed → 候选安装/物化 → runtime contract → 各 Eval 的
+- 支持 rootfs Snapshot 的 NiceEval 候选缓存 runtime、seed 与候选安装层；inner runtime 以 rootfs 镜像归档保存，
+  每个 Attempt 恢复后启动独立 Docker daemon 并导入、核对 image ID。顺序固定为 runtime → seed → 候选安装/物化 → runtime contract → 各 Eval 的
   fixture action。fixture 只上传所属小 repo，覆盖已准备 workspace，不重复安装或 init。
 
-case repo 不属于通用 base 或项目 seed，所以改题目不会影响共享基建 artifact。通用 base 与共享的
+case repo 不属于通用 base 或项目 seed，所以改题目不需要重建通用镜像。通用 base 与共享的
 inner-runtime / seed 层不包含任何 case 的正确或错误业务源码、候选版指引或 `node_modules`；后续
 候选安装层才按精确版本物化 `node_modules`，仍不包含 case repo。
 

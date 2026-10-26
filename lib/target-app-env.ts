@@ -1,7 +1,7 @@
 /**
  * 目标应用的 LLM 出口。
  *
- * install sandbox 把一次性 Incus VM 里的 guest Docker daemon 交给被测 coding agent；
+ * install sandbox 把一次性 Kata VM 里的 guest Docker daemon 交给被测 coding agent；
  * 写进 guest、workspace 或日志的长期凭证都能被它读走。因此真实 upstream key 与
  * base URL 只留在 NiceEval 宿主进程的 closure。沙箱里只有：
  *
@@ -9,8 +9,8 @@
  * - 只允许固定模型、固定接口的代理地址；
  * - TARGET_APP_MODEL 这个非敏感配置。
  *
- * 代理在宿主进程内按 Attempt 启动 Node HTTP server，host 强制绑定 Incus bridge
- * gateway `10.89.53.1`，不可覆写。端口默认 18080，可用 TARGET_APP_PROXY_PORT
+ * 代理在宿主进程内按 Attempt 启动 Node HTTP server，host 强制绑定 Kata cni0
+ * gateway `10.42.0.1`，不可覆写。端口默认 18180，可用 TARGET_APP_PROXY_PORT
  * 覆写以对齐宿主配置。不绑定其它地址、0.0.0.0、公网或 loopback。
  * setup 任一步失败都会撤销 token，teardown 再做幂等回收；release / abort会 abort 所有进行中的 upstream fetch。WeakMap 仍按 sandbox facade 工作。
  */
@@ -34,8 +34,8 @@ const REQUIRED_HOST_VARS = [
   "TARGET_APP_MODEL",
 ] as const;
 
-const PROXY_HOST = "10.89.53.1";
-const DEFAULT_PROXY_PORT = 18080;
+const PROXY_HOST = "10.42.0.1";
+const DEFAULT_PROXY_PORT = 18180;
 const MAX_CONCURRENCY = 8;
 const MAX_REQUEST_BYTES = 1024 * 1024;
 const UPSTREAM_TIMEOUT_MS = 10 * 60 * 1000;
@@ -128,7 +128,7 @@ export async function provisionTargetAppEnv(
       );
     }
     if (health.exitCode !== 0 || health.stdout.trim() !== handle.healthNonce) {
-      throw new Error("目标应用短期代理无法从 Incus sandbox 访问；这是环境 setup 问题。");
+      throw new Error("目标应用短期代理无法从 OpenSandbox 访问；这是环境 setup 问题。");
     }
     ctx.signal.throwIfAborted();
     ctx.progress({ message: "目标应用短期 LLM 代理已就绪" });
@@ -191,7 +191,7 @@ async function startProxy(config: { apiKey: string; baseUrl: URL; model: string 
     };
   } catch (error) {
     throw new Error(
-      `目标应用短期代理无法绑定 Incus bridge gateway ${bind.host}:${bind.port}`,
+      `目标应用短期代理无法绑定 Kata cni0 gateway ${bind.host}:${bind.port}`,
       { cause: error },
     );
   }

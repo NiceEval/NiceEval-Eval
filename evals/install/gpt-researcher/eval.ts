@@ -19,8 +19,6 @@ import {
 import { YES, yesNo } from "../../../lib/judge.ts";
 import { query } from "../../../lib/query.ts";
 
-const GIB = 1024 ** 3;
-
 /**
  * [key, label, points, question]：交给首轮的任务、命令输入、HITL 请求与回复。
  * 每项只问一件可以独立缺失的事，报告里能直接看到缺的是哪一项。
@@ -142,14 +140,7 @@ export default defineScoreEval({
   description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
 
   timeoutMs: 50 * 60 * 1000,
-  sandbox: sandboxRequirements({
-    docker: {
-      api: "docker/v1",
-      compose: "v2",
-      isolation: "dedicated-kernel/v1",
-      minimumDataBytes: 4 * GIB,
-    },
-  })
+  sandbox: sandboxRequirements({})
     .before(gitCheckout({
       id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout",
       repository: "https://github.com/assafelovic/gpt-researcher.git",

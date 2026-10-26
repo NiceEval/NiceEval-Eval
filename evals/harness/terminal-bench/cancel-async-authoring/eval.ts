@@ -5,8 +5,6 @@ import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/
 
 import { exp, query, type Shell } from "../../../../lib/query.ts";
 
-const GIB = 1024 ** 3;
-
 const TARGET_EVAL = "evals/terminal-bench/cancel-async-tasks.eval.ts";
 const FIXTURE_ROOT = "../../../../fixtures/harness/terminal-bench/cancel-async-authoring/repo/";
 const PROTECTED_ASSETS = [
@@ -32,14 +30,7 @@ export default defineScoreEval({
   tags: ["harness", "harness-v2", "terminal-bench", "authoring", "hidden-tests", "deterministic", "single-turn"],
   timeoutMs: 30 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
-  sandbox: sandboxRequirements({
-    docker: {
-      api: "docker/v1",
-      compose: "v2",
-      isolation: "dedicated-kernel/v1",
-      minimumDataBytes: 4 * GIB,
-    },
-  }).before(uploadDirectory({
+  sandbox: sandboxRequirements({}).before(uploadDirectory({
     id: "niceeval-eval.harness.cancel-async-authoring.fixture",
     source: new URL(FIXTURE_ROOT, import.meta.url),
     to: ".",

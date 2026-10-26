@@ -1,20 +1,5 @@
-/**
- * 各实验共用的 Incus VM sandbox 装配。
- *
- * 单个评估 Attempt 得到一台一次性 Incus VM：guest 工作空间跑 coding agent 与 Eval，
- * guest 内普通 dockerd 提供 Docker-in-disposable-VM。V1 是 DestroyOnly，不发布
- * sandboxState.dockerData，NiceEval 会拒绝 --keep-sandbox。
- *
- * Experiment 使用 `incusSandbox({ image, project, storagePool, resources,
- * acceptDevelopmentDomain })`。本机 dogfood 默认 development exact pair
- * `niceeval-eval-dev` / `niceeval-sandbox-dev`，并显式 `acceptDevelopmentDomain: true`；
- * 结果 non-comparable，不能当成 reference 通过。reference exact pair 是
- * `niceeval-eval` / `niceeval-evals`。
- *
- * NiceEval 不 build / import / pull Incus base，也不接受 `ubuntu:latest` 一类可变引用；这里直接
- * 固定 it-infra 已部署并信任的通用 `niceeval-eval-base@sha256:...`。业务 runtime、Harness seed
- * 与候选安装由声明式 before action 构建，Run-level Incus prepare 再逐层发布可复用 artifact。
- * 精确候选版本由下方声明式 action 安装并物化；case repo 由所属 Eval 的 fixture action 写入。
+/** OpenSandbox/Kata 普通执行路径：每 Attempt 独立实例，实际检查 Docker/Compose。
+ * 用户接受上游生命周期保证边界；不声明 docker/v1，rootfs 准备缓存只保存文件与镜像归档，不保留现场。
  */
 
 import { codexAgent } from "niceeval/adapter";
@@ -22,7 +7,7 @@ import {
   actionRef,
   changeFrequency,
   defineSandboxCommand,
-  incusSandbox,
+  openSandbox,
   shell,
   uploadDirectory,
 } from "niceeval/sandbox";
@@ -32,43 +17,30 @@ import {
   provisionTargetAppEnv,
 } from "./target-app-env.ts";
 
-const GIB = 1024 ** 3;
-
 const INNER_RUNTIMES_ACTION_ID = "niceeval-eval.prepare-inner-runtimes";
 const HARNESS_SEED_ACTION_ID = "niceeval-eval.upload-harness-seed";
 const HARNESS_CANDIDATE_ACTION_ID = "niceeval-eval.install-candidate-and-prepare-workspace";
 const RUNTIME_CONTRACT_ACTION_ID = "niceeval-eval.runtime-contract";
-const AGENT_ENDPOINT_COMMAND_ID = "niceeval-eval.incus-agent-endpoint";
+const AGENT_ENDPOINT_COMMAND_ID = "niceeval-eval.opensandbox-agent-endpoint";
 
 const NODE_RUNTIME_SOURCE =
   "niceeval/codex@sha256:157152804b0ac443e62936d3ce2c8191a1df125bdcb121370c05c00be7c8ab96";
 const PYTHON_RUNTIME_SOURCE =
   "python:3.11.9-bookworm@sha256:c95170ff7d59de63e9445d3d503644a635c1b8cb7f4fa99f19a1c76da92a849a";
 
-const INCUS_BASE_IMAGE =
-  "niceeval-eval-base@sha256:1d03a5168e7769da3ed78c9c9f8036e59092a15296fbc0a362da3f4d951609f3";
-
-const DEVELOPMENT_PROJECT = "niceeval-eval-dev";
-const DEVELOPMENT_STORAGE_POOL = "niceeval-sandbox-dev";
-const AGENT_ENDPOINT_HOST = "sub2api.350124.xyz";
-const AGENT_ENDPOINT_IP = "10.43.0.184";
+const OPEN_SANDBOX_IMAGE =
+  "docker.io/library/niceeval-opensandbox-docker@sha256:ecdce14703f8bf8a7e13d911f945d78e04e469e93b7cf2dca0273888b329b6cb";
 loadRepoEnv();
-// 探活与 Agent 构造必须消费同一个值，包括显式覆盖；避免探活通过却请求其它端口。
-const INCUS_CODEX_BASE_URL = process.env.NICEEVAL_INCUS_CODEX_BASE_URL?.trim()
-  || `https://${AGENT_ENDPOINT_HOST}/v1`;
+const AGENT_BASE_URL = process.env.NICEEVAL_OPENSANDBOX_CODEX_BASE_URL?.trim()
+  || "https://s2a.niceeval.com/v1";
 
-/**
- * Incus VM 通过只暴露 Responses API 的集群专用 TLS entrypoint 连接 Agent endpoint。
- * 这里只显式配置 base URL；不读取或传入 apiKey，让官方 adapter 在每个 Attempt
- * 中继续从 CODEX_API_KEY 取得短期鉴权。
- */
-export function incusCodexAgent() {
-  return codexAgent({ baseUrl: INCUS_CODEX_BASE_URL });
+export function sandboxCodexAgent() {
+  return codexAgent({ baseUrl: AGENT_BASE_URL });
 }
 
 /**
  * 固定 digest 的 inner runtime 是业务 SetupPrefix，不属于 host base image。
- * 同一层同时发布 install/harness 需要的本地 tags，两个实验因而能复用同一 Incus artifact。
+ * 同一层将 install/harness 的本地 tags 导出为 rootfs 归档；每 Attempt 在 command barrier 后导入。
  */
 function prepareInnerRuntimes() {
   return shell({
@@ -104,8 +76,13 @@ pull_fixed() {
 }
 
 printf '%s\\n' '初始化 root/node 的固定 pnpm toolchain…'
+export DOCKER_TMPDIR=/var/tmp/niceeval-docker-transfer
+mkdir -p "$DOCKER_TMPDIR"
+/usr/local/bin/niceeval-docker-start
+mkdir -p /opt/niceeval-toolchain/bin
+corepack enable --install-directory /opt/niceeval-toolchain/bin
 corepack prepare pnpm@11.12.0 --activate
-su -s /bin/sh node -c 'corepack prepare pnpm@11.12.0 --activate'
+setpriv --reuid=node --regid=node --init-groups env HOME=/home/node corepack prepare pnpm@11.12.0 --activate
 
 printf '%s\\n' '拉取固定 digest 的 inner runtime sources…'
 pull_fixed "$node_source"
@@ -127,7 +104,29 @@ docker run --pull=never --rm --entrypoint /bin/sh "$node_tag" \
 docker run --pull=never --rm --entrypoint /bin/sh "$harness_python_tag" \
   -c 'node -v && git --version && python3 --version'
 
-printf '%s\\n' 'inner runtime tags 已由业务 SetupPrefix 准备完成'`,
+archive=/opt/niceeval-runtime-images
+mkdir -p "$archive"
+docker save --output "$archive/images.tar" "$node_tag" "$harness_python_tag" "$install_python_tag"
+for tag in "$node_tag" "$harness_python_tag" "$install_python_tag"; do
+  printf '%s %s\\n' "$tag" "$(docker image inspect --format '{{.Id}}' "$tag")"
+done > "$archive/image-ids"
+cleanup
+trap - EXIT
+
+# Snapshot captures rootfs only. Retire this preparation daemon and unmount its
+# private tmpfs before publishing; the command barrier starts a fresh daemon.
+daemon_pid="$(cat /var/run/docker.pid)"
+kill "$daemon_pid"
+for attempt in $(seq 1 60); do
+  state="$(ps -o stat= -p "$daemon_pid" 2>/dev/null || true)"
+  case "$state" in ''|Z*) break ;; esac
+  sleep 1
+done
+state="$(ps -o stat= -p "$daemon_pid" 2>/dev/null || true)"
+case "$state" in ''|Z*) ;; *) printf '%s\\n' 'preparation dockerd did not stop' >&2; exit 1 ;; esac
+umount /var/lib/docker
+rm -rf /var/run/docker /var/run/docker.pid /var/run/docker.sock "$DOCKER_TMPDIR"
+printf '%s\\n' 'inner runtime archives 已准备完成，daemon 已停止'`,
     user: "root",
     changeFrequency: changeFrequency.rare + 1,
   });
@@ -135,7 +134,7 @@ printf '%s\\n' 'inner runtime tags 已由业务 SetupPrefix 准备完成'`,
 
 /**
  * 候选安装、init、生成物清理、只读依赖树和 workspace/home 物化都由 Harness 的 TS layer
- * 明确拥有。它们必须在 runtime 导入满足后逐次执行。
+ * 明确拥有。它们在 runtime 归档准备后执行，并可随 rootfs 前缀一起缓存。
  */
 function installCandidateAndPrepareWorkspace(candidateVersion: string) {
   return shell({
@@ -184,15 +183,28 @@ printf 'harness 候选就绪：niceeval@%s\n' "$candidate_version"`,
   });
 }
 
-/** guest Docker、Node/pnpm 与候选 workspace 的既有 fail-fast 契约，保留为紧随准备流程的 action。 */
+/** 不缓存的运行边界：每个 clone 启动独立 daemon，导入归档后检查已有运行契约。 */
 function assertRuntime(candidateVersion?: string) {
-  return shell({
+  return defineSandboxCommand({
     id: RUNTIME_CONTRACT_ACTION_ID,
-    command: runtimeContractScript(candidateVersion),
+    revision: "opensandbox-rootfs-archive-1",
+    inputs: { candidateVersion: candidateVersion ?? null, archiveFormat: "docker-save/v1" },
     changeFrequency: changeFrequency.rare + (candidateVersion === undefined ? 1 : 3),
-    dependsOn: [actionRef(
-      candidateVersion === undefined ? INNER_RUNTIMES_ACTION_ID : HARNESS_CANDIDATE_ACTION_ID,
-    )],
+    dependsOn: [actionRef(candidateVersion === undefined ? INNER_RUNTIMES_ACTION_ID : HARNESS_CANDIDATE_ACTION_ID)],
+  }, async (sandbox, context) => {
+    context.progress({ message: "从准备缓存导入独立 Docker daemon" });
+    const restored = await sandbox.runShell(`set -eu
+export DOCKER_TMPDIR=/var/tmp/niceeval-docker-transfer
+mkdir -p "$DOCKER_TMPDIR"
+/usr/local/bin/niceeval-docker-start
+docker load --input /opt/niceeval-runtime-images/images.tar
+while read -r tag expected; do
+  actual="$(docker image inspect --format '{{.Id}}' "$tag")"
+  test "$actual" = "$expected"
+done < /opt/niceeval-runtime-images/image-ids`, { user: "root", signal: context.signal });
+    if (restored.exitCode !== 0) throw new Error(`Docker runtime archive restore failed: ${restored.stderr}`);
+    const checked = await sandbox.runShell(runtimeContractScript(candidateVersion), { signal: context.signal });
+    if (checked.exitCode !== 0) throw new Error(`OpenSandbox runtime contract failed: ${checked.stderr}`);
   });
 }
 
@@ -243,8 +255,8 @@ printf '运行基线通过：Node %s · pnpm %s · Docker %s · Compose %s\\n' \
 const provisionTargetAppCommand = defineSandboxCommand(
   {
     id: "niceeval-eval.target-app-env",
-    revision: "3",
-    inputs: { path: TARGET_APP_ENV_PATH, proxyProtocol: "target-app-incus-gateway-proxy/v3" },
+    revision: "4",
+    inputs: { path: TARGET_APP_ENV_PATH, proxyProtocol: "target-app-kata-gateway-proxy/v4" },
     changeFrequency: changeFrequency.frequent,
   },
   async (sandbox, context) => {
@@ -252,51 +264,17 @@ const provisionTargetAppCommand = defineSandboxCommand(
   },
 );
 
-/**
- * Agent endpoint 的地址映射是 Attempt 状态，不得进入 SetupPrefix artifact。普通
- * defineSandboxCommand callback 是缓存屏障；它在最后一个声明式 action 后重放，
- * 并在 agent.ensure 前用系统 CA 验证专用 TLS route 已经 fail-closed 地就绪。
- */
+/** 使用既有公网 TLS 模型入口，在 Agent 启动前验证鉴权边界。 */
 const provisionAgentEndpointCommand = defineSandboxCommand(
   {
     id: AGENT_ENDPOINT_COMMAND_ID,
-    revision: "2",
-    inputs: {
-      host: AGENT_ENDPOINT_HOST,
-      ip: AGENT_ENDPOINT_IP,
-      baseUrl: INCUS_CODEX_BASE_URL,
-    },
+    revision: "3",
+    inputs: { baseUrl: AGENT_BASE_URL },
     changeFrequency: changeFrequency.frequent,
     dependsOn: [actionRef(RUNTIME_CONTRACT_ACTION_ID)],
   },
   async (sandbox, context) => {
-    context.progress({ message: "验证 Incus Agent 专用 TLS endpoint" });
-    await sandbox.runShellOrThrow(
-      `set -eu
-host=${shellQuote(AGENT_ENDPOINT_HOST)}
-ip=${shellQuote(AGENT_ENDPOINT_IP)}
-tmp="$(mktemp)"
-awk -v host="$host" '
-  {
-    keep = 1
-    for (i = 2; i <= NF; i++) if ($i == host) keep = 0
-    if (keep) print
-  }
-' /etc/hosts > "$tmp"
-printf '%s\\t%s\\n' "$ip" "$host" >> "$tmp"
-cat "$tmp" > /etc/hosts
-rm -f "$tmp"`,
-      { user: "root" },
-    );
-
-    const lookup = await sandbox.runCommandOrThrow("getent", ["ahostsv4", AGENT_ENDPOINT_HOST]);
-    const resolved = lookup.stdout.trim().split(/\s+/u);
-    if (!resolved.includes(AGENT_ENDPOINT_IP)) {
-      throw new Error(
-        `Incus Agent endpoint 解析不符：期望 ${AGENT_ENDPOINT_IP}，实测 ${lookup.stdout.trim()}`,
-      );
-    }
-
+    context.progress({ message: "验证 OpenSandbox Agent TLS endpoint" });
     const probe = await sandbox.runCommand("curl", [
       "--proto", "=https",
       "--tlsv1.2",
@@ -306,14 +284,14 @@ rm -f "$tmp"`,
       "--show-error",
       "--output", "/dev/null",
       "--write-out", "%{http_code}",
-      `${INCUS_CODEX_BASE_URL.replace(/\/+$/u, "")}/models`,
+      `${AGENT_BASE_URL.replace(/\/+$/u, "")}/models`,
     ]);
     if (probe.exitCode !== 0 || probe.stdout.trim() !== "401") {
       throw new Error(
-        `Incus Agent endpoint 未就绪：curl exit=${probe.exitCode} http=${probe.stdout.trim() || "none"}`,
+        `OpenSandbox Agent endpoint 未就绪：curl exit=${probe.exitCode} http=${probe.stdout.trim() || "none"}`,
       );
     }
-    context.progress({ message: "Incus Agent 专用 TLS endpoint 已就绪" });
+    context.progress({ message: "OpenSandbox Agent 专用 TLS endpoint 已就绪" });
   },
 );
 
@@ -321,38 +299,32 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-/**
- * 每 Attempt 限 1 CPU / 4 GiB 内存 / 4 GiB Docker data。V1 DestroyOnly。
- * 本机 dogfood 固定 development domain，并显式接受 non-comparable。
- */
-function incusAttemptSandbox(image: string) {
-  return incusSandbox({
-    image,
-    project: DEVELOPMENT_PROJECT,
-    storagePool: DEVELOPMENT_STORAGE_POOL,
-    resources: {
-      cpus: 1,
-      memoryBytes: 4 * GIB,
-      dockerDataBytes: 4 * GIB,
-    },
-    acceptDevelopmentDomain: true,
+/** 单并发配额下，每个 Attempt 请求独立 Kata 实例和有限 TTL。 */
+function attemptSandbox() {
+  return openSandbox({
+    image: OPEN_SANDBOX_IMAGE,
+    targetPlatform: { _tag: "Linux", os: "linux", arch: "x64", libc: "gnu" },
+    user: "node",
+    pathPrepend: ["/opt/niceeval-toolchain/bin"],
+    resources: { cpu: "2", memory: "8Gi" },
+    lifetimeMs: 90 * 60 * 1000,
   });
 }
 
 /** 从零安装题保留 guest Docker。短期凭证 callback 仍以频率 1000 最后执行并登记 cleanup。 */
 export function installSandbox() {
   loadRepoEnv();
-  return incusAttemptSandbox(INCUS_BASE_IMAGE)
+  return attemptSandbox()
     .before(prepareInnerRuntimes())
     .before(assertRuntime())
     .before(provisionAgentEndpointCommand)
     .before(provisionTargetAppCommand);
 }
 
-/** Harness 的 runtime、seed、候选安装和 workspace 都成为可复用的业务准备层。 */
+/** Harness 的 runtime 归档、seed、候选安装和 workspace 可缓存；运行态按 Attempt 创建。 */
 export function harnessSandbox(candidateVersion: string) {
   loadRepoEnv();
-  return incusAttemptSandbox(INCUS_BASE_IMAGE)
+  return attemptSandbox()
     .before(prepareInnerRuntimes())
     .before(uploadDirectory({
       id: HARNESS_SEED_ACTION_ID,

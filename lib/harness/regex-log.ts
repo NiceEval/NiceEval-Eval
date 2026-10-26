@@ -33,9 +33,7 @@ export function regexLogEval(explicitRepair: boolean) {
     tags: ["harness", "harness-v2", "terminal-bench", "infrastructure", "single-turn", explicitRepair ? "authorized-repair" : "autonomous-repair"],
     timeoutMs: 25 * 60 * 1000,
     diff: { ignore: [".niceeval/**"] },
-    sandbox: sandboxRequirements({ docker: {
-      api: "docker/v1", compose: "v2", isolation: "dedicated-kernel/v1", minimumDataBytes: 4 * 1024 ** 3,
-    } }).before(uploadDirectory({
+    sandbox: sandboxRequirements({}).before(uploadDirectory({
       id: `${key}.fixture-v2`, source: fixture, to: ".", changeFrequency: changeFrequency.normal,
     })),
     async test(t) {
