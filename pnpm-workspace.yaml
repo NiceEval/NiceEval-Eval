@@ -5,3 +5,5 @@ allowBuilds:
   ssh2: true
 minimumReleaseAgeExclude:
   - niceeval@0.19.1-canary.104
+overrides:
+  niceeval: link:../NiceEval/packages/niceeval
