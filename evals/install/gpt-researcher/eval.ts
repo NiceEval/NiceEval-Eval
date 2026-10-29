@@ -25,14 +25,13 @@ import { query } from "../../../lib/query.ts";
  */
 const FIRST_TURN_QUESTIONS = [
   ["install.first-turn.protocol", "核对接入协议", 2,
-    "agent 是否说明了它从仓库确认的 GPT Researcher 接入协议，并且本轮工具调用里能看到它读过对应源码或配置？" +
-    "主路径是 FastAPI /ws：客户端发送 `start ` + JSON，服务端依次返回 logs/images/report/path 帧；REST 入口也不是 OpenAI Chat Completions 形状。只说“调 API”或猜成 OpenAI messages 接口判 N。"],
+    "agent 是否说清它选用的 GPT Researcher 入口与协议形状，并且本轮命令里能看到它读过定义这个入口的源码？" +
+    "仓库里有多条真实入口，例如 FastAPI /ws（发送 `start ` + JSON，返回 logs/images/report/path 帧）和 REST POST /report/（返回含 report 字段的 JSON），选哪条都可以。" +
+    "只说“调 API”、猜成 OpenAI messages 接口，或说出的入口在命令读过的源码里找不到，判 N。"],
   ["install.first-turn.capability", "核对能力边界", 2,
     "agent 是否说明核心能力是自主检索多源资料并生成带引用的结构化研究报告，而不是普通对话。"],
-  ["install.first-turn.ask-tier", "询问 Tier 与观测", 1,
-    "agent 是否在动手实现前询问了Tier 选择，以及是否使用 LangSmith 或另接观测？"],
-  ["install.first-turn.ask-model", "询问模型与变体", 1,
-    "agent 是否在动手实现前询问了目标模型/搜索配置，或 report_type/tone/report_source 变体？"],
+  ["install.first-turn.ask-judge", "询问 Judge", 1,
+    "agent 是否在动手实现前询问了 Judge 用哪个服务、模型或 Key，或者说明没有 Judge 时先只写精确判据？"],
   ["install.first-turn.ask-budget", "询问首跑预算", 1,
     "agent 是否在动手实现前询问了首跑的 Attempt 数、时间或费用预算？"],
   ["install.first-turn.pause", "首轮停下等用户决定", 1,
@@ -48,16 +47,13 @@ const FIRST_TURN_QUESTIONS = [
 
 /** [key, label, points, rubric]：只看 agent 写出的三件套源码。 */
 const SOURCE_RUBRICS = [
-  ["install.adapter.target-protocol", "真实 GPT Researcher 协议与请求响应语义", 8,
-    "Y 当且仅当 Adapter 连接 GPT Researcher 仓库真实提供的 FastAPI /ws，" +
-    "按协议发送 `start ` + JSON（含 task/report_type/report_source/tone 等选中字段），并按 logs/images/report/path 帧语义解析；" +
-    "或使用仓库中被源码证明的真实 REST 入口及其实际 shape。假设 OpenAI messages 形状、进程内直调或静态回复判 N。"],
-  ["install.adapter.response-mapping", "真实 report 映射为 NiceEval 消息或事件", 6,
-    "Y 当且仅当 NiceEval 助手消息或标准事件的最终文本来自 GPT Researcher 的 report 帧，" +
-    "并将 logs/images/path 按各自语义处理，不把进度日志或 path 当成报告。返回输入原文、固定 ASSISTANT 文字或仅说任务已提交判 N。"],
-  ["install.adapter.variables-forwarded", "模型、配置与实验变量传到 GPT Researcher", 3,
-    "Y 当且仅当 Adapter/lifecycle 真正读取 model 以及所选静态研究配置（如 report_type、tone、report_source），" +
-    "并把它们传入 GPT Researcher 请求或目标进程。只在 Experiment 声明但没有读取，或全部被硬编码覆盖，判 N。"],
+  ["install.adapter.response-mapping", "真实报告映射为 NiceEval 消息或事件", 6,
+    "Y 当且仅当 NiceEval 助手消息或标准事件的最终文本是 GPT Researcher 本次任务生成的报告正文：来自 /ws 的 report 帧、" +
+    "POST /report/ 返回的 report 字段，或 path 指向的本次报告文件；进度日志、图片和 path 本身按各自语义处理，不当成报告。" +
+    "返回输入原文、固定 ASSISTANT 文字或仅说任务已提交判 N。"],
+  ["install.adapter.variables-forwarded", "研究配置传到 GPT Researcher", 3,
+    "Y 当且仅当 Adapter/lifecycle 真正读取所选静态研究配置（如 report_type、tone、report_source），并把它们传入 GPT Researcher 请求或目标进程。" +
+    "只在 Experiment 声明但没有读取，或全部被硬编码，判 N。model 是否被消费不在本项判断。"],
   ["install.adapter.cancel-timeout", "取消与超时", 1,
     "Y 当且仅当 send 把 NiceEval AbortSignal 或等价取消机制传给WebSocket/HTTP 连接，并设置有界超时。"],
   ["install.adapter.error-propagation", "错误不被吞掉", 2,
@@ -84,8 +80,8 @@ const SOURCE_RUBRICS = [
     "Y 当且仅当 Experiment 实际选择本次 GPT Researcher Adapter，且它选中的 Eval 测试的也是该研究系统，" +
     "而不是内置/通用/echo agent 或无关 Eval。必须能从导入和 experiment 选择追到同一对定义。"],
   ["install.experiment.config-consumed", "模型、flags 与静态配置不是死配置", 3,
-    "Y 当且仅当 Experiment 中的 model、flags 或静态配置有清楚的消费方：Adapter/lifecycle 读取后传给 GPT Researcher。" +
-    "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。未选用 flags 不是错，但仍需证明实际声明的 model/配置被消费。"],
+    "Y 当且仅当 Experiment 声明的每个 model、flags 或静态配置都有清楚的消费方：Adapter/lifecycle 读取后传给 GPT Researcher。" +
+    "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。用户已决定沿用服务默认模型，所以不声明 model 或明确拒绝 model 覆盖都算正确。"],
   ["install.experiment.service-start", "目标服务启动与就绪", 2,
     "Y 当且仅当 Experiment/Plugin/Sandbox lifecycle 负责启动真实 GPT Researcher，并等待GPT Researcher 的 WebSocket/HTTP 入口可用后才发送任务。仅假设外部已启动判 N。"],
   ["install.experiment.service-cleanup", "目标服务清理", 1,
@@ -287,14 +283,15 @@ export default defineScoreEval({
         .key("install.gate.evidence-commands").label("gate · 所有当前 Attempt 的 overview/--execution/--source 都成功").orStop();
 
       await t.group("真实运行与公开证据", async () => {
-        // 真实目标响应同时是替代物屏障：stub/mock/echo/进程内替代拿不到这一项，后续证据分随之停止。
+        // 协议对不对，只看源码证明不了：Judge 手上没有 GPT Researcher 的路由源码。能证明的事实是真实运行收到了目标响应，
+        // 所以协议分并入这一项。它同时是替代物屏障：stub/mock/echo/进程内替代拿不到，后续证据分随之停止。
         await t.judge({ authoredSource: source, attempts: evidence }, yesNo("install.evidence.target-response",
           "材料中的 authoredSource 是 agent 交接时的实际源码，attempts 是公开 CLI 读取的当前结果。结合源码核对 Adapter 到目标服务的请求和响应映射。" +
           "Y 当且仅当至少一个正向核心用例满足以下真实响应要求。其它当前结果若是预期负例，合法错误或拒答不因缺少正向业务内容而单独判 N。" +
-          "execution 中的助手消息来自 GPT Researcher report 帧的 Adapter 映射，并呈现与 Eval 研究主题有关的实质报告内容与引用。" +
+          "execution 中的助手消息是 GPT Researcher 本次任务生成的报告（/ws report 帧、POST /report/ 的 report 字段或 path 指向的本次报告文件），并呈现与 Eval 研究主题有关的实质报告内容与引用。" +
           "authoredSource 或 execution 显示用 stub/mock/fake/echo agent、临时协议桩或进程内函数替代真实 GPT Researcher 时判 N；" +
           "仅有静态文字、输入回显、启动日志或 status 判 N。"))
-          .gate(YES).score(5).key("install.evidence.target-response").label("execution 含 GPT Researcher 的真实响应").orStop();
+          .gate(YES).score(10).key("install.evidence.target-response").label("execution 含 GPT Researcher 的真实响应").orStop();
         t.judge({ authoredSource: source, attempts: evidence }, yesNo("install.evidence.source-explains-execution",
           "逐项审阅 attempts 数组中的所有当前结果，全部满足才判 Y。Y 当且仅当 authoredSource 中的 Adapter 与 Eval 能解释各 execution 中的输入、事件与断言结果，包括预期负例的拒答或合法错误。任一面空白或两者对不上判 N。"))
           .score(6).key("install.evidence.source-explains-execution").label("source 能解释 execution");

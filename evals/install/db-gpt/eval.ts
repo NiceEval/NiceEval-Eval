@@ -25,21 +25,22 @@ import { query } from "../../../lib/query.ts";
  */
 const FIRST_TURN_QUESTIONS = [
   ["install.first-turn.protocol", "核对接入协议", 2,
-    "agent 是否说明了它从仓库确认的 DB-GPT 接入协议，并且本轮工具调用里能看到它读过对应源码或配置？" +
-    "HTTP + JSON/SSE，默认端口 5670；OpenAI 兼容入口是 POST /api/v2/chat/completions，前端主聊天另走 /api/v1/chat/completions，没有 WebSocket。只说“调 API”、猜 WebSocket 或混淆两条路径判 N。"],
+    "agent 是否说清它选用的 DB-GPT 入口与协议形状（路径、请求字段、JSON 或 SSE 返回），并且本轮命令里能看到它读过定义这个入口的路由源码？" +
+    "仓库里有多条真实入口，例如 POST /api/v2/chat/completions、/api/v1/chat/completions、/api/v1/chat/react-agent，选哪条都可以。" +
+    "只说“调 API”、猜 WebSocket，或说出的路径在命令读过的源码里找不到，判 N。"],
   ["install.first-turn.capability", "核对能力边界", 2,
-    "agent 是否区分能访问数据源的 chat_data/chat_db_qa/chat_dashboard 与只调裸 LLM 的 chat_normal。"],
-  ["install.first-turn.ask-tier", "询问 Tier 与观测", 1,
-    "agent 是否在动手实现前询问了Tier 选择，以及是否复用 DB-GPT 现有 tracer/OTel/OTLP？"],
-  ["install.first-turn.ask-model", "询问模型与变体", 1,
-    "agent 是否在动手实现前询问了目标模型或实验变体？"],
+    "agent 是否说明 DB-GPT 的差异化能力是让 LLM 访问数据源、生成并执行 SQL，并把它和只调裸 LLM 的普通聊天区分开？" +
+    "chat_data / chat_db_qa / chat_dashboard 对 chat_normal，或 react-agent 数据分析对普通对话，都算。"],
+  ["install.first-turn.ask-judge", "询问 Judge", 1,
+    "agent 是否在动手实现前询问了 Judge 用哪个服务、模型或 Key，或者说明没有 Judge 时先只写精确判据？"],
   ["install.first-turn.ask-budget", "询问首跑预算", 1,
     "agent 是否在动手实现前询问了首跑的 Attempt 数、时间或费用预算？"],
   ["install.first-turn.pause", "首轮停下等用户决定", 1,
     "agent 是否在写代码前明确停下，把需要用户决定的选择留给用户？正式 HITL waiting 或普通文本请求确认都算；" +
     "只反问本应从仓库查明的接口事实不算。"],
   ["install.first-turn.use-case", "提出核心用例", 2,
-    "agent 是否主动提出了一条具体的首个 Eval 核心用例：用户用自然语言问真实库表，DB-GPT 通过 chat_data / chat_db_qa / chat_dashboard 等模式生成 SQL、查询并分析。仅提 hello、HTTP 成功或非空回复判 N。"],
+    "agent 是否主动提出了一条具体的首个 Eval 核心用例：用户用自然语言问真实库表里的问题，DB-GPT 访问数据源、生成并执行 SQL，再给出分析？" +
+    "要说出具体问题或具体表；只提 hello、HTTP 成功、非空回复，或“某个销售分析问题”这种还没定下来的计划，判 N。"],
   ["install.first-turn.success", "说明成功判据", 1,
     "agent 是否说明了这条用例可观察的业务成功结果，例如核对具体数值、表名或 SQL？"],
   ["install.first-turn.risk", "指出主要风险", 1,
@@ -48,16 +49,12 @@ const FIRST_TURN_QUESTIONS = [
 
 /** [key, label, points, rubric]：只看 agent 写出的三件套源码。 */
 const SOURCE_RUBRICS = [
-  ["install.adapter.target-protocol", "真实 DB-GPT 协议与请求响应语义", 8,
-    "Y 当且仅当 Adapter 连接 DB-GPT 仓库真实提供的 HTTP 入口，并对所选路径实现正确请求/响应语义：" +
-    "例如 POST /api/v2/chat/completions 的兼容 payload 与 JSON/SSE 返回，或仓库中另一条被源码证明的 DB-GPT 路径及其实际 shape。" +
-    "仅有通用 /v1/chat/completions、猜测 WebSocket、进程内函数调用或静态回复判 N。"],
   ["install.adapter.response-mapping", "真实响应映射为 NiceEval 消息或事件", 6,
     "Y 当且仅当 NiceEval 助手消息或标准事件的文本来自 DB-GPT 实际 JSON/SSE response/delta，" +
     "并正确组合流式分片和结束。返回输入原文、固定 ASSISTANT 文字、未读 body 或把 logs/status 当最终答案判 N。"],
-  ["install.adapter.variables-forwarded", "模型、配置与实验变量传到 DB-GPT", 3,
-    "Y 当且仅当 Adapter 真正读取 model 以及所选静态配置（如 base URL、chat_mode、chat_param），" +
-    "并把它们传入 DB-GPT 请求或运行过程。只在 Experiment 声明但 send 不读取，或 send 内全部硬编码，判 N。"],
+  ["install.adapter.variables-forwarded", "静态配置传到 DB-GPT", 3,
+    "Y 当且仅当 Adapter 真正读取所选静态配置（如 base URL、chat_mode 或 react-agent 的数据源参数），并把它们传入 DB-GPT 请求。" +
+    "只在 Experiment 声明但 send 不读取，或 send 内全部硬编码，判 N。model 是否被消费不在本项判断。"],
   ["install.adapter.cancel-timeout", "取消与超时", 1,
     "Y 当且仅当 send 把 NiceEval AbortSignal 或等价取消机制传给网络请求，并设置有界超时。"],
   ["install.adapter.error-propagation", "错误不被吞掉", 2,
@@ -86,8 +83,8 @@ const SOURCE_RUBRICS = [
     "Y 当且仅当 Experiment 实际选择本次 DB-GPT Adapter，且它选中的 Eval 测试的也是 DB-GPT 数据问答，" +
     "而不是内置/通用/echo agent 或无关 Eval。必须能从导入和 experiment 选择追到同一对定义。"],
   ["install.experiment.config-consumed", "模型、flags 与静态配置不是死配置", 3,
-    "Y 当且仅当 Experiment 中的 model、flags 或静态配置有清楚的消费方：Adapter/lifecycle 读取后传给 DB-GPT。" +
-    "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。未选用 flags 不是错，但仍需证明实际声明的 model/配置被消费。"],
+    "Y 当且仅当 Experiment 声明的每个 model、flags 或静态配置都有清楚的消费方：Adapter/lifecycle 读取后传给 DB-GPT。" +
+    "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。用户已决定沿用服务默认模型，所以不声明 model 或明确拒绝 model 覆盖都算正确。"],
   ["install.experiment.service-start", "目标服务启动与就绪", 2,
     "Y 当且仅当 Experiment/Plugin/Sandbox lifecycle 负责启动真实 DB-GPT，并等待DB-GPT 的 HTTP 入口可用后才发送任务。仅假设外部已启动判 N。"],
   ["install.experiment.service-cleanup", "目标服务清理", 1,
@@ -290,14 +287,15 @@ export default defineScoreEval({
         .key("install.gate.evidence-commands").label("gate · 所有当前 Attempt 的 overview/--execution/--source 都成功").orStop();
 
       await t.group("真实运行与公开证据", async () => {
-        // 真实目标响应同时是替代物屏障：stub/mock/echo/进程内替代拿不到这一项，后续证据分随之停止。
+        // 协议对不对，只看源码证明不了：Judge 手上没有 DB-GPT 的路由源码。能证明的事实是真实运行收到了目标响应，
+        // 所以协议分并入这一项。它同时是替代物屏障：stub/mock/echo/进程内替代拿不到，后续证据分随之停止。
         await t.judge({ authoredSource: source, attempts: evidence }, yesNo("install.evidence.target-response",
           "材料中的 authoredSource 是 agent 交接时的实际源码，attempts 是公开 CLI 读取的当前结果。结合源码核对 Adapter 到目标服务的请求和响应映射。" +
           "Y 当且仅当至少一个正向核心用例满足以下真实响应要求。其它当前结果若是预期负例，合法错误或拒答不因缺少正向业务内容而单独判 N。" +
-          "execution 中的助手消息来自 DB-GPT 真实 JSON/SSE 响应的 Adapter 解析，并呈现与 Eval 数据问答有关的具体结果。" +
+          "execution 中的助手消息来自 DB-GPT 真实 HTTP 入口的 JSON/SSE 响应，由 Adapter 解析得到，并呈现与 Eval 数据问答有关的具体结果。" +
           "authoredSource 或 execution 显示用 stub/mock/fake/echo agent、临时协议桩或进程内函数替代真实 DB-GPT 时判 N；" +
           "仅有静态文字、输入回显、启动日志或 status 判 N。"))
-          .gate(YES).score(5).key("install.evidence.target-response").label("execution 含 DB-GPT 的真实响应").orStop();
+          .gate(YES).score(10).key("install.evidence.target-response").label("execution 含 DB-GPT 的真实响应").orStop();
         t.judge({ authoredSource: source, attempts: evidence }, yesNo("install.evidence.source-explains-execution",
           "逐项审阅 attempts 数组中的所有当前结果，全部满足才判 Y。Y 当且仅当 authoredSource 中的 Adapter 与 Eval 能解释各 execution 中的输入、事件与断言结果，包括预期负例的拒答或合法错误。任一面空白或两者对不上判 N。"))
           .score(6).key("install.evidence.source-explains-execution").label("source 能解释 execution");
