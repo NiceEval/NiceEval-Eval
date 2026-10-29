@@ -30,7 +30,7 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 `install/db-gpt`）。每道题自己持有宿主 fixture、续轮回答与全部判据，读一个文件就能看到它测什么、
 什么算通过；[`lib/install-probes.ts`](lib/install-probes.ts) 只放不登记检查的取证探针与归档。
 运行结果一律经被测项目自己的 `niceeval query` / `exp --json` 读取，[`lib/query.ts`](lib/query.ts)
-只做传输，不认识业务字段。
+只做传输和 v2/v3 verdict 位置的投影，不认识业务字段。
 
 ## harness/ 的共享基建与独立 repo
 

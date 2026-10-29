@@ -8,7 +8,7 @@ import { loadCriteria, loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
 import { yesNo } from "../../../../lib/judge.ts";
-import { exp, query, type Shell } from "../../../../lib/query.ts";
+import { currentVerdicts, exp, query, type Shell } from "../../../../lib/query.ts";
 
 const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url);
 const TARGET_EVAL = "evals/terminal-bench/log-summary.eval.ts";
@@ -126,12 +126,3 @@ export default defineScoreEval({
     }
   },
 });
-
-// Query v3 把 verdict 放在成员上，稳定版的 v2 放在 publication 里。
-type Cell = { evalId: string; members: { verdict?: string | null; publication?: { verdict?: string } }[] };
-
-/** experiment.get 的当前结果：evalId → 已发布 verdict（每格 1 次 Attempt）。没跑过为空表。 */
-function currentVerdicts(doc: { experiment: { cells: Cell[] } } | null) {
-  return Object.fromEntries((doc?.experiment.cells ?? []).map((c) =>
-    [c.evalId, c.members[0]?.verdict ?? c.members[0]?.publication?.verdict ?? null]));
-}

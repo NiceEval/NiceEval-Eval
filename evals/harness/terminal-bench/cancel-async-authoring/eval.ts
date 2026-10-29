@@ -3,7 +3,7 @@ import { commandSucceeded, equals, referencesAnyPath, toolMatch } from "niceeval
 import { loadCriteria, loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { exp, query, type Shell } from "../../../../lib/query.ts";
+import { currentVerdicts, exp, query, type Shell } from "../../../../lib/query.ts";
 
 const TARGET_EVAL = "evals/terminal-bench/cancel-async-tasks.eval.ts";
 const FIXTURE_ROOT = "../../../../fixtures/harness/terminal-bench/cancel-async-authoring/repo/";
@@ -130,13 +130,7 @@ export default defineScoreEval({
   },
 });
 
-type Cell = { evalId: string; members: { verdict?: string; publication?: { verdict?: string } }[] };
 type PlannedAttempt = { evalId: string; verdict?: string; publication?: { action?: string } };
-
-/** experiment.get 的当前结果：evalId → 已发布 verdict（每格 1 次 Attempt）。没跑过为空表。 */
-function currentVerdicts(doc: { experiment: { cells: Cell[] } } | null) {
-  return Object.fromEntries((doc?.experiment.cells ?? []).map((c) => [c.evalId, c.members[0]?.verdict ?? c.members[0]?.publication?.verdict ?? null]));
-}
 
 /** 外层跑一次 exp，再用 receipt 里唯一的 Run 读取这次的终态与 publication action。 */
 async function inspect(shell: Shell, args: string[]) {

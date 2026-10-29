@@ -1,6 +1,7 @@
 /**
  * 在被测项目里调用它自己安装的 niceeval CLI。只负责传输：发现协议版本后返回 Query 文档或
- * `exp --json` receipt 原样字段，不认识任何业务概念；判据写在各 Eval 正文里。
+ * `exp --json` receipt 原样字段，外加抹平 v2/v3 字段位置的 verdict 投影；不认识任何业务概念，
+ * 判据写在各 Eval 正文里。
  *
  * `shell` 在被测项目根目录执行一段 sh（Eval 里是 `(s) => t.sandbox.runShell(s)`）。
  * request 经 stdin 传给 `query run --request -`，不在工作区写临时文件。
@@ -10,6 +11,15 @@ export type Shell = (script: string) => Promise<{ exitCode: number; stdout: stri
 
 // query 文档是 CLI 的公开 JSON；稳定版 v2 与 Canary v3 的字段由各判据按协议读取。
 export type QueryDocument = any;
+
+// Query v3 把 verdict 放在成员上，稳定版的 v2 放在 publication 里。
+type Cell = { evalId: string; members: { verdict?: string | null; publication?: { verdict?: string } }[] };
+
+/** experiment.get 的当前结果：evalId → 已发布 verdict（每格 1 次 Attempt）。没跑过为空表。 */
+export function currentVerdicts(doc: { experiment: { cells: Cell[] } } | null): Record<string, string | null> {
+  return Object.fromEntries((doc?.experiment.cells ?? []).map((c) =>
+    [c.evalId, c.members[0]?.verdict ?? c.members[0]?.publication?.verdict ?? null]));
+}
 
 const CLI = "./node_modules/.bin/niceeval";
 const discoveries = new WeakMap<Shell, Promise<{ protocol: string; operations: { id: string }[] }>>();

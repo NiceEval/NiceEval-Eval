@@ -5,7 +5,7 @@ import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/
 
 import { loadCriteria } from "niceeval/loaders";
 import { yesNo } from "../../../../lib/judge.ts";
-import { exp, query } from "../../../../lib/query.ts";
+import { currentVerdicts, exp, query } from "../../../../lib/query.ts";
 
 await loadCriteria({ pattern: "../../../../fixtures/harness/terminal-bench/log-summary/repo/**/*", relativeTo: new URL(import.meta.url) });
 
@@ -24,11 +24,7 @@ export default defineScoreEval({
     // 先由 fixture 跑完 experiment，再让 agent 接手已经停稳的 Record。
     const shell = (script: string) => t.sandbox.runShell(script);
     const initial = await exp(shell, ["local"]);
-    const local = await query(shell, { kind: "experiment.get", experimentId: "local" });
-    const initialResults = Object.fromEntries(
-      (local?.experiment.cells ?? []).map((c: { evalId: string; members: { verdict?: string; publication?: { verdict?: string } }[] }) =>
-        [c.evalId, c.members[0]?.verdict ?? c.members[0]?.publication?.verdict ?? null]),
-    );
+    const initialResults = currentVerdicts(await query(shell, { kind: "experiment.get", experimentId: "local" }));
     const expected = {
       "terminal-bench/classifier-debug": "failed",
       "terminal-bench/hello-world": "passed",
