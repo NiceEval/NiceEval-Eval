@@ -1,7 +1,7 @@
 # Harness 文档工作流评估 · rubric v2
 
 这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
-可信评估。当前是 **三个任务家族、四个独立条件**，不是四种独立能力样本。
+可信评估。当前是 **三个任务家族、五个独立条件**，不是五种独立能力样本。
 候选安装和 `init` 已由 Harness 完成，agent 只能依靠随包文档（`node_modules/niceeval/INDEX.md`）；
 安装前 `INIT.md` 的效果另由 `evals/install/` 测量。题面用真实用户的说法，只说要什么；
 隐藏判据、指纹和不改题包这类做法不写进题面，由随包文档和 agent 自己补上。
@@ -11,10 +11,12 @@
 | regex-log | 自主完成；首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 10 |
 | regex-log-authorized | 相同 fixture，明确要求修复执行错误后复验 | 10 |
 | log-summary | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
+| log-summary-repair | 相同 fixture，用户已判定 Eval 过紧，要求改好并复验 | 23 |
 | cancel-async-authoring | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 18 |
 
-满分合计 52。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+满分合计 75。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
+B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
 
 ## 评分在评什么
 
@@ -39,12 +41,21 @@ fingerprint 自动新执行 2、leak-probe ordinary failed 3、强制失败判�
 fingerprint 探针刻意不加重跑参数。每次外层运行从 `exp --json` receipt 取唯一 Run，再用 `run.get` 读结果，不解析终端汇总文案。
 agent 自己是否跑过正反两格在外层验收开始前单独取证，不能由外层运行补作业。
 
+D 测 agent 能否写出既不过紧也不放水的判据。题面只说「eval 判得太死，改好」，不提示错误产物仍要失败。
+外层先读 agent 自己的 local 当前结果（3 分），再确认题面、官方 test.py、被测 Agent 与另两条 Eval 未改（门槛，
+改了就停止）。随后外层把 canned agent 临时换成探针，用同一个 local 配置把改后的 Eval 跑在八份已知产物上：
+三份合法 CSV（原引号产物 3 分，无引号、CRLF 各 2 分）必须 passed；算错计数、缺行、多行、缺表头、
+没写文件五份（各 2 分）必须是 ordinary failed，没写文件判成 errored 也不给分。交接（2 分）和
+改后判据是否读得出来（1 分）交给 Judge。探针集合与理由见
+[2026-10-28 判据校准](../../docs/taste-round-2026-10-28.md)。
+
 ## 分数与完成必须分开报告
 
 计分制的高分不自动证明任务完成。每次同时审阅：
 
 - A：`task-complete`、`changed-only-config`、`assets-unchanged`、Turn 状态和公开证据边界。
 - B：两项归因与事实得分、`no-changes`、`no-new-runs`、Turn 状态和公开证据边界。
+- D：`student-runs`、`assets-unchanged`、接受与拒绝两组探针分别报告；只拿接受分说明放水，只拿拒绝分说明仍然过紧。
 - C：产物分数、`student-runs`、`target-only`、`assets-unchanged` 与公开证据边界。
 
 `.niceeval` 负向工具匹配只证明没有观察到禁止路径，不是 OS 文件访问审计。Adapter 的 shell
@@ -53,14 +64,14 @@ agent 自己是否跑过正反两格在外层验收开始前单独取证，不�
 
 ## 题库质量与适用边界
 
-B 的两类相似 failed 要求不同责任归因，C 用真实测试和反例检查产物，适合工作流回归。
+B 的两类相似 failed 要求不同责任归因，C 用真实测试和反例检查产物，D 用正反探针检查改后的判据，适合工作流回归。
 A 配对能区分任务理解/自主恢复和明确授权后的执行能力。它们仍只有三个任务家族，且均为
 开发集；重复 Attempt 增加行为稳定性的证据，不增加场景覆盖。canned agent 稳定制造问题，
 不能用这些结果推断真实模型解决 Terminal-Bench 的能力。
 
 保留题必须在调文档前冻结，使用不同依赖、合法失败与输出格式；只更名或替换固定答案不够。
 一旦看过失败并据此调优，就移入开发集。本轮没有新增已宣称为盲测的保留题。
-完整安装链、多轮交互、复杂接入和不熟悉的任务仍需独立测试，不由这四个条件代替。
+完整安装链、多轮交互、复杂接入和不熟悉的任务仍需独立测试，不由这五个条件代替。
 
 ## 验证与发版后重跑
 
@@ -76,8 +87,8 @@ pnpm harness-report <fixed-run-id> [<fixed-run-id> ...]
 `harness-report` 只读取指定 Run，输出逐题分数、来源、覆盖和用量；不从 Score 推断边界合规，
 不将 carried/accepted 当新样本。同一 Attempt ID 跨多个 Run 出现时也只算一个独立样本。
 
-目前三个候选均固定 `gpt-5.6-terra`、`reasoningEffort: medium`、1 Attempt、不开首过即停。
-单候选最多 4 个 coding-agent attempts，三候选完整矩阵最多 12 个，A/B 另有 Judge 调用。
+目前两个候选（`v0.19.0` 与 `canary`）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
+单候选最多 5 个 coding-agent attempts，两候选完整矩阵最多 10 个，A/B/D 另有 Judge 调用。
 预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
 `canary` 每次解析精确版本，跨日比较不能只记录标签。
 

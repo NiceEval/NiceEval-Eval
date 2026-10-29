@@ -19,12 +19,12 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 ## 评估用例分区
 
-`evals/` 按用户所处阶段分成两组，全仓共 6 道可发现评估用例：
+`evals/` 按用户所处阶段分成两组，全仓共 7 道可发现评估用例：
 
 | 目录 | 类型 | 回答的问题 | 当前场景 |
 | --- | --- | --- | --- |
 | `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher（2 道） |
-| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | 三个任务家族、四个独立条件（含自主/明确授权修复配对） |
+| `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | 三个任务家族、五个独立条件（含自主/授权修复与诊断/修判据两组配对） |
 
 `install/` 的每道题都采用 `<case>/eval.ts` 目录入口，路径本身给出稳定 Eval ID（例如
 `install/db-gpt`）。每道题自己持有宿主 fixture、续轮回答与全部判据，读一个文件就能看到它测什么、
@@ -47,7 +47,7 @@ workspace，不在镜像里共享业务 fixture。项目不携带
 
 ## Harness 评分与发版比较
 
-当前使用 rubric v2：自主恢复 10 分、明确授权恢复 10 分、只读归因 14 分、authoring 18 分。
+当前使用 rubric v2：自主恢复 10 分、明确授权恢复 10 分、只读归因 14 分、修复过紧判据 23 分、authoring 18 分。
 真实结果通过公开 query 核验；分数、完成事实与修改范围分别报告。历史 32/48 不能直接
 与新分数相减。安装前 INIT 的效果由 install 题覆盖，不由预装好的 Harness 题代替。
 

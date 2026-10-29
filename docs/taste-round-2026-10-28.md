@@ -61,8 +61,8 @@ fixtures/harness/terminal-bench/log-summary/probe-agent.ts   # 只在外层验�
 ### 外层验收
 
 Agent 收工后，外层先读它自己的当前结果，再检查受保护资产（canned agent、task 数据、官方 test.py、
-另外两条 Eval）。资产被改就停止，不再计结果分。允许修改目标 Eval 和 `experiments/local.ts`：后者用于改用 Python
-runtime 跑官方 test.py，这是合法路线。
+另外两条 Eval）。资产被改就判失败并停止，不再计结果分。允许修改目标 Eval、`experiments/local.ts`（改用 Python
+runtime 跑官方 test.py 是合法路线）和 README（记录改动是好习惯，首次 Canary 运行就因 README 被列为受保护资产而误停）。
 
 随后外层把 canned agent 临时替换为 probe agent。probe agent 用环境变量 `HARNESS_CSV_PROBE` 选择
 log-summary 的产物，其它题保持原样。每个探针执行一次
@@ -78,6 +78,9 @@ log-summary 的产物，其它题保持原样。每个探针执行一次
 | `extra-row` | 多一行 `DEBUG,0` | failed | 2 |
 | `no-header` | 缺表头 | failed | 2 |
 | `missing-file` | 不写文件 | failed | 2 |
+
+原产物探针不通过时，外层判失败并停止，后面的探针都不再运行：没修过的过紧 Eval 本来就会拒绝错误产物，此时给拒绝分等于奖励没修。
+自检时原版过紧 Eval 在 `plain` 上是 passed，因为逐字比较恰好接受不带引号的输出；它仍拒绝原产物和 CRLF 产物，足以说明过紧。
 
 负向探针要求 `failed`，不接受 `errored`：没有产物是被测对象的业务失败，不是执行错误。
 接受探针只用题面和官方 test.py 都允许的变体，不考察行顺序这类有争议的格式。
@@ -99,7 +102,48 @@ log-summary 的产物，其它题保持原样。每个探针执行一次
 ## 验收
 
 1. `pnpm run typecheck`、`pnpm test`、`niceeval exp harness/canary --dry` 都能识别新条件。
-2. 探针自检（不调用模型）：原过紧 Eval 必须让两条接受探针都 failed；按官方 test.py 语义写的参考 Eval 必须让 8 个探针全部符合预期。
+2. 探针自检（不调用模型）：原过紧 Eval 至少拒绝原产物；按官方 test.py 语义写的参考 Eval 必须让 8 个探针全部符合预期。
    两组结果都要记录下来。
 3. 真实运行：新条件在 `v0.19.0` 与 `canary` 上各跑 1 个 Attempt。
 4. 修改后的安装题需要重跑 4 个 Attempt，单个耗时 50–80 分钟。用户确认预算后再跑。
+
+## 2026-10-28 验证结果
+
+### 探针自检（不调用模型）
+
+在两个候选版本的临时项目里（inner 镜像临时换成 `node:24-slim`），对 8 种产物各跑一次 `exp local terminal-bench/log-summary --rerun all`：
+
+| Eval | 原产物 | plain | crlf-quoted | 五个错误产物 |
+| --- | --- | --- | --- | --- |
+| fixture 原版过紧 Eval | failed | passed | failed | 全部 failed |
+| 按官方 test.py 语义写的参考 Eval | passed | passed | passed | 全部 failed |
+
+0.19.0 与 0.19.1-canary.104 结果一致。环境变量能传到 canned agent，单条 Eval 的选择语法两个版本都可用。
+
+### 真实运行（gpt-6.1-sol，1 Attempt）
+
+| 候选 | Attempt | 得分 | 失分 |
+| --- | --- | --- | --- |
+| 0.19.0 | `@1SSJ3DDMB46VY` | 22.7/23 | handoff 1.7/2 |
+| Canary .104 | `@1DY3570XGBZ7X` | 20/23 | handoff 0/2；readable 0/1：判据搬进了另建的 `log-summary.criteria.ts`，正文看不出通过条件 |
+
+两个版本的 8 个探针全部符合预期，student-runs 也都满分：agent 都写出了不放水的 CSV 判据。区别只在交接和正文可读性两个 Judge 项。
+单个 Attempt 不足以说明版本差异；新条件在确定性部分同样接近满分，所以对 gpt-6.1-sol 而言，Harness 的瓶颈不在「会不会写判据」。
+
+handoff 原判据要求解释 classifier-debug 为什么失败，但用户没有问它，两个 agent 都如实说了它仍然失败。判据已放宽为「不把 local 说成全部通过、
+不把 classifier-debug 说成已修好」。上表两个结果用的是旧措辞，评分身份已经变化，不为这一项付费重跑。
+
+另有一次作废的 Canary 运行 `@1969WJK61TX2T`：agent 顺手在 README 记了一笔改动，eval 当时把 README 列为受保护资产，所以在探针前误停，显示为 passed 4/6。
+README 已移出受保护集合；资产门槛和原产物门槛都加了 `.gate()`，停止时判失败，不会再以缩小的分母显示 passed。
+
+### 速度与 NiceEval 缺口
+
+- `sandbox.prepare`：作废那次 457 s，其中约 334 s 没有任何子 activity；后一次 Canary 49 s，0.19.0 105 s。receipt 的 `beforeCaches`
+  始终全为 0，公开入口看不出是否命中缓存。已记 NiceEval 本地 Issue `opensandbox-prepare-cache-visibility`（核心 `6fb69ca8d`）。
+- 计分题的逐项得分只能对每个 entry 单独查 `attempt.assertion.detail`，4 个安装 Attempt 一共约 180 次调用、8 分钟。
+  已记 `assertion-scores-overview`（核心 `bf3d6da14`）。
+- stable 第一次启动报 `record-command-conflict: Run … admission fence is missing or changed`，Run 未建立。
+  当时宿主链接的核心工作树里有别人未提交的 runner 改动。用发布包 .104 做了两组无模型并发复现（`exp` 与只读 `query`/`show`
+  并发、`exp` 与 `exp --dry` 并发），都没复现，所以未提 Issue；重试后正常运行。
+- `public-evidence` 在 Canary 上 mismatch，原因是 agent 的 `rg -g '!.niceeval/**'` 排除参数里带了 `.niceeval`，并非真的读取。
+  这条只记录、不计分，标签已写明「非完整文件审计」。
