@@ -89,7 +89,8 @@ log-summary 的产物，其它题保持原样。每个探针执行一次
 
 - **`student-runs`（3 分）**：agent 自己留下的 local 当前结果为 hello-world passed、classifier-debug failed、
   log-summary passed。外层验收不替它补这一步。
-- **`handoff`（2 分，Judge）**：交接是否与外层核验的结果一致，是否说明改了什么，是否仍把 classifier-debug 报告为合法失败。
+- **`handoff`（2 分，Judge）**：交接是否与外层核验的结果一致、是否说明改了什么；不能把 local 说成全部通过，
+  或把仍失败的 classifier-debug 说成已修好。用户没有问 classifier-debug，不要求解释它为什么失败。
 - **`readable`（1 分，Judge）**：只读改后的 Eval 正文，能否说出通过条件。
 
 满分 23。前三类事实全部用确定性检查，只有开放输出交给 Judge。

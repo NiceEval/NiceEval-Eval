@@ -144,8 +144,8 @@ Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 多轮取证与回收规则见[安装题自主运行](docs/install-autonomous-runs.md)。
 
 Harness 启用 `harness/v0.19.0` 与 `harness/canary`。
-每个候选运行四个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。
-Harness 共 8 个 coding-agent attempts，全仓共 12 格，另计 Judge 调用。全仓并发上限为 1；
+每个候选运行五个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。
+Harness 共 10 个 coding-agent attempts，加上两候选各两道安装题，全仓共 14 格，另计 Judge 调用。全仓并发上限为 1；
 只想检查计划时使用 `--dry`。新评分基线与发布比较见上方 Harness 说明。
 
 ## 安装评估如何计分
