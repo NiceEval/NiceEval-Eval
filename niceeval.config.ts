@@ -15,6 +15,9 @@ import { loadRepoEnv } from "./lib/env.ts";
 loadRepoEnv();
 
 export default defineConfig({
+  // 本地开发默认失败挂起便于直连现场排查，CI 环境自动禁用
+  pauseOnFailure: !process.env.CI,
+
   // 安装 Attempt 会同时 clone 大型宿主、运行内层 Docker，并把 Codex session 留在 tmpfs。
   // 保持单 Attempt 串行执行以保证隔离与资源稳定性。
   maxConcurrency: 1,
