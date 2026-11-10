@@ -74,8 +74,8 @@ const SOURCE_RUBRICS = [
     "Y 当且仅当对可有多种正确章节、结论与引用措辞的报告使用语义 Judge、解析后的 Markdown/引用 URL 结构检查或宽容 matcher。" +
     "仅匹配一个脆弱短语、完整原文或和业务无关的长度判 N。"],
   ["install.eval.no-service-management", "Eval 不代管目标服务", 2,
-    "Y 当且仅当 Eval 只描述研究任务和断言，没有在 test 中自行启动、伪造、重启或代管 GPT Researcher 服务。" +
-    "服务 setup/teardown 位于 Experiment/Plugin/Sandbox lifecycle 才判 Y。"],
+    "Y 当且仅当 Eval 只描述研究任务和断言，没有在单条 test 用例内自行启动、伪造、重启或代管 GPT Researcher 全局服务。" +
+    "服务生命周期位于项目级命令准备或 Experiment/Plugin/Sandbox 层面才判 Y。"],
   ["install.experiment.target-coupling", "使用本次 GPT Researcher Adapter 与目标 Eval", 5,
     "Y 当且仅当 Experiment 实际选择本次 GPT Researcher Adapter，且它选中的 Eval 测试的也是该研究系统，" +
     "而不是内置/通用/echo agent 或无关 Eval。必须能从导入和 experiment 选择追到同一对定义。"],
@@ -83,9 +83,10 @@ const SOURCE_RUBRICS = [
     "Y 当且仅当 Experiment 声明的每个 model、flags 或静态配置都有清楚的消费方：Adapter/lifecycle 读取后传给 GPT Researcher。" +
     "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。用户已决定沿用服务默认模型，所以不声明 model 或明确拒绝 model 覆盖都算正确。"],
   ["install.experiment.service-start", "目标服务启动与就绪", 2,
-    "Y 当且仅当 Experiment/Plugin/Sandbox lifecycle 负责启动真实 GPT Researcher，并等待GPT Researcher 的 WebSocket/HTTP 入口可用后才发送任务。仅假设外部已启动判 N。"],
+    "Y 当且仅当 agent 按照 GPT Researcher 项目自身的最佳实践（如通过官方 CLI / 脚本启动、配置与健康探测，或 Experiment/Plugin lifecycle）真实启动 GPT Researcher 并确保 WebSocket/HTTP 入口就绪后才跑评测。" +
+    "无任何启动与就绪动作仅盲目假定服务已就绪判 N；使用假 mock 或进程内 fake 替代真实服务判 N。"],
   ["install.experiment.service-cleanup", "目标服务清理", 1,
-    "Y 当且仅当 lifecycle 在结束或失败时可靠清理目标服务的进程或容器。"],
+    "Y 当且仅当在 lifecycle 或任务收尾时对启动的服务进程/容器有可靠清理或回收机制。"],
 ] as const;
 
 /**
