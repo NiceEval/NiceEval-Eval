@@ -16,7 +16,7 @@ loadRepoEnv();
 
 export default defineConfig({
   // 安装 Attempt 会同时 clone 大型宿主、运行内层 Docker，并把 Codex session 留在 tmpfs。
-  // 当前 OpenSandbox 部署限一个 workload Pod，因此整仓串行执行。
+  // 保持单 Attempt 串行执行以保证隔离与资源稳定性。
   maxConcurrency: 1,
   judgeProvider: OpenAIProvider({
     // 裁判使用 GPT-6 Astra；各 Experiment 的被测 Agent 使用 GPT-6.1 Sol。

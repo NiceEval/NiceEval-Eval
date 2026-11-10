@@ -1,5 +1,5 @@
-/** OpenSandbox/Kata 普通执行路径：每 Attempt 独立实例，实际检查 Docker/Compose。
- * 用户接受上游生命周期保证边界；不声明 docker/v1，rootfs 准备缓存只保存文件与镜像归档，不保留现场。
+/** Instabox 普通执行路径：每 Attempt 独立实例，实际检查 Docker/Compose。
+ * 基础镜像使用 Instabox universal 模板，BeforeCache 自动保存和恢复远端快照。
  */
 
 import { codexAgent } from "niceeval/adapter";
@@ -7,7 +7,7 @@ import {
   actionRef,
   changeFrequency,
   defineSandboxCommand,
-  openSandbox,
+  instaboxSandbox,
   shell,
   uploadDirectory,
 } from "niceeval/sandbox";
@@ -21,17 +21,12 @@ const INNER_RUNTIMES_ACTION_ID = "niceeval-eval.prepare-inner-runtimes";
 const HARNESS_SEED_ACTION_ID = "niceeval-eval.upload-harness-seed";
 const HARNESS_CANDIDATE_ACTION_ID = "niceeval-eval.install-candidate-and-prepare-workspace";
 const RUNTIME_CONTRACT_ACTION_ID = "niceeval-eval.runtime-contract";
-const AGENT_ENDPOINT_COMMAND_ID = "niceeval-eval.opensandbox-agent-endpoint";
+const AGENT_ENDPOINT_COMMAND_ID = "niceeval-eval.instabox-agent-endpoint";
 
-const NODE_RUNTIME_SOURCE =
-  "niceeval/codex@sha256:157152804b0ac443e62936d3ce2c8191a1df125bdcb121370c05c00be7c8ab96";
-const PYTHON_RUNTIME_SOURCE =
-  "python:3.11.9-bookworm@sha256:c95170ff7d59de63e9445d3d503644a635c1b8cb7f4fa99f19a1c76da92a849a";
-
-const OPEN_SANDBOX_IMAGE =
-  "docker.io/library/niceeval-opensandbox-docker@sha256:ecdce14703f8bf8a7e13d911f945d78e04e469e93b7cf2dca0273888b329b6cb";
 loadRepoEnv();
-const AGENT_BASE_URL = process.env.NICEEVAL_OPENSANDBOX_CODEX_BASE_URL?.trim()
+const AGENT_BASE_URL = process.env.CODEX_BASE_URL?.trim()
+  || process.env.NICEEVAL_INSTABOX_CODEX_BASE_URL?.trim()
+  || process.env.NICEEVAL_OPENSANDBOX_CODEX_BASE_URL?.trim()
   || "https://s2a.niceeval.com/v1";
 
 export function sandboxCodexAgent() {
@@ -39,94 +34,25 @@ export function sandboxCodexAgent() {
 }
 
 /**
- * 固定 digest 的 inner runtime 是业务 SetupPrefix，不属于 host base image。
- * 同一层将 install/harness 的本地 tags 导出为 rootfs 归档；每 Attempt 在 command barrier 后导入。
+ * 准备沙箱基础工具链（pnpm、安全凭据目录）并关停无关的 GUI/浏览器服务。
  */
 function prepareInnerRuntimes() {
   return shell({
     id: INNER_RUNTIMES_ACTION_ID,
     command: `set -eu
-node_source=${shellQuote(NODE_RUNTIME_SOURCE)}
-python_source=${shellQuote(PYTHON_RUNTIME_SOURCE)}
-node_tag=cache.invalid/niceeval-harness/runtime:node
-harness_python_tag=cache.invalid/niceeval-harness/runtime:python
-install_python_tag=cache.invalid/niceeval-install/runtime:python
-build_dir="$(mktemp -d)"
-node_container=
-python_container=
-cleanup() {
-  [ -z "$node_container" ] || docker rm -f "$node_container" >/dev/null 2>&1 || true
-  [ -z "$python_container" ] || docker rm -f "$python_container" >/dev/null 2>&1 || true
-  rm -rf "$build_dir"
-}
-trap cleanup EXIT
-pull_fixed() {
-  image="$1"
-  attempt=1
-  while ! docker pull "$image"; do
-    if [ "$attempt" -ge 3 ]; then
-      printf '固定镜像拉取连续 %s 次失败：%s\\n' "$attempt" "$image" >&2
-      return 1
-    fi
-    delay=$((attempt * 2))
-    printf '固定镜像拉取失败，%s 秒后重试（%s/3）：%s\\n' "$delay" "$attempt" "$image" >&2
-    sleep "$delay"
-    attempt=$((attempt + 1))
-  done
-}
-
-printf '%s\\n' '初始化 root/node 的固定 pnpm toolchain…'
-export DOCKER_TMPDIR=/var/tmp/niceeval-docker-transfer
-mkdir -p "$DOCKER_TMPDIR"
-/usr/local/bin/niceeval-docker-start
+printf '%s\\n' '初始化固定 pnpm toolchain 与沙箱环境…'
 mkdir -p /opt/niceeval-toolchain/bin
 corepack enable --install-directory /opt/niceeval-toolchain/bin
 corepack prepare pnpm@11.12.0 --activate
-setpriv --reuid=node --regid=node --init-groups env HOME=/home/node corepack prepare pnpm@11.12.0 --activate
+box_user="$(id -un 1000 2>/dev/null || id -un)"
+box_home="$(eval echo "~$box_user")"
+setpriv --reuid="$box_user" --regid="$box_user" --init-groups env HOME="$box_home" corepack prepare pnpm@11.12.0 --activate 2>/dev/null || true
+mkdir -p /opt/fixture-secrets
+chown -R "$box_user:$box_user" /opt/fixture-secrets
 
-printf '%s\\n' '拉取固定 digest 的 inner runtime sources…'
-pull_fixed "$node_source"
-pull_fixed "$python_source"
-docker image tag "$node_source" "$node_tag"
-
-# Generic base intentionally does not carry buildx. Recreate the previously
-# imported Python rootfs with Docker's stable create/cp/export/import surface.
-node_container="$(docker create "$node_source")"
-python_container="$(docker create "$python_source")"
-docker cp "$node_container:/usr/local/bin/node" "$build_dir/node"
-docker cp "$build_dir/node" "$python_container:/usr/local/bin/node"
-docker cp "$build_dir/node" "$python_container:/usr/local/bin/nodejs"
-docker export "$python_container" | docker import - "$harness_python_tag"
-docker image tag "$harness_python_tag" "$install_python_tag"
-
-docker run --pull=never --rm --entrypoint /bin/sh "$node_tag" \
-  -c 'node -v && git --version && ! command -v python3'
-docker run --pull=never --rm --entrypoint /bin/sh "$harness_python_tag" \
-  -c 'node -v && git --version && python3 --version'
-
-archive=/opt/niceeval-runtime-images
-mkdir -p "$archive"
-docker save --output "$archive/images.tar" "$node_tag" "$harness_python_tag" "$install_python_tag"
-for tag in "$node_tag" "$harness_python_tag" "$install_python_tag"; do
-  printf '%s %s\\n' "$tag" "$(docker image inspect --format '{{.Id}}' "$tag")"
-done > "$archive/image-ids"
-cleanup
-trap - EXIT
-
-# Snapshot captures rootfs only. Retire this preparation daemon and unmount its
-# private tmpfs before publishing; the command barrier starts a fresh daemon.
-daemon_pid="$(cat /var/run/docker.pid)"
-kill "$daemon_pid"
-for attempt in $(seq 1 60); do
-  state="$(ps -o stat= -p "$daemon_pid" 2>/dev/null || true)"
-  case "$state" in ''|Z*) break ;; esac
-  sleep 1
-done
-state="$(ps -o stat= -p "$daemon_pid" 2>/dev/null || true)"
-case "$state" in ''|Z*) ;; *) printf '%s\\n' 'preparation dockerd did not stop' >&2; exit 1 ;; esac
-umount /var/lib/docker
-rm -rf /var/run/docker /var/run/docker.pid /var/run/docker.sock "$DOCKER_TMPDIR"
-printf '%s\\n' 'inner runtime archives 已准备完成，daemon 已停止'`,
+# 关停非必要的桌面与浏览器服务，释放 CPU 与内存
+sudo pkill -9 -f "Xvnc|open-computer-use|instabox-computer-use-proxy|xfce4" 2>/dev/null || true
+printf '%s\\n' '沙箱基础环境准备完成'`,
     user: "root",
     changeFrequency: changeFrequency.rare + 1,
   });
@@ -141,19 +67,19 @@ function installCandidateAndPrepareWorkspace(candidateVersion: string) {
     id: HARNESS_CANDIDATE_ACTION_ID,
     command: `set -eu
 candidate_version=${shellQuote(candidateVersion)}
-seed=/home/node/niceeval-harness-seed
+seed=/data/home/niceeval-harness-seed
 scratch=/opt/niceeval-harness
 project="$scratch/project"
 modules="$scratch/node_modules"
 store="$scratch/pnpm-store"
-workspace=/home/sandbox/workspace
+workspace=/data/home/workspace
 
 test -d "$seed"
 rm -rf "$scratch"
 mkdir -p "$project" "$store"
 cp -a "$seed/." "$project/"
 
-# pnpm 11 的 minimumReleaseAge 默认策略会拦截刚发布的候选；被评对象不受包年龄限制。
+# pnpm 11 的 minimumReleaseAge 默认策略会拦截刚发布的候选；被测对象不受包年龄限制。
 export npm_config_minimum_release_age=0
 printf '安装 harness 候选 niceeval@%s…\n' "$candidate_version"
 (cd "$project" && pnpm add -D --allow-build=autoevals --store-dir "$store" "niceeval@$candidate_version" && pnpm exec niceeval init)
@@ -174,7 +100,9 @@ chmod 0700 "$project"
 
 mkdir -p "$workspace"
 cp -a "$project/." "$workspace/"
-chown -R node:"$(id -gn node)" "$workspace"
+box_user="$(id -un 1000 2>/dev/null || id -un)"
+box_group="$(id -gn "$box_user" 2>/dev/null || id -gn)"
+chown -R "$box_user:$box_group" "$workspace"
 
 printf 'harness 候选就绪：niceeval@%s\n' "$candidate_version"`,
     user: "root",
@@ -183,28 +111,18 @@ printf 'harness 候选就绪：niceeval@%s\n' "$candidate_version"`,
   });
 }
 
-/** 不缓存的运行边界：每个 clone 启动独立 daemon，导入归档后检查已有运行契约。 */
+/** 不缓存的运行边界：每个 clone 检查已有运行契约。 */
 function assertRuntime(candidateVersion?: string) {
   return defineSandboxCommand({
     id: RUNTIME_CONTRACT_ACTION_ID,
-    revision: "opensandbox-rootfs-archive-1",
-    inputs: { candidateVersion: candidateVersion ?? null, archiveFormat: "docker-save/v1" },
+    revision: "instabox-runtime-direct-1",
+    inputs: { candidateVersion: candidateVersion ?? null },
     changeFrequency: changeFrequency.rare + (candidateVersion === undefined ? 1 : 3),
     dependsOn: [actionRef(candidateVersion === undefined ? INNER_RUNTIMES_ACTION_ID : HARNESS_CANDIDATE_ACTION_ID)],
   }, async (sandbox, context) => {
-    context.progress({ message: "从准备缓存导入独立 Docker daemon" });
-    const restored = await sandbox.runShell(`set -eu
-export DOCKER_TMPDIR=/var/tmp/niceeval-docker-transfer
-mkdir -p "$DOCKER_TMPDIR"
-/usr/local/bin/niceeval-docker-start
-docker load --input /opt/niceeval-runtime-images/images.tar
-while read -r tag expected; do
-  actual="$(docker image inspect --format '{{.Id}}' "$tag")"
-  test "$actual" = "$expected"
-done < /opt/niceeval-runtime-images/image-ids`, { user: "root", signal: context.signal });
-    if (restored.exitCode !== 0) throw new Error(`Docker runtime archive restore failed: ${restored.stderr}`);
+    context.progress({ message: "检查沙箱运行环境契约" });
     const checked = await sandbox.runShell(runtimeContractScript(candidateVersion), { signal: context.signal });
-    if (checked.exitCode !== 0) throw new Error(`OpenSandbox runtime contract failed: ${checked.stderr}`);
+    if (checked.exitCode !== 0) throw new Error(`Instabox runtime contract failed: ${checked.stderr}`);
   });
 }
 
@@ -229,10 +147,10 @@ project_cli_version="$(pnpm exec niceeval --version 2>&1)" || \
 fail() { printf '%s\\n' "$1" >&2; exit 1; }
 
 node_version="$(node -v 2>&1)" || fail "sandbox Node 不可用"
-case "$node_version" in v24.*) ;; *) fail "sandbox Node 必须是 v24.x，实测 $node_version" ;; esac
+case "$node_version" in v22.*|v24.*) ;; *) fail "sandbox Node 必须是 v22.x 或 v24.x，实测 $node_version" ;; esac
 
 user_id="$(id -u 2>&1)" || fail "无法读取受管命令 uid"
-[ "$user_id" = "1000" ] || fail "受管命令必须以 node(uid 1000) 执行，实测 $user_id"
+[ "$user_id" = "1000" ] || fail "受管命令必须以普通用户(uid 1000) 执行，实测 $user_id"
 
 pnpm_version="$(pnpm --version 2>&1)" || fail "sandbox pnpm 不可用"
 [ "$pnpm_version" = "11.12.0" ] || fail "sandbox pnpm 必须是 11.12.0，实测 $pnpm_version"
@@ -260,7 +178,7 @@ const provisionTargetAppCommand = defineSandboxCommand(
     changeFrequency: changeFrequency.frequent,
   },
   async (sandbox, context) => {
-    await provisionTargetAppEnv(sandbox, context);
+    await provisionTargetAppEnv(sandbox, context, { direct: true });
   },
 );
 
@@ -274,7 +192,13 @@ const provisionAgentEndpointCommand = defineSandboxCommand(
     dependsOn: [actionRef(RUNTIME_CONTRACT_ACTION_ID)],
   },
   async (sandbox, context) => {
-    context.progress({ message: "验证 OpenSandbox Agent TLS endpoint" });
+    context.progress({ message: "验证 Instabox Agent TLS endpoint" });
+    const cfId = process.env.CF_ACCESS_CLIENT_ID?.trim();
+    const cfSecret = process.env.CF_ACCESS_CLIENT_SECRET?.trim();
+    const cfHeaders = cfId && cfSecret ? [
+      "-H", `CF-Access-Client-Id: ${cfId}`,
+      "-H", `CF-Access-Client-Secret: ${cfSecret}`,
+    ] : [];
     const probe = await sandbox.runCommand("curl", [
       "--proto", "=https",
       "--tlsv1.2",
@@ -282,16 +206,17 @@ const provisionAgentEndpointCommand = defineSandboxCommand(
       "--max-time", "15",
       "--silent",
       "--show-error",
+      ...cfHeaders,
       "--output", "/dev/null",
       "--write-out", "%{http_code}",
       `${AGENT_BASE_URL.replace(/\/+$/u, "")}/models`,
     ]);
     if (probe.exitCode !== 0 || probe.stdout.trim() !== "401") {
       throw new Error(
-        `OpenSandbox Agent endpoint 未就绪：curl exit=${probe.exitCode} http=${probe.stdout.trim() || "none"}`,
+        `Instabox Agent endpoint 未就绪：curl exit=${probe.exitCode} http=${probe.stdout.trim() || "none"}`,
       );
     }
-    context.progress({ message: "OpenSandbox Agent 专用 TLS endpoint 已就绪" });
+    context.progress({ message: "Instabox Agent 专用 TLS endpoint 已就绪" });
   },
 );
 
@@ -299,15 +224,13 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-/** 单并发配额下，每个 Attempt 请求独立 Kata 实例和有限 TTL。 */
+/** 单并发配额下，每个 Attempt 请求独立 Instabox 实例和有限 TTL。 */
 function attemptSandbox() {
-  return openSandbox({
-    image: OPEN_SANDBOX_IMAGE,
-    targetPlatform: { _tag: "Linux", os: "linux", arch: "x64", libc: "gnu" },
-    user: "node",
-    pathPrepend: ["/opt/niceeval-toolchain/bin"],
-    resources: { cpu: "2", memory: "8Gi" },
+  return instaboxSandbox({
+    templateId: "universal",
     lifetimeMs: 90 * 60 * 1000,
+    spec: "instabox-medium",
+    pathPrepend: ["/opt/niceeval-toolchain/bin"],
   });
 }
 
@@ -329,7 +252,7 @@ export function harnessSandbox(candidateVersion: string) {
     .before(uploadDirectory({
       id: HARNESS_SEED_ACTION_ID,
       source: new URL("../sandbox/harness-project/", import.meta.url),
-      to: "/home/node/niceeval-harness-seed",
+      to: "/data/home/niceeval-harness-seed",
       changeFrequency: changeFrequency.rare + 1,
       dependsOn: [actionRef(INNER_RUNTIMES_ACTION_ID)],
     }))

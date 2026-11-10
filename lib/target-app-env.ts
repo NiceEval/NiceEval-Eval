@@ -81,6 +81,7 @@ type TargetAppContext = Pick<
 export async function provisionTargetAppEnv(
   sandbox: SandboxCommandTarget,
   ctx: TargetAppContext,
+  options?: { direct?: boolean },
 ): Promise<void> {
   ctx.signal.throwIfAborted();
   loadRepoEnv();
@@ -90,6 +91,28 @@ export async function provisionTargetAppEnv(
   const upstreamBaseUrl = new URL(process.env.TARGET_APP_OPENAI_BASE_URL!);
   if (upstreamBaseUrl.protocol !== "https:") {
     throw new Error("TARGET_APP_OPENAI_BASE_URL 必须使用 HTTPS；真实 upstream 只留在宿主进程。");
+  }
+
+  if (options?.direct || process.env.TARGET_APP_DIRECT === "1" || process.env.TARGET_APP_DIRECT === "true" || process.env.TARGET_APP_PROXY_HOST === "direct") {
+    ctx.progress({ message: "直连目标应用的 LLM 出口" });
+    try {
+      await sandbox.runCommand?.("sudo", ["mkdir", "-p", "/opt/fixture-secrets"]);
+      await sandbox.runCommand?.("sudo", ["chown", "-R", "1000:1000", "/opt/fixture-secrets"]);
+    } catch {
+      // 忽略无法运行 sudo 准备目录的测试 mock
+    }
+    await sandbox.writeText(
+      TARGET_APP_ENV_PATH,
+      [
+        `OPENAI_API_KEY=${shellQuote(process.env.TARGET_APP_OPENAI_API_KEY!)}`,
+        `OPENAI_BASE_URL=${shellQuote(process.env.TARGET_APP_OPENAI_BASE_URL!)}`,
+        `TARGET_APP_MODEL=${shellQuote(process.env.TARGET_APP_MODEL!)}`,
+        "",
+      ].join("\n"),
+    );
+    ctx.signal.throwIfAborted();
+    ctx.progress({ message: "目标应用 LLM 环境变量已就绪" });
+    return;
   }
 
   ctx.progress({ message: "启动目标应用的 Attempt 级 LLM 代理" });
@@ -105,6 +128,12 @@ export async function provisionTargetAppEnv(
     handle.detachAbort = () => ctx.signal.removeEventListener("abort", abort);
     ctx.signal.addEventListener("abort", abort, { once: true });
     ctx.signal.throwIfAborted();
+    try {
+      await sandbox.runCommand?.("sudo", ["mkdir", "-p", "/opt/fixture-secrets"]);
+      await sandbox.runCommand?.("sudo", ["chown", "-R", "1000:1000", "/opt/fixture-secrets"]);
+    } catch {
+      // 忽略无法运行 sudo 准备目录的测试 mock
+    }
     await sandbox.writeText(
       TARGET_APP_ENV_PATH,
       [
@@ -128,7 +157,7 @@ export async function provisionTargetAppEnv(
       );
     }
     if (health.exitCode !== 0 || health.stdout.trim() !== handle.healthNonce) {
-      throw new Error("目标应用短期代理无法从 OpenSandbox 访问；这是环境 setup 问题。");
+      throw new Error("目标应用短期代理无法从 Sandbox 访问；这是环境 setup 问题。");
     }
     ctx.signal.throwIfAborted();
     ctx.progress({ message: "目标应用短期 LLM 代理已就绪" });

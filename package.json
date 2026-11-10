@@ -17,7 +17,6 @@
     }
   },
   "devDependencies": {
-    "@alibaba-group/opensandbox": "1.1.1",
     "@types/node": "^26.1.1",
     "niceeval": "0.19.1-canary.104",
     "react": "^19.2.7",

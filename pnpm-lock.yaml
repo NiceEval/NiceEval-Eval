@@ -378,9 +378,6 @@ importers:
 
   .:
     devDependencies:
-      '@alibaba-group/opensandbox':
-        specifier: 1.1.1
-        version: 1.1.1
       '@types/node':
         specifier: ^26.1.1
         version: 26.1.1
@@ -404,10 +401,6 @@ importers:
         version: 2.9.0
 
 packages:
-
-  '@alibaba-group/opensandbox@1.1.1':
-    resolution: {integrity: sha512-QZEmeKize8W8YeIH/qYxXRhZOE5RwvYw5s3r2xzgD2AgjABbYAqRH1KktK/I1+uqFA0Dc0AE/EaODr03wS34og==}
-    engines: {node: '>=20'}
 
   '@esbuild/aix-ppc64@0.28.1':
     resolution: {integrity: sha512-Svl7tq8k/08+p6CXPpRjQ1fKX+1odH/BQbb48fV6fj3CWHhsoIOoY87w1oHXm0qEpkIK3ZfVgp0hed3XBXzXMQ==}
@@ -565,10 +558,6 @@ packages:
     cpu: [x64]
     os: [win32]
 
-  '@opentelemetry/api@1.10.0':
-    resolution: {integrity: sha512-lMkyes8iHrG+mk6WH7X70MdCLI2RS0FwNBY1PyQ8UemaijE2m5mv5A0Niy3HtbYTFrgkUEQjFMXmSAk2hQDuPQ==}
-    engines: {node: '>=8.0.0'}
-
   '@types/node@26.1.1':
     resolution: {integrity: sha512-nxAkRSVkN1Y0JC1W8ky/fTfkGsMmcrRsbx+3XoZE+rMOX71kLYTV7fLXpqud1GpbpP5TuffXFqfX7fH2GgZREw==}
 
@@ -702,12 +691,6 @@ packages:
     engines: {node: ^8.16.0 || ^10.6.0 || >=11.0.0}
     os: [darwin]
 
-  openapi-fetch@0.14.1:
-    resolution: {integrity: sha512-l7RarRHxlEZYjMLd/PR0slfMVse2/vvIAGm75/F7J6MlQ8/b9uUQmUF2kCPrQhJqMXSxmYWObVgeYXbFYzZR+A==}
-
-  openapi-typescript-helpers@0.0.15:
-    resolution: {integrity: sha512-opyTPaunsklCBpTK8JGef6mfPhLSnyy5a0IN9vKtx3+4aExf+KxEqYwIy3hqkedXIB97u357uLMJsOnm3GVjsw==}
-
   react-dom@19.2.7:
     resolution: {integrity: sha512-t0BRVXvbiE/o20Hfw669rLbMCDWtYZLvmJigy2f0MxsXF+71pxhR3xOkspmsO8h3ZlNzyibAmtCa3l4lYKk6gQ==}
     peerDependencies:
@@ -733,22 +716,12 @@ packages:
   undici-types@8.3.0:
     resolution: {integrity: sha512-j375ScV60dom+YkPFIfTLcOiPxkN/buHz5GobjLhixFuANaNs3C9l4GmrWqejgXWJ7BbJcFYpTEUkS1Ge8bpZQ==}
 
-  undici@7.30.1:
-    resolution: {integrity: sha512-03KrMbjIFDWQR5RNPrSw3bd1r12JpyFQl9/yxjUbJtqkjmllqC5lFjZh6ujeuJCKr8EOQvRW872Oy/az+nLYxg==}
-    engines: {node: '>=20.18.1'}
-
   yaml@2.9.0:
     resolution: {integrity: sha512-2AvhNX3mb8zd6Zy7INTtSpl1F15HW6Wnqj0srWlkKLcpYl/gMIMJiyuGq2KeI2YFxUPjdlB+3Lc10seMLtL4cA==}
     engines: {node: '>= 14.6'}
     hasBin: true
 
 snapshots:
-
-  '@alibaba-group/opensandbox@1.1.1':
-    dependencies:
-      '@opentelemetry/api': 1.10.0
-      openapi-fetch: 0.14.1
-      undici: 7.30.1
 
   '@esbuild/aix-ppc64@0.28.1':
     optional: true
@@ -827,8 +800,6 @@ snapshots:
 
   '@esbuild/win32-x64@0.28.1':
     optional: true
-
-  '@opentelemetry/api@1.10.0': {}
 
   '@types/node@26.1.1':
     dependencies:
@@ -926,12 +897,6 @@ snapshots:
   fsevents@2.3.3:
     optional: true
 
-  openapi-fetch@0.14.1:
-    dependencies:
-      openapi-typescript-helpers: 0.0.15
-
-  openapi-typescript-helpers@0.0.15: {}
-
   react-dom@19.2.7(react@19.2.7):
     dependencies:
       react: 19.2.7
@@ -971,7 +936,5 @@ snapshots:
       '@typescript/typescript-win32-x64': 7.0.2
 
   undici-types@8.3.0: {}
-
-  undici@7.30.1: {}
 
   yaml@2.9.0: {}
