@@ -17,11 +17,16 @@ import {
   provisionTargetAppEnv,
 } from "./target-app-env.ts";
 
-const INNER_RUNTIMES_ACTION_ID = "niceeval-eval.prepare-inner-runtimes";
+const INNER_RUNTIMES_ACTION_ID = "niceeval-eval.prepare-inner-runtimes.v4";
 const HARNESS_SEED_ACTION_ID = "niceeval-eval.upload-harness-seed";
 const HARNESS_CANDIDATE_ACTION_ID = "niceeval-eval.install-candidate-and-prepare-workspace";
 const RUNTIME_CONTRACT_ACTION_ID = "niceeval-eval.runtime-contract";
 const AGENT_ENDPOINT_COMMAND_ID = "niceeval-eval.instabox-agent-endpoint";
+
+const NODE_RUNTIME_SOURCE =
+  "niceeval/codex@sha256:157152804b0ac443e62936d3ce2c8191a1df125bdcb121370c05c00be7c8ab96";
+const PYTHON_RUNTIME_SOURCE =
+  "python:3.11.9-bookworm@sha256:c95170ff7d59de63e9445d3d503644a635c1b8cb7f4fa99f19a1c76da92a849a";
 
 loadRepoEnv();
 const AGENT_BASE_URL = process.env.CODEX_BASE_URL?.trim()
@@ -34,15 +39,19 @@ export function sandboxCodexAgent() {
 }
 
 /**
- * 准备沙箱基础工具链（pnpm、安全凭据目录）并关停无关的 GUI/浏览器服务。
+ * 准备沙箱基础工具链（Node 24、pnpm、安全凭据目录）并准备 inner runtime Docker 镜像。
  */
 function prepareInnerRuntimes() {
   return shell({
     id: INNER_RUNTIMES_ACTION_ID,
     command: `set -eu
-printf '%s\\n' '初始化固定 pnpm toolchain 与沙箱环境…'
+printf '%s\\n' '初始化沙箱 Node 24 与固定 pnpm toolchain…'
+rm -rf /usr/local/lib/node_modules/npm /usr/local/bin/npm /usr/local/bin/npx
+curl -fsSL https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1
 mkdir -p /opt/niceeval-toolchain/bin
 corepack enable --install-directory /opt/niceeval-toolchain/bin
+ln -sf /opt/niceeval-toolchain/bin/pnpm /usr/local/bin/pnpm
+ln -sf /opt/niceeval-toolchain/bin/pnpx /usr/local/bin/pnpx
 corepack prepare pnpm@11.12.0 --activate
 box_user="$(id -un 1000 2>/dev/null || id -un)"
 box_home="$(eval echo "~$box_user")"
@@ -50,9 +59,63 @@ setpriv --reuid="$box_user" --regid="$box_user" --init-groups env HOME="$box_hom
 mkdir -p /opt/fixture-secrets
 chown -R "$box_user:$box_user" /opt/fixture-secrets
 
-# 关停非必要的桌面与浏览器服务，释放 CPU 与内存
-sudo pkill -9 -f "Xvnc|open-computer-use|instabox-computer-use-proxy|xfce4" 2>/dev/null || true
-printf '%s\\n' '沙箱基础环境准备完成'`,
+printf '%s\\n' '在基础镜像中预安装官方 Codex CLI 0.144.1…'
+npm install -g @openai/codex@0.144.1
+mkdir -p "$box_home/.local/bin"
+ln -sf /usr/local/bin/codex "$box_home/.local/bin/codex"
+chown -R "$box_user:$box_user" "$box_home/.local"
+
+node_source=${shellQuote(NODE_RUNTIME_SOURCE)}
+python_source=${shellQuote(PYTHON_RUNTIME_SOURCE)}
+node_tag=cache.invalid/niceeval-harness/runtime:node
+harness_python_tag=cache.invalid/niceeval-harness/runtime:python
+install_python_tag=cache.invalid/niceeval-install/runtime:python
+build_dir="$(mktemp -d)"
+node_container=
+python_container=
+cleanup() {
+  [ -z "$node_container" ] || docker rm -f "$node_container" >/dev/null 2>&1 || true
+  [ -z "$python_container" ] || docker rm -f "$python_container" >/dev/null 2>&1 || true
+  rm -rf "$build_dir"
+}
+trap cleanup EXIT
+pull_fixed() {
+  image="$1"
+  attempt=1
+  while ! docker pull "$image"; do
+    if [ "$attempt" -ge 3 ]; then
+      printf '固定镜像拉取连续 %s 次失败：%s\\n' "$attempt" "$image" >&2
+      return 1
+    fi
+    delay=$((attempt * 2))
+    printf '固定镜像拉取失败，%s 秒后重试（%s/3）：%s\\n' "$delay" "$attempt" "$image" >&2
+    sleep "$delay"
+    attempt=$((attempt + 1))
+  done
+}
+
+printf '%s\\n' '拉取固定 digest 的 inner runtime sources…'
+pull_fixed "$node_source"
+pull_fixed "$python_source"
+docker image tag "$node_source" "$node_tag"
+
+node_container="$(docker create "$node_source")"
+python_container="$(docker create "$python_source")"
+docker cp "$node_container:/usr/local/bin/node" "$build_dir/node"
+docker cp "$build_dir/node" "$python_container:/usr/local/bin/node"
+docker cp "$build_dir/node" "$python_container:/usr/local/bin/nodejs"
+docker export "$python_container" | docker import - "$harness_python_tag"
+docker image tag "$harness_python_tag" "$install_python_tag"
+
+docker run --pull=never --rm --entrypoint /bin/sh "$node_tag" \
+  -c 'node -v && git --version && ! command -v python3'
+docker run --pull=never --rm --entrypoint /bin/sh "$harness_python_tag" \
+  -c 'node -v && git --version && python3 --version'
+
+cleanup
+trap - EXIT
+
+printf '%s\\n' '沙箱基础环境与 inner runtime 镜像准备完成'`,
     user: "root",
     changeFrequency: changeFrequency.rare + 1,
   });
@@ -137,7 +200,7 @@ installed_version="$(node -p "require('./node_modules/niceeval/package.json').ve
   fail "workspace 候选版本不可读：niceeval@$candidate_version"
 [ "$installed_version" = "$candidate_version" ] || \
   fail "workspace 候选版本不符：期望 niceeval@$candidate_version，实测 $installed_version"
-project_cli_version="$(pnpm exec niceeval --version 2>&1)" || \
+project_cli_version="$(NODE_NO_WARNINGS=1 pnpm --silent exec niceeval --version 2>/dev/null || pnpm exec niceeval --version)" || \
   fail "workspace 项目内 niceeval 命令不可用：niceeval@$candidate_version"
 [ "$project_cli_version" = "$candidate_version" ] || \
   fail "workspace 项目内 niceeval 命令版本不符：期望 $candidate_version，实测 $project_cli_version"
@@ -147,7 +210,7 @@ project_cli_version="$(pnpm exec niceeval --version 2>&1)" || \
 fail() { printf '%s\\n' "$1" >&2; exit 1; }
 
 node_version="$(node -v 2>&1)" || fail "sandbox Node 不可用"
-case "$node_version" in v22.*|v24.*) ;; *) fail "sandbox Node 必须是 v22.x 或 v24.x，实测 $node_version" ;; esac
+case "$node_version" in v24.*) ;; *) fail "sandbox Node 必须是 v24.x，实测 $node_version" ;; esac
 
 user_id="$(id -u 2>&1)" || fail "无法读取受管命令 uid"
 [ "$user_id" = "1000" ] || fail "受管命令必须以普通用户(uid 1000) 执行，实测 $user_id"
