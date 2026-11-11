@@ -4,7 +4,7 @@
 NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试。
 
 主仓库依赖固定为 npm 发布的 `niceeval@0.19.1-canary.104`；本地候选验证可使用官方 `pnpm dev:link`。
-被测对象保留最新稳定版 `0.19.0` 与 Canary；Canary 在 Experiment 加载时解析为精确版本。更早版本不参与矩阵。
+被测对象包含稳定版 `0.20.0`、历史对照 `0.19.0` 与 Canary；Canary 在 Experiment 加载时解析为精确版本。
 
 ## 实验入口
 
@@ -12,8 +12,8 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 | 目录 | 回答的问题 | 当前配置 |
 | --- | --- | --- |
-| `experiments/install/` | coding agent 只拿到一句 prompt 和该版本 INIT.md，能否在真实宿主中完成从零接入 | `v0.19.0`、`canary` |
-| `experiments/harness/` | 已装好的项目里，coding agent 能否只靠随包文档运行、诊断和修复 NiceEval 工作流 | `v0.19.0`、`canary` |
+| `experiments/install/` | coding agent 只拿到一句 prompt 和该版本 INIT.md，能否在真实宿主中完成从零接入 | `v0.19.0`、`v0.20.0`、`canary` |
+| `experiments/harness/` | 已装好的项目里，coding agent 能否只靠随包文档运行、诊断和修复 NiceEval 工作流 | `v0.19.0`、`v0.20.0`、`canary` |
 
 版本是 experiment 的配置维度，题目类型不各自建 experiment 目录。
 
@@ -122,9 +122,10 @@ Kubernetes 异步删除与创建响应丢失的上游边界仍存在，运行成
 
 ## 候选版本与实验矩阵
 
-- `install/v0.19.0`、`install/canary`：agent 收到官网首页那句 prompt，URL 指向该版本 tag 下的 INIT.md，
+- `install/v0.19.0`、`install/v0.20.0`、`install/canary`：agent 收到官网首页那句 prompt，URL 指向该版本 tag 下的 INIT.md，
   另加一句版本要求（INIT.md 默认安装 npm latest）。
-- `harness/v0.19.0`：固定最新稳定版 `niceeval@0.19.0`；
+- `harness/v0.20.0`：固定稳定版 `niceeval@0.20.0`；
+- `harness/v0.19.0`：固定历史对照 `niceeval@0.19.0`；
 - `harness/canary`：每次加载时从 npm 全部已发布版本按 semver 取最大值（含预发布版，同一 core 下正式版优先）。
   Harness 的项目已装好候选并运行过 `niceeval init`，agent 只能依靠随包文档。
 
@@ -143,9 +144,9 @@ Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 成本比较计入所有运行的实际可用用量；缺失费用保持未知，不按零计算。
 多轮取证与回收规则见[安装题自主运行](docs/install-autonomous-runs.md)。
 
-Harness 启用 `harness/v0.19.0` 与 `harness/canary`。
+Harness 启用 `harness/v0.19.0`、`harness/v0.20.0` 与 `harness/canary`。
 每个候选运行五个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。
-Harness 共 10 个 coding-agent attempts，加上两候选各两道安装题，全仓共 14 格，另计 Judge 调用。全仓并发上限为 1；
+Harness 共 15 个 coding-agent attempts，加上三候选各两道安装题，全仓共 21 格，另计 Judge 调用。全仓并发上限为 1；
 只想检查计划时使用 `--dry`。新评分基线与发布比较见上方 Harness 说明。
 
 ## 安装评估如何计分
@@ -193,7 +194,7 @@ OpenSandbox 迁移的当前进展、得分与限制见 [2026-10-26 验收记录]
 
 `pnpm run typecheck` 与 `pnpm test` 验证宿主类型，并用真实本地 CLI 固定各 Eval 读取的
 `niceeval.query/v2` / `v3` 字段（当前结果、局部修复、沿用与判据失效），不调用付费模型。
-历史对照结果保留，经当前宿主 CLI 读取。最新稳定版仍使用 Query v2，因此保留 v2/v3 的薄适配；不再维护更早版本的运行配置。
+历史对照结果保留，经当前宿主 CLI 读取。历史对照 0.19.0 使用 Query v2，因此保留 v2/v3 的薄适配；不再维护更早版本的运行配置。
 
 若旧 `.niceeval` 报 `record-schema-unsupported` 或旧 ProjectDatabase owner 未释放，保留完整
 现场，按随包 `tutorials/agent-feedback-loop.mdx` 与 `troubleshooting/debugging.mdx` 在不含
