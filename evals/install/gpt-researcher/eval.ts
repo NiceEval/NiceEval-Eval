@@ -8,12 +8,13 @@
 
 import { defineScoreEval } from "niceeval";
 import { commandSucceeded, countWhere, equals, greaterThan, isDefined, or, referencesAnyPath, toolMatch } from "niceeval/expect";
-import { actionRef, command, gitCheckout, sandboxRequirements } from "niceeval/sandbox";
+import { actionRef, command, gitCheckout, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
 import {
   archiveAgentOutput,
   locateInstallRoot,
   readAuthoredSource,
+  readInstallLayout,
   runCandidateCli,
 } from "../../../lib/install-probes.ts";
 import { YES, yesNo } from "../../../lib/judge.ts";
@@ -134,7 +135,7 @@ function answerRequestedChoice(question: string): string {
 }
 
 export default defineScoreEval({
-  description: "把 niceeval 接入 GPT Researcher（自动化研究报告 agent）",
+  description: "把 niceeval 接入 GPT Researcher，复用已有根目录 pnpm 工具链",
 
   timeoutMs: 80 * 60 * 1000,
   sandbox: sandboxRequirements({})
@@ -149,6 +150,13 @@ export default defineScoreEval({
       id: "niceeval-eval.install-fixture.gpt-researcher-v3.6.0.detach",
       changeFrequency: 21,
       dependsOn: [actionRef("niceeval-eval.install-fixture.gpt-researcher-v3.6.0.checkout")],
+    }))
+    .before(uploadDirectory({
+      id: "niceeval-eval.install-fixture.gpt-researcher.root-tooling",
+      source: new URL("../../../fixtures/install/gpt-researcher-root-tooling/", import.meta.url),
+      to: ".",
+      changeFrequency: 22,
+      dependsOn: [actionRef("niceeval-eval.install-fixture.gpt-researcher-v3.6.0.detach")],
     })),
   async test(t) {
     const version = t.flags.candidateVersion;
@@ -160,6 +168,16 @@ export default defineScoreEval({
 
     // 官网首页给用户复制的同一句 prompt（NiceEval apps/site/lib/content.ts），URL 换成候选 tag 下的 INIT.md。
     // INIT.md 让 agent 装 npm latest；评的是候选版本，所以只多一句版本要求。
+    const layoutBefore = await readInstallLayout(t.sandbox);
+    const toolingBefore = await Promise.all([
+      t.sandbox.readText("scripts/check.js"),
+      t.sandbox.readText("tools/repo-check/index.js"),
+    ]);
+    // Fixture 的依赖和原有检查先通过，后续失败才能归因于安装改动。
+    const baselineInstall = await t.sandbox.runCommand("pnpm", ["install", "--frozen-lockfile"], { cwd: "." });
+    if (baselineInstall.exitCode !== 0) throw new Error(`宿主基线安装失败：${baselineInstall.stderr}`);
+    const baselineCheck = await t.sandbox.runCommand("pnpm", ["run", "check"], { cwd: "." });
+    if (baselineCheck.exitCode !== 0) throw new Error(`宿主基线检查失败：${baselineCheck.stderr}`);
     const firstTurn = await t.send(
       `READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\n` +
       `Use niceeval@${version} exactly.`,
@@ -213,6 +231,12 @@ export default defineScoreEval({
       // ── 源码设计：先于所有安装与运行 gate 评审 ──
       const root = await locateInstallRoot(t.sandbox);
       const source = root === null ? "" : await readAuthoredSource(t.sandbox, root);
+      const layoutAfter = await readInstallLayout(t.sandbox);
+      t.judge({ before: layoutBefore, after: layoutAfter, installRoot: root, handoff: handoff.reply },
+        yesNo("install.layout.owner",
+          "Y 当且仅当安装复用已有根目录 pnpm 开发工具项目，交接说明从仓库根目录运行的本地命令。" +
+          "仅因为 Python 服务而创建独立 niceeval/package.json、第二套锁文件或要求用户猜测 cd 目录，判 N。"))
+        .score(3).key("install.layout.owner").label("安装融入宿主工具链并交付根目录入口");
       await t.group("Adapter、Experiment 与 Eval 源码设计", async () => {
         for (const [key, label, points, rubric] of SOURCE_RUBRICS) {
           t.judge({ target: "GPT Researcher", authoredSource: source }, yesNo(key, rubric))
@@ -225,8 +249,60 @@ export default defineScoreEval({
         }
       });
 
+      await t.group("宿主安装规范", async () => {
+        const original = layoutBefore.manifests["package.json"]!;
+        const installed = layoutAfter.manifests["package.json"];
+        t.check(installed?.devDependencies?.niceeval, equals(version)).gate()
+          .key("install.layout.root-dependency").label("根工具项目声明精确候选开发依赖");
+        t.check(installed?.packageManager, equals(original.packageManager)).gate()
+          .key("install.layout.package-manager").label("保留已有 pnpm 版本");
+        t.check(installed?.type, equals(original.type)).gate()
+          .key("install.layout.module-format").label("保留宿主 CommonJS 格式");
+        t.check(installed?.scripts?.check, equals(original.scripts!.check)).gate()
+          .key("install.layout.host-script").label("保留原有检查入口");
+        t.check(installed?.devDependencies?.["@gpt-researcher/repo-check"],
+          equals(original.devDependencies!["@gpt-researcher/repo-check"])).gate()
+          .key("install.layout.host-dependency").label("保留已有 workspace 工具依赖");
+        t.check(Object.keys(layoutAfter.manifests).sort(), equals(Object.keys(layoutBefore.manifests).sort())).gate()
+          .key("install.layout.no-extra-package").label("不另建不必要的 Node 子项目");
+        t.check(Object.keys(layoutAfter.lockfiles).sort(), equals(Object.keys(layoutBefore.lockfiles).sort())).gate()
+          .key("install.layout.lockfiles").label("不新增或删除依赖锁文件");
+        t.check(layoutAfter.workspaces, equals(layoutBefore.workspaces)).gate()
+          .key("install.layout.workspace").label("保留已有 workspace 边界");
+        for (const [path, manifest] of Object.entries(layoutBefore.manifests)) {
+          if (path === "package.json") continue;
+          t.check(layoutAfter.manifests[path], equals(manifest)).gate()
+            .key(`install.layout.manifest:${path}`).label(`保留已有子项目 manifest：${path}`);
+        }
+        for (const [path, digest] of Object.entries(layoutBefore.lockfiles)) {
+          if (path === "pnpm-lock.yaml") continue;
+          t.check(layoutAfter.lockfiles[path], equals(digest)).gate()
+            .key(`install.layout.lock:${path}`).label(`保留无关子项目锁文件：${path}`);
+        }
+        const toolingAfter = await Promise.all([
+          t.sandbox.readText("scripts/check.js"),
+          t.sandbox.readText("tools/repo-check/index.js"),
+        ]);
+        t.check(toolingAfter, equals(toolingBefore)).gate()
+          .key("install.layout.host-check-source").label("原有检查源码未被替换");
+        // 必须在验收方执行 install 之前检查，避免冻结安装替 agent 补装缺失的 CLI。
+        const cliVersion = await t.sandbox.runCommand("pnpm", ["exec", "niceeval", "--version"], { cwd: "." });
+        await t.check(cliVersion, commandSucceeded()).gate()
+          .key("install.layout.root-cli").label("根目录 pnpm exec 找到本地 NiceEval").orStop();
+        t.check(cliVersion.stdout.trim(), equals(version)).gate()
+          .key("install.layout.root-cli-version").label("根目录 CLI 为指定候选版本");
+        const frozen = await t.sandbox.runCommand("pnpm", ["install", "--frozen-lockfile"], { cwd: "." });
+        await t.check(frozen, commandSucceeded()).gate()
+          .key("install.layout.frozen-install").label("根目录冻结安装成功").orStop();
+        const check = await t.sandbox.runCommand("pnpm", ["run", "check"], { cwd: "." });
+        t.check(check, commandSucceeded()).gate()
+          .key("install.layout.host-check").label("原有宿主检查仍通过");
+      });
+
       // ── 安装与 dry plan：零分 gate ──
       await t.check(root, isDefined<string | null>()).key("install.gate.config").label("gate · niceeval.config.ts 存在").orStop();
+      await t.check(root, equals(".")).gate().key("install.layout.root-config")
+        .label("根工具项目拥有 NiceEval 配置").orStop();
       const at = root!;
 
       const installed = await t.sandbox.runCommand(
@@ -235,11 +311,11 @@ export default defineScoreEval({
       await t.check(installed.stdout.trim(), equals(version))
         .key("install.gate.exact-version").label(`gate · 项目依赖精确为 niceeval@${version}`).orStop();
 
-      const list = await runCandidateCli(t.sandbox, at, ["list"]);
+      const list = await t.sandbox.runCommand("pnpm", ["exec", "niceeval", "list"], { cwd: "." });
       await t.check(list, commandSucceeded())
         .key("install.gate.cli-discovery").label("gate · 项目内 CLI discovery 成功").orStop();
 
-      const dry = await runCandidateCli(t.sandbox, at, ["exp", "--dry", "--json"]);
+      const dry = await t.sandbox.runCommand("pnpm", ["exec", "niceeval", "exp", "--dry", "--json"], { cwd: "." });
       await t.check(dry, commandSucceeded())
         .key("install.gate.dry-command").label("gate · exp --dry --json 成功").orStop();
       const plan = parseJson(dry.stdout) as { matrix?: unknown[] } | null;

@@ -14,6 +14,7 @@ import {
   archiveAgentOutput,
   locateInstallRoot,
   readAuthoredSource,
+  readInstallLayout,
   runCandidateCli,
 } from "../../../lib/install-probes.ts";
 import { YES, yesNo } from "../../../lib/judge.ts";
@@ -164,6 +165,7 @@ export default defineScoreEval({
 
     // 官网首页给用户复制的同一句 prompt（NiceEval apps/site/lib/content.ts），URL 换成候选 tag 下的 INIT.md。
     // INIT.md 让 agent 装 npm latest；评的是候选版本，所以只多一句版本要求。
+    const layoutBefore = await readInstallLayout(t.sandbox);
     const firstTurn = await t.send(
       `READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\n` +
       `Use niceeval@${version} exactly.`,
@@ -217,6 +219,13 @@ export default defineScoreEval({
       // ── 源码设计：先于所有安装与运行 gate 评审 ──
       const root = await locateInstallRoot(t.sandbox);
       const source = root === null ? "" : await readAuthoredSource(t.sandbox, root);
+      const layoutAfter = await readInstallLayout(t.sandbox);
+      t.judge({ before: layoutBefore, after: layoutAfter, installRoot: root, handoff: handoff.reply },
+        yesNo("install.layout.owner",
+          "Y 当且仅当安装优先复用适用的现有根工具项目或 workspace，保留原有包管理器与锁文件归属；" +
+          "没有适用 Node 工具项目时允许独立建包，已有工具项目却另建安装边界时必须说明具体不兼容原因，不能仅因为被测服务是 Python。" +
+          "交接必须给出从仓库根目录能使用的本地命令，子目录安装需明确目录参数或根脚本。"))
+        .score(3).key("install.layout.owner").label("安装融入宿主工具链并交付根目录入口");
       await t.group("Adapter、Experiment 与 Eval 源码设计", async () => {
         for (const [key, label, points, rubric] of SOURCE_RUBRICS) {
           t.judge({ target: "DB-GPT", authoredSource: source }, yesNo(key, rubric))

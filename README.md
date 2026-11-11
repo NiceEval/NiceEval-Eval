@@ -23,7 +23,7 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 | 目录 | 类型 | 回答的问题 | 当前场景 |
 | --- | --- | --- | --- |
-| `install/` | 安装评估 | 从零开始，agent 能否在真实项目中安装候选版本并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher（2 道） |
+| `install/` | 安装评估 | 从零开始，agent 能否融入宿主工具链并写出可用的 config、adapter、eval 和 experiment | DB-GPT、GPT Researcher + 根目录 pnpm 工具链（2 道） |
 | `harness/` | Harness 工作流评估 | agent 能否自己运行 experiment，并根据反馈归因、修复和复验 | 三个任务家族、五个独立条件（含自主/授权修复与诊断/修判据两组配对） |
 
 `install/` 的每道题都采用 `<case>/eval.ts` 目录入口，路径本身给出稳定 Eval ID（例如
@@ -151,11 +151,12 @@ Harness 共 15 个 coding-agent attempts，加上三候选各两道安装题，�
 
 ## 安装评估如何计分
 
-安装题把结论拆成三层：
+安装题按以下方面分别检查：
 
 | 层 | 检查内容 | 作用 |
 | --- | --- | --- |
-| 安装机制 | 候选版本、config、托管区块、typecheck、eval 可发现性 | 分项计分，衡量链路完成度 |
+| 安装机制 | 候选版本、config、CLI discovery、有效 dry plan | 零分 gate，保证后续取证前提 |
+| 宿主安装规范 | 依赖归属、根目录命令、锁文件、包管理器、既有脚本与模块格式 | 布局理由计 3 分；GPT Researcher 的具体事实用 gate 检查 |
 | 首次评估定题 | 核心评估面、真实数据、成败判据、运行约束、候选范围 | 软分，判断 INIT 是否把安装请求推进成有效 Eval |
 | 产出质量 | experiment 与 eval 是否真的覆盖宿主核心用例 | 软分，定位文档契约是否被理解 |
 | 完成交接 | 文件与复现命令、真实首跑结果、下一步选择 | 软分，判断 agent 是否交付可继续使用的评估入口 |
@@ -164,6 +165,11 @@ Harness 共 15 个 coding-agent attempts，加上三候选各两道安装题，�
 真实项目 fixture 锁定具体 tag：DB-GPT `v0.8.1`，GPT Researcher `v3.6.0`。DB-GPT 使用
 sparse checkout 排除与接入无关的大型文档和资源目录。agent 写出的产物会复制到 gitignored
 的 `.agent-output/` 供人工复核。
+
+GPT Researcher 叠加已有根目录 pnpm workspace 与 CommonJS 工具脚本，检验混合语言仓库是否复用
+宿主工具链。验收从根目录实际执行 CLI、冻结安装和原有检查，不通过自动切到嵌套安装目录来补救。
+完整判据、fixture 边界和本地验证见[安装位置与宿主工具链验收](docs/install-layout.md)。
+该场景更改了题目条件，旧成绩不能直接作为新场景成绩；精确候选提示仍不衡量自动选择 npm 最新版。
 
 GPT Researcher 的运行选择使用内置 DuckDuckGo 搜索，目标模型沿用服务默认值，不依赖
 Tavily key。真实响应评分结合 agent 交接时的 Adapter/Eval 源码与各当前 Attempt 的公开执行
