@@ -9,7 +9,7 @@
 import { defineScoreEval } from "niceeval";
 import { commandSucceeded, countWhere, equals, greaterThan, isDefined, or, referencesAnyPath, toolMatch } from "niceeval/expect";
 import { actionRef, command, gitCheckout, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
-import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
+import { assertPagesInCandidate, candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../../../lib/candidate.ts";
 import {
   archiveAgentOutput,
   locateInstallRoot,
@@ -32,12 +32,13 @@ const FIRST_TURN_QUESTIONS = [
   ["install.first-turn.capability", "核对能力边界", 2,
     "agent 是否说明核心能力是自主检索多源资料并生成带引用的结构化研究报告，而不是普通对话。"],
   ["install.first-turn.ask-judge", "询问 Judge", 1,
-    "agent 是否在动手实现前询问了 Judge 用哪个服务、模型或 Key，或者说明没有 Judge 时先只写精确判据？"],
+    "agent 是否在编写 Adapter、Experiment 或 Eval 之前询问了 Judge 用哪个服务、模型或 Key，或者说明没有 Judge 时先只写精确判据？" +
+    "此前安装依赖、运行 niceeval init 不算动手实现。"],
   ["install.first-turn.ask-budget", "询问首跑预算", 1,
-    "agent 是否在动手实现前询问了首跑的 Attempt 数、时间或费用预算？"],
+    "agent 是否在真实运行 Experiment 之前询问了首跑的 Attempt 数、时间或费用预算？安装依赖、写源码与 --dry 都不花预算，不算。"],
   ["install.first-turn.pause", "首轮停下等用户决定", 1,
-    "agent 是否在写代码前明确停下，把需要用户决定的选择留给用户？正式 HITL waiting 或普通文本请求确认都算；" +
-    "只反问本应从仓库查明的接口事实不算。"],
+    "agent 是否在编写 Adapter、Experiment 或 Eval 之前明确停下，把需要用户决定的选择留给用户？正式 HITL waiting 或普通文本请求确认都算；" +
+    "INIT.md 要求先安装再读随包文档，所以停下之前安装依赖、运行 niceeval init、阅读仓库与文档都不算动手。只反问本应从仓库查明的接口事实不算。"],
   ["install.first-turn.use-case", "提出核心用例", 2,
     "agent 是否主动提出了一条具体的首个 Eval 核心用例：对具体主题自主检索多源资料，产出带引用来源的结构化研究报告正文。仅提 hello、任务提交回执或非空回复判 N。"],
   ["install.first-turn.success", "说明成功判据", 1,
@@ -63,8 +64,10 @@ const SOURCE_RUBRICS = [
     "Y 当且仅当 LLM/搜索凭证只从环境/目标服务进程边界读取，不硬编码，不写入工作区，不打印，也不混入 Eval 文本或取证输出；" +
     "/opt/fixture-secrets/target-app.env 只注入目标服务进程，不 source 到 agent shell。"],
   ["install.eval.core-input", "输入覆盖 GPT Researcher 核心能力", 6,
-    "Y 当且仅当至少一条 Eval 输入要求对具体、可研究的主题自主检索多源资料，产出带引用来源的结构化研究报告正文。" +
-    "合格形状是：具体研究主题，输出应包含实质内容、结构化章节和引用 URL。hello、自我介绍或无关常识不合格。"],
+    "Y 当且仅当至少一条 Eval 把一个具体、可研究的主题交给 GPT Researcher 的研究报告路径（请求里的 report_type 是研究报告类），" +
+    "让它自主检索资料并返回报告正文。输入只需要给出主题：多源检索、章节和引用是 GPT Researcher 自己的行为，" +
+    "有没有做到由断言项判断，不要求写进输入文本。" +
+    "把研究限定在输入给定的单一来源、禁止检索，或 hello、自我介绍、无关常识，判 N。"],
   ["install.eval.business-assertions", "断言检查报告内容、结构与引用", 6,
     "Y 当且仅当断言检查主题相关的实质结论、可识别的报告结构，以及一个或多个可审查的来源 URL/引用。" +
     "只检查 succeeded、任务提交回执、非空文本、字数或“报告”字样判 N。"],
@@ -198,15 +201,6 @@ export default defineScoreEval({
           t.judge(firstTurnFacts, yesNo(key, `只根据首轮的 commands、inputRequests 与 reply 回答：${question}`))
             .score(points).key(key).label(label);
         }
-        firstTurn.toolOrder([
-          toolMatch({ input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }),
-          toolMatch({ input: referencesAnyPath([
-            "node_modules/niceeval/docs-site/zh/tutorials/connect-your-agent.mdx",
-            "node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx",
-            "node_modules/niceeval/docs-site/zh/tutorials/quickstart.mdx",
-            "node_modules/niceeval/docs-site/zh/reference/events.mdx",
-          ]) }),
-        ]).score(3).key("install.docs.index-to-relevant-page").label("从随包 INDEX 路由到相关页面");
       });
 
       const { inputRequests } = firstTurnFacts;
@@ -219,14 +213,20 @@ export default defineScoreEval({
         })))
         : await t.send(FOLLOW_UP);
 
-      t.notCalledTool(toolMatch({
-        input: referencesAnyPath([
-          "niceeval.com/docs",
-          "github.com/CorrectRoadH/niceeval/blob/main",
-          "github.com/CorrectRoadH/niceeval/tree/main",
-          "github.com/CorrectRoadH/niceeval/raw/main",
-        ]),
-      })).score(1).key("install.docs.no-online-main").label("没有退回 online main 文档");
+      // 路由看两轮合计：先停下问用户、第二轮才读 Adapter 页面的 agent 不该因此丢分。
+      // 根作用域没有 toolOrder，所以拆成两件各自可以缺失的事，不再要求先后顺序。
+      t.calledTool(toolMatch({ input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }))
+        .score(1).key("install.docs.read-index").label("读了随包 INDEX");
+      t.calledTool(toolMatch({ input: referencesAnyPath([
+        "node_modules/niceeval/docs-site/zh/tutorials/connect-your-agent.mdx",
+        "node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx",
+        "node_modules/niceeval/docs-site/zh/tutorials/quickstart.mdx",
+        "node_modules/niceeval/docs-site/zh/reference/events.mdx",
+      ]) })).score(2).key("install.docs.read-adapter-page").label("读了随包的 Adapter 接入页面");
+
+      // 两轮都算：文档站与仓库 main 分支上的任何文件都是另一个版本的内容，带版本 tag 的地址不算。
+      t.notCalledTool(toolMatch({ input: referencesAnyPath(ONLINE_MAIN_DOC_REFERENCES) }))
+        .score(1).key("install.docs.no-online-main").label("没有退回 online main 文档");
 
       // ── 源码设计：先于所有安装与运行 gate 评审 ──
       const root = await locateInstallRoot(t.sandbox);

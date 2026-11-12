@@ -9,7 +9,7 @@
 import { defineScoreEval } from "niceeval";
 import { commandSucceeded, countWhere, equals, greaterThan, isDefined, or, referencesAnyPath, toolMatch } from "niceeval/expect";
 import { actionRef, command, gitCheckout, sandboxRequirements } from "niceeval/sandbox";
-import { assertPagesInCandidate, candidateInitDocUrl } from "../../../lib/candidate.ts";
+import { assertPagesInCandidate, candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../../../lib/candidate.ts";
 import {
   archiveAgentOutput,
   locateInstallRoot,
@@ -33,15 +33,17 @@ const FIRST_TURN_QUESTIONS = [
     "agent 是否说明 DB-GPT 的差异化能力是让 LLM 访问数据源、生成并执行 SQL，并把它和只调裸 LLM 的普通聊天区分开？" +
     "chat_data / chat_db_qa / chat_dashboard 对 chat_normal，或 react-agent 数据分析对普通对话，都算。"],
   ["install.first-turn.ask-judge", "询问 Judge", 1,
-    "agent 是否在动手实现前询问了 Judge 用哪个服务、模型或 Key，或者说明没有 Judge 时先只写精确判据？"],
+    "agent 是否在编写 Adapter、Experiment 或 Eval 之前询问了 Judge 用哪个服务、模型或 Key，或者说明没有 Judge 时先只写精确判据？" +
+    "此前安装依赖、运行 niceeval init 不算动手实现。"],
   ["install.first-turn.ask-budget", "询问首跑预算", 1,
-    "agent 是否在动手实现前询问了首跑的 Attempt 数、时间或费用预算？"],
+    "agent 是否在真实运行 Experiment 之前询问了首跑的 Attempt 数、时间或费用预算？安装依赖、写源码与 --dry 都不花预算，不算。"],
   ["install.first-turn.pause", "首轮停下等用户决定", 1,
-    "agent 是否在写代码前明确停下，把需要用户决定的选择留给用户？正式 HITL waiting 或普通文本请求确认都算；" +
-    "只反问本应从仓库查明的接口事实不算。"],
+    "agent 是否在编写 Adapter、Experiment 或 Eval 之前明确停下，把需要用户决定的选择留给用户？正式 HITL waiting 或普通文本请求确认都算；" +
+    "INIT.md 要求先安装再读随包文档，所以停下之前安装依赖、运行 niceeval init、阅读仓库与文档都不算动手。只反问本应从仓库查明的接口事实不算。"],
   ["install.first-turn.use-case", "提出核心用例", 2,
-    "agent 是否主动提出了一条具体的首个 Eval 核心用例：用户用自然语言问真实库表里的问题，DB-GPT 访问数据源、生成并执行 SQL，再给出分析？" +
-    "要说出具体问题或具体表；只提 hello、HTTP 成功、非空回复，或“某个销售分析问题”这种还没定下来的计划，判 N。"],
+    "agent 是否主动提出了一条具体的首个 Eval 核心用例：用户用自然语言问一份内容固定的真实数据里的问题，DB-GPT 访问这份数据、" +
+    "执行 SQL 或分析代码，再给出答案？数据可以是数据库表，也可以是交给 react-agent 数据分析的 CSV/Excel 文件。" +
+    "要说出具体问题和具体的表或文件；只提 hello、HTTP 成功、非空回复，或“某个销售分析问题”这种还没定下来的计划，判 N。"],
   ["install.first-turn.success", "说明成功判据", 1,
     "agent 是否说明了这条用例可观察的业务成功结果，例如核对具体数值、表名或 SQL？"],
   ["install.first-turn.risk", "指出主要风险", 1,
@@ -64,10 +66,10 @@ const SOURCE_RUBRICS = [
     "Y 当且仅当凭证只从环境/目标服务进程边界读取，不硬编码，不写入工作区，不打印，也不混入 Eval 文本或取证输出；" +
     "/opt/fixture-secrets/target-app.env 只注入目标服务进程，不 source 到 agent shell。"],
   ["install.eval.core-input", "输入覆盖 DB-GPT 核心能力", 6,
-    "Y 当且仅当至少一条 Eval 输入让用户用自然语言问真实库表，DB-GPT 通过 chat_data / " +
-    "chat_db_qa / chat_dashboard 等模式生成 SQL、查询并分析；chat_normal 只是裸 LLM 闲聊。" +
-    "合格形状是：具体的数据问答或分析任务，并使用能触达数据库的模式及对应数据源参数；" +
-    "chat_normal 下问常识或算术也没有触达 DB-GPT 的差异化能力。hello、自我介绍或无关常识不合格。"],
+    "Y 当且仅当至少一条 Eval 输入让用户用自然语言问一份内容固定的真实数据，答案只有访问这份数据才能得到，" +
+    "并且请求走的是能触达数据的模式并带上对应的数据源参数：chat_data / chat_db_qa / chat_dashboard 加数据库数据源，" +
+    "或 react-agent 数据分析加数据文件，两条路都算 DB-GPT 的差异化能力。" +
+    "chat_normal 只是裸 LLM 闲聊，在它下面问常识或算术判 N；没有数据源参数、hello、自我介绍或无关常识判 N。"],
   ["install.eval.business-assertions", "断言检查具体业务结果", 6,
     "Y 当且仅当断言核对可预期的业务事实，例如查询数值、表/字段名、SQL 片段或与固定测试数据一致的分析结论。" +
     "只检查 succeeded、HTTP 2xx、非空文本、字数或“成功”字样判 N。"],
@@ -186,15 +188,6 @@ export default defineScoreEval({
           t.judge(firstTurnFacts, yesNo(key, `只根据首轮的 commands、inputRequests 与 reply 回答：${question}`))
             .score(points).key(key).label(label);
         }
-        firstTurn.toolOrder([
-          toolMatch({ input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }),
-          toolMatch({ input: referencesAnyPath([
-            "node_modules/niceeval/docs-site/zh/tutorials/connect-your-agent.mdx",
-            "node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx",
-            "node_modules/niceeval/docs-site/zh/tutorials/quickstart.mdx",
-            "node_modules/niceeval/docs-site/zh/reference/events.mdx",
-          ]) }),
-        ]).score(3).key("install.docs.index-to-relevant-page").label("从随包 INDEX 路由到相关页面");
       });
 
       const { inputRequests } = firstTurnFacts;
@@ -207,14 +200,20 @@ export default defineScoreEval({
         })))
         : await t.send(FOLLOW_UP);
 
-      t.notCalledTool(toolMatch({
-        input: referencesAnyPath([
-          "niceeval.com/docs",
-          "github.com/CorrectRoadH/niceeval/blob/main",
-          "github.com/CorrectRoadH/niceeval/tree/main",
-          "github.com/CorrectRoadH/niceeval/raw/main",
-        ]),
-      })).score(1).key("install.docs.no-online-main").label("没有退回 online main 文档");
+      // 路由看两轮合计：先停下问用户、第二轮才读 Adapter 页面的 agent 不该因此丢分。
+      // 根作用域没有 toolOrder，所以拆成两件各自可以缺失的事，不再要求先后顺序。
+      t.calledTool(toolMatch({ input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }))
+        .score(1).key("install.docs.read-index").label("读了随包 INDEX");
+      t.calledTool(toolMatch({ input: referencesAnyPath([
+        "node_modules/niceeval/docs-site/zh/tutorials/connect-your-agent.mdx",
+        "node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx",
+        "node_modules/niceeval/docs-site/zh/tutorials/quickstart.mdx",
+        "node_modules/niceeval/docs-site/zh/reference/events.mdx",
+      ]) })).score(2).key("install.docs.read-adapter-page").label("读了随包的 Adapter 接入页面");
+
+      // 两轮都算：文档站与仓库 main 分支上的任何文件都是另一个版本的内容，带版本 tag 的地址不算。
+      t.notCalledTool(toolMatch({ input: referencesAnyPath(ONLINE_MAIN_DOC_REFERENCES) }))
+        .score(1).key("install.docs.no-online-main").label("没有退回 online main 文档");
 
       // ── 源码设计：先于所有安装与运行 gate 评审 ──
       const root = await locateInstallRoot(t.sandbox);
