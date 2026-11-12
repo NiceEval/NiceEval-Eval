@@ -31,7 +31,6 @@ const PYTHON_RUNTIME_SOURCE =
 loadRepoEnv();
 const AGENT_BASE_URL = process.env.CODEX_BASE_URL?.trim()
   || process.env.NICEEVAL_INSTABOX_CODEX_BASE_URL?.trim()
-  || process.env.NICEEVAL_OPENSANDBOX_CODEX_BASE_URL?.trim()
   || "https://s2a.niceeval.com/v1";
 
 export function sandboxCodexAgent() {
@@ -123,7 +122,7 @@ printf '%s\\n' '沙箱基础环境与 inner runtime 镜像准备完成'`,
 
 /**
  * 候选安装、init、生成物清理、只读依赖树和 workspace/home 物化都由 Harness 的 TS layer
- * 明确拥有。它们在 runtime 归档准备后执行，并可随 rootfs 前缀一起缓存。
+ * 明确拥有。它们在 inner runtime 准备后执行，并可随 rootfs 前缀一起缓存。
  */
 function installCandidateAndPrepareWorkspace(candidateVersion: string) {
   return shell({
@@ -230,18 +229,18 @@ printf '运行基线通过：Node %s · pnpm %s · Docker %s · Compose %s\\n' \
 }
 
 /**
- * 目标应用短期 token 不能进入声明式 action。这个带稳定调度 identity 的 callback 每次真实
- * 执行，频率 1000 让固定 runtime 与 fixture 前缀排在它之前；成功 acquire 后立即登记 cleanup。
+ * 目标应用凭据不能进入缓存 action。此 callback 每次真实执行，
+ * 频率 1000 让固定 runtime 与 fixture 前缀排在它之前。
  */
 const provisionTargetAppCommand = defineSandboxCommand(
   {
     id: "niceeval-eval.target-app-env",
     revision: "4",
-    inputs: { path: TARGET_APP_ENV_PATH, proxyProtocol: "target-app-kata-gateway-proxy/v4" },
+    inputs: { path: TARGET_APP_ENV_PATH, proxyProtocol: "target-app-kata-gateway-proxy/v4" }, // 保留既有 identity，避免仅清理死代码导致结果失效。
     changeFrequency: changeFrequency.frequent,
   },
   async (sandbox, context) => {
-    await provisionTargetAppEnv(sandbox, context, { direct: true });
+    await provisionTargetAppEnv(sandbox, context);
   },
 );
 
@@ -287,7 +286,7 @@ function shellQuote(value: string): string {
   return `'${value.replaceAll("'", `'\\''`)}'`;
 }
 
-/** 单并发配额下，每个 Attempt 请求独立 Instabox 实例和有限 TTL。 */
+/** 每个 Attempt 请求独立 Instabox 实例和有限 TTL。 */
 function attemptSandbox() {
   return instaboxSandbox({
     templateId: "universal",
@@ -297,7 +296,7 @@ function attemptSandbox() {
   });
 }
 
-/** 从零安装题保留 guest Docker。短期凭证 callback 仍以频率 1000 最后执行并登记 cleanup。 */
+/** 从零安装题保留 guest Docker；凭据在缓存准备完成后逐 Attempt 写入。 */
 export function installSandbox() {
   loadRepoEnv();
   return attemptSandbox()
@@ -307,7 +306,7 @@ export function installSandbox() {
     .before(provisionTargetAppCommand);
 }
 
-/** Harness 的 runtime 归档、seed、候选安装和 workspace 可缓存；运行态按 Attempt 创建。 */
+/** Harness 的 inner runtime、seed、候选安装和 workspace 可缓存；运行态按 Attempt 创建。 */
 export function harnessSandbox(candidateVersion: string) {
   loadRepoEnv();
   return attemptSandbox()

@@ -34,11 +34,10 @@ NiceEval 的文档链与用户工作流，不是 NiceEval 核心的功能测试�
 
 ## harness/ 的共享基建与独立 repo
 
-Install 与 Harness 使用 it-infra 部署的固定 digest OpenSandbox/Kata 镜像。
-每个 Attempt 独立创建沙箱，显式启动 guest Docker，并检查 Node、pnpm、Docker 和 Compose。
-Experiment 的声明式 TS action 从固定 digest 准备 inner runtime tags、上传项目 seed，再按版本安装候选
-NiceEval、运行 `niceeval init` 并物化 workspace。支持 rootfs Snapshot 的本地 NiceEval 候选可缓存这些准备步骤；
-inner runtime 先导出为镜像归档，停止准备用的 Docker daemon 并卸载临时 data-root，恢复后再启动独立 daemon 导入归档。
+Install 与 Harness 使用 Instabox `universal` 模板，每个 Attempt 独立创建 `instabox-medium`
+实例，TTL 为 90 分钟。准备 action 安装 Node/pnpm/Codex、准备固定 digest 的 inner Docker
+runtime，并检查 Node、pnpm、Docker 和 Compose。BeforeCache 通过远端快照复用准备结果。
+Harness 另行上传项目 seed，按版本安装候选 NiceEval、运行 `niceeval init` 并物化 workspace。
 三个任务家族分别维护 `fixtures/harness/<case>/repo/`，fixture action 只把所属小 repo 覆盖进已准备
 workspace，不在镜像里共享业务 fixture。项目不携带
 `.niceeval`，结果仍由被测 agent 当场运行产生。完整设计见
@@ -104,21 +103,16 @@ Judge 使用 `turn.closeQA(judgeEvidence(material), criteria)` 或
 材料只是公开 Turn 的传输形状，不匹配 `show` JSON，也不替 agent 重跑 experiment。
 canned agent 只用于稳定复现，不代表真实模型智力。
 
-## 本地 OpenSandbox 运行
+## Instabox 运行
 
-宿主配置 `OPEN_SANDBOX_DOMAIN` 与 `OPEN_SANDBOX_API_KEY`，只用于连接服务，不传入 guest。
-`lib/experiment-runtime.ts` 固定已部署镜像 digest，申请 2 CPU / 8 GiB 和 90 分钟 TTL；
-每个 Attempt 正常结束立即调用销毁，整仓并发为 1，以匹配当前部署配额。
+Instabox 连接凭据由宿主提供。`lib/experiment-runtime.ts` 统一声明沙箱配置与准备步骤；
+全局并发上限为 10。默认本地失败挂起以便排查，CI 禁用该行为；挂起或保留的实例需要另行回收。
 
-2026-10-26 用户明确接受普通执行路径，不要求 `docker/v1` 强生命周期保证。
-因此 Eval 不声明该 capability；仍实际验证 Docker/Compose，保留所有业务判据。
-Kubernetes 异步删除与创建响应丢失的上游边界仍存在，运行成功不作为强终止保证的认证。
-历史 Incus 构建材料保留在 `sandbox/incus-base/`，不参与当前运行。
-
-被测 Codex 使用 `https://s2a.niceeval.com/v1`，可通过
-`NICEEVAL_OPENSANDBOX_CODEX_BASE_URL` 显式覆盖。`CODEX_API_KEY` 仍由官方 adapter 注入。
-目标应用长期 key 只留在宿主；Attempt 级代理绑定 `10.42.0.1:18180`，guest 仅持有短期 token。
-现有 Tailnet 信任规则仍适用，代理通过 token 认证；不把绑定地址当作独占入站接口保证。
+被测 Codex 优先使用 `CODEX_BASE_URL`，其次是 `NICEEVAL_INSTABOX_CODEX_BASE_URL`，
+默认 `https://s2a.niceeval.com/v1`。`CODEX_API_KEY` 由官方 adapter 注入。
+目标应用直接使用 HTTPS LLM 出口：宿主的 `TARGET_APP_OPENAI_API_KEY`、
+`TARGET_APP_OPENAI_BASE_URL` 和 `TARGET_APP_MODEL` 在缓存准备后写入各 Attempt 的
+`/opt/fixture-secrets/target-app.env`。被测 agent 可以读取该凭据；当前没有宿主短期 token 代理。
 
 ## 候选版本与实验矩阵
 
@@ -133,20 +127,19 @@ Kubernetes 异步删除与创建响应丢失的上游边界仍存在，运行成
 `flags.candidateVersion`。sandbox 中安装、断言和文档页校验都使用同一个版本值。
 
 当前 install Experiment 选择 `install/` 的两道安装题。
-安装实验统一使用一次性 OpenSandbox/Kata 实例。准备步骤从固定 digest 构建并验证本地镜像
+安装实验统一使用独立 Instabox 实例。准备步骤从固定 digest 构建并验证本地镜像
 `cache.invalid/niceeval-install/runtime:python`；后续
 Eval layer 再 checkout 各自源码。通用 base 不含 inner runtime、NiceEval、应用依赖、服务、
 Eval 答案或历史结果；被测 agent 仍须自行安装候选与
 应用依赖、启动真实服务、编写三件套并实际运行首条最小 experiment。
 安装题不限制被测 agent 的格数、Attempt 数或运行轮次；它可自主诊断、修复和重试，
-无需追加运行授权。代理不设累计请求上限或独立的会话倒计时，随 Attempt 回收；
-并发与单次传输保护仍保留。外层每个候选的一次 coding-agent 采样与内层自主多轮运行不同。
+无需追加运行授权。当前直连出口没有项目自建代理的请求限制或会话定时器。外层每个候选的一次 coding-agent 采样与内层自主多轮运行不同。
 成本比较计入所有运行的实际可用用量；缺失费用保持未知，不按零计算。
 多轮取证与回收规则见[安装题自主运行](docs/install-autonomous-runs.md)。
 
 Harness 启用 `harness/v0.19.0`、`harness/v0.20.0` 与 `harness/canary`。
 每个候选运行五个独立条件，显式固定 1 Attempt、medium 推理设置并关闭首过即停。
-Harness 共 15 个 coding-agent attempts，加上三候选各两道安装题，全仓共 21 格，另计 Judge 调用。全仓并发上限为 1；
+Harness 共 15 个 coding-agent attempts，加上三候选各两道安装题，全仓共 21 格，另计 Judge 调用。全仓并发上限为 10；
 只想检查计划时使用 `--dry`。新评分基线与发布比较见上方 Harness 说明。
 
 ## 安装评估如何计分
@@ -185,9 +178,9 @@ Tavily key。真实响应评分结合 agent 交接时的 Adapter/Eval 源码与�
 
 `terminal-bench/regex-log` 与 `terminal-bench/log-summary` 各有自己的
 `fixtures/harness/<case>/repo/`。
-它们使用同一个通用 OpenSandbox 镜像，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果。
+它们使用同一个 Instabox 模板，但不共享业务源码或起始状态；仓库不签入 Harness 历史结果。
 Experiment 的声明式 `before` action 从固定 digest 准备 inner runtime tag、上传项目 seed、按候选
-版本运行 `niceeval init` 并物化只读依赖树，随后才上传所属 fixture。每个 Attempt 都重新准备；本地 tag 的
+版本运行 `niceeval init` 并物化只读依赖树，随后才上传所属 fixture。各 Attempt 通过远端快照复用缓存准备层；本地 tag 的
 `--pull=never` 冒烟仍验证 node/git/python3 与 `.invalid` 缺失即失败的契约。
 
 仓库不验证 NiceEval 核心实现本身；核心 API、CLI 或报告问题应在相邻 `NiceEval/` 修复。
@@ -195,7 +188,7 @@ Experiment 的声明式 `before` action 从固定 digest 准备 inner runtime ta
 
 ## 本地验证与历史结果
 
-OpenSandbox 迁移的当前进展、得分与限制见 [2026-10-26 验收记录](docs/validation-2026-10-26.md)。
+历史 OpenSandbox 迁移的进展、得分与限制见 [2026-10-26 验收记录](docs/validation-2026-10-26.md)。
 此前真实运行、评分修复、历史结果与费用限制见 [2026-10-23 全范围验收](docs/validation-2026-10-23.md)。
 
 `pnpm run typecheck` 与 `pnpm test` 验证宿主类型，并用真实本地 CLI 固定各 Eval 读取的
@@ -204,5 +197,5 @@ OpenSandbox 迁移的当前进展、得分与限制见 [2026-10-26 验收记录]
 
 若旧 `.niceeval` 报 `record-schema-unsupported` 或旧 ProjectDatabase owner 未释放，保留完整
 现场，按随包 `tutorials/agent-feedback-loop.mdx` 与 `troubleshooting/debugging.mdx` 在不含
-`.niceeval` 的项目副本验证。不要删除锁或历史结果来绕过检查。静态计划通过不代表真实 OpenSandbox
+`.niceeval` 的项目副本验证。不要删除锁或历史结果来绕过检查。静态计划通过不代表真实 Instabox
 或模型评估已通过；真实运行仍需明确成本授权。

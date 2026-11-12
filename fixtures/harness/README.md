@@ -25,13 +25,13 @@ sandbox agent 在固定 runtime 缓存里确定性重放 task 产出；authoring
 
 共享的是运行基建，不是题目内容：
 
-- 通用 OpenSandbox 镜像只提供 Node、pnpm、Python、Docker/Compose 与启动工具；它不按 install 或
-  harness 区分，也不携带项目 seed、候选 NiceEval、inner runtime 或任何题目资产；
+- Instabox `universal` 模板提供基础机器环境；共享准备 action 安装 Node/pnpm/Codex，
+  不按 install 或 harness 区分，也不携带项目 seed、候选 NiceEval 或题目资产；
 - Experiment 的声明式 TS `before` action 依次从固定 digest 准备 inner runtime tag、上传项目
   seed、以解析后的精确版本运行 `pnpm add` / `niceeval init`、清理生成物并物化只读
   `node_modules` symlink；版本、命令与依赖关系都进入 action identity；
-- 支持 rootfs Snapshot 的 NiceEval 候选缓存 runtime、seed 与候选安装层；inner runtime 以 rootfs 镜像归档保存，
-  每个 Attempt 恢复后启动独立 Docker daemon 并导入、核对 image ID。顺序固定为 runtime → seed → 候选安装/物化 → runtime contract → 各 Eval 的
+- BeforeCache 通过 Instabox 远端快照缓存 runtime、seed 与候选安装层；
+  每个 Attempt 恢复后检查 Docker/Compose 和候选项目契约。顺序固定为 runtime → seed → 候选安装/物化 → runtime contract → 各 Eval 的
   fixture action。fixture 只上传所属小 repo，覆盖已准备 workspace，不重复安装或 init。
 
 case repo 不属于通用 base 或项目 seed，所以改题目不需要重建通用镜像。通用 base 与共享的
@@ -65,7 +65,7 @@ cache.invalid/niceeval-harness/runtime:python
   runtime contract 依赖它逐层继续。固定 digest source 首次准备时可能访问 registry；后续本地
   tag 冒烟不重复请求 registry；这不限制题内容器或 Sandbox 访问公网。
 
-这层基建与候选安装 action、`node` 用户、DinD socket 生命周期互不影响：题目内容不进入通用
+这层基建与候选安装 action、uid 1000 普通用户、guest Docker 生命周期互不影响：题目内容不进入通用
 base 或共享准备层，只有所属 Eval 的 fixture action 将它覆盖到已准备 workspace。
 
 ### 被测 agent 的唯一修改面

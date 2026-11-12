@@ -4,14 +4,13 @@ node_modules/
 # 而它本来就能从 manifest.json 里的版本号复现
 .candidate/
 
-# 本仓库自己跑评估产生的结果。注意：evals/harness/*/repo/ 下作为题包资产签入的
-# .niceeval 是人工快照，必须签入，不受这条规则影响（前面的 / 限定只匹配仓库根）
+# 本仓库自己跑评估产生的结果；fixture 不携带历史 Record。
 /.niceeval/
 /.niceeval-local/
 
 .DS_Store
 
-# 本地密钥：被测目标应用（DB-GPT/FinRobot/GPT Researcher/Vanna）自己要连的 LLM/数据源凭证。
+# 本地密钥：被测目标应用（DB-GPT/GPT Researcher）自己要连的 LLM/数据源凭证。
 # 只在跑 install eval 时由 sandbox setup 钩子读取并注入沙箱，不签入仓库。
 .env
 
