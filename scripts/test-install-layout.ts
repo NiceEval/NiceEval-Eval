@@ -78,7 +78,9 @@ test("嵌套 CLI discovery 成功不能替代根入口；根安装可在 CommonJ
     assert.notEqual(missing.exitCode, 0, "不得借用父进程或全局 CLI");
     assert.match(missing.stdout + missing.stderr, /not found|ENOENT/);
 
-    await mkdir(join(root, "node_modules"));
+    // pnpm 11 的 exec 会先按锁文件装一遍 workspace 依赖，上面那次失败的调用可能已经建出 node_modules。
+    await mkdir(join(root, "node_modules"), { recursive: true });
+    await rm(join(root, "node_modules/.bin"), { recursive: true, force: true });
     await symlink(resolve("node_modules/.bin"), join(root, "node_modules/.bin"), "dir");
     await symlink(resolve("node_modules/niceeval"), join(root, "node_modules/niceeval"), "dir");
     await writeFile(join(root, "niceeval.config.ts"), "export default {};\n");
