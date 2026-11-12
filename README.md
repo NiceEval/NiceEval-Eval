@@ -153,7 +153,7 @@ Harness 共 15 个 coding-agent attempts，加上三候选各两道安装题，�
 | 首次评估定题 | 核心评估面、真实数据、成败判据、运行约束、候选范围 | 软分，判断 INIT 是否把安装请求推进成有效 Eval |
 | 产出质量 | experiment 与 eval 是否真的覆盖宿主核心用例 | 软分，定位文档契约是否被理解 |
 | 完成交接 | 文件与复现命令、真实首跑结果、下一步选择 | 软分，判断 agent 是否交付可继续使用的评估入口 |
-| 文档路由 | 两轮合计是否读了随包 `INDEX.md` 与 Adapter 接入页面，是否退回文档站或仓库 `main` 分支（新旧仓库地址与 raw 地址都算，候选 tag 不算） | 软分，衡量随包文档是否被发现 |
+| 文档路由 | 整段会话里是否先读随包 `INDEX.md`、再读 Adapter 接入页面（可以分在两轮），是否退回文档站或仓库 `main` 分支（新旧仓库地址与 raw 地址都算，不分大小写，候选 tag 不算） | 软分，衡量随包文档是否被发现 |
 
 真实项目 fixture 锁定具体 tag：DB-GPT `v0.8.1`，GPT Researcher `v3.6.0`。DB-GPT 使用
 sparse checkout 排除与接入无关的大型文档和资源目录。agent 写出的产物会复制到 gitignored
@@ -193,7 +193,7 @@ Experiment 的声明式 `before` action 从固定 digest 准备 inner runtime ta
 
 `pnpm run typecheck` 与 `pnpm test` 验证宿主类型，并用真实本地 CLI 固定各 Eval 读取的
 `niceeval.query/v2` / `v3` 字段（当前结果、局部修复、沿用与判据失效），不调用付费模型。
-同一组测试还固定 install 题的线上文档地址清单：回退到 `main` 的命令必须被抓到，候选 tag 与随包文档不误伤。
+同一组测试还固定 install 题的文档路由判据：回退到 `main` 的命令必须被抓到，候选 tag 与随包文档不误伤，INDEX → 页面的顺序可以跨轮但不能反。
 历史对照结果保留，经当前宿主 CLI 读取。历史对照 0.19.0 使用 Query v2，因此保留 v2/v3 的薄适配；不再维护更早版本的运行配置。
 
 若旧 `.niceeval` 报 `record-schema-unsupported` 或旧 ProjectDatabase owner 未释放，保留完整

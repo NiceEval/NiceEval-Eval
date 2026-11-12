@@ -54,13 +54,13 @@ export function candidateInitDocUrl(version: string): string {
  * NiceEval 的线上文档落点：文档站，以及仓库 `main` 分支上的任何文件。安装之后 agent 该读随包文档，
  * 读这些地址就是读到了另一个版本。只列地址事实，是否计分由各 Eval 正文决定。
  *
- * `referencesAnyPath` 按路径组件、区分大小写匹配，所以仓库的新旧地址与常见大小写都要逐条列出：
- * 题目给 agent 的 INIT 地址是 raw.githubusercontent.com 上的 tag，把 tag 换成 main 是最顺手的回退。
- * 带版本 tag 的地址（`/v0.20.0/`）不在其中。
+ * 题目给 agent 的 INIT 地址是 raw.githubusercontent.com 上的 tag，把 tag 换成 main 是最顺手的回退，
+ * 所以 raw 地址与仓库的新旧名字都要列。主机名和 GitHub 的 owner/repo 不分大小写，
+ * 匹配时配 `referencesAnyPath(..., { ignoreCase: true })`。带版本 tag 的地址（`/v0.20.0/`）不在其中。
  */
 export const ONLINE_MAIN_DOC_REFERENCES = [
   "niceeval.com/docs",
-  ...["NiceEval/NiceEval", "CorrectRoadH/niceeval", "niceeval/niceeval", "correctroadh/niceeval"].flatMap((repo) => [
+  ...["NiceEval/NiceEval", "CorrectRoadH/niceeval"].flatMap((repo) => [
     `github.com/${repo}/blob/main`,
     `github.com/${repo}/tree/main`,
     `github.com/${repo}/raw/main`,

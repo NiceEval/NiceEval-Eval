@@ -15,6 +15,7 @@ const READS_ONLINE_MAIN = {
   "blob-main-design-doc": "curl -L https://github.com/NiceEval/NiceEval/blob/main/docs/feature/assertions/library/scoped-assertions.md",
   "old-repo-examples": "git clone --depth 1 https://github.com/CorrectRoadH/niceeval/tree/main/examples/zh/tier1",
   "lowercase-repo": "curl -fsSL https://raw.githubusercontent.com/niceeval/niceeval/main/INIT.md",
+  "mixed-case-host": "curl -fsSL https://GitHub.com/Niceeval/NICEEVAL/blob/main/INIT.md",
   "docs-site": "curl -fsSL https://niceeval.com/docs/zh/tutorials/quickstart",
 };
 const STAYS_ON_CANDIDATE = {
@@ -25,7 +26,7 @@ const STAYS_ON_CANDIDATE = {
   "site-init": "curl -fsSL https://niceeval.com/INIT.md",
 };
 
-test("online main 文档地址：回退到线上的命令被抓到，候选 tag 与随包文档不误伤", { timeout: 120_000 }, async () => {
+test("install 文档路由：线上 main 被抓到、候选 tag 不误伤，INDEX → 页面的顺序可以跨轮", { timeout: 120_000 }, async () => {
   const root = await mkdtemp(join(tmpdir(), "niceeval-online-docs-"));
   const shell: Shell = async (script) => {
     const r = spawnSync("sh", ["-c", script], { cwd: root, encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
@@ -52,7 +53,17 @@ import {ONLINE_MAIN_DOC_REFERENCES} from ${JSON.stringify(resolve("lib/candidate
 const commands = ${JSON.stringify(commands)};
 export default Object.fromEntries(Object.entries(commands).map(([id, command]) => [id, defineEval({async test(t){
 await t.send(command);
-t.notCalledTool(toolMatch({input:referencesAnyPath(ONLINE_MAIN_DOC_REFERENCES)}));}})]));\n`);
+t.notCalledTool(toolMatch({input:referencesAnyPath(ONLINE_MAIN_DOC_REFERENCES,{ignoreCase:true})}));}})]));\n`);
+    // install 题的路由检查读整段主会话：INDEX 与 Adapter 页面可以分在两轮，但先后不能反。
+    await writeFile(join(root, "evals/route.eval.ts"), `import {defineEval} from 'niceeval';
+import {referencesAnyPath,toolMatch} from 'niceeval/expect';
+const index = 'cat node_modules/niceeval/INDEX.md';
+const page = 'cat node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx';
+const routed = (first, second) => defineEval({async test(t){
+await t.send(first); await t.send(second);
+t.toolOrder([toolMatch({input:referencesAnyPath(['node_modules/niceeval/INDEX.md'])}),
+toolMatch({input:referencesAnyPath(['node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx'])})]);}});
+export default {'index-then-page': routed(index, page), 'page-then-index': routed(page, index)};\n`);
 
     const { exitCode } = await exp(shell, ["local"]);
     assert.equal(exitCode, 1, "含失败用例的运行以 1 退出");
@@ -60,6 +71,8 @@ t.notCalledTool(toolMatch({input:referencesAnyPath(ONLINE_MAIN_DOC_REFERENCES)})
     assert.deepEqual(verdicts, Object.fromEntries([
       ...Object.keys(READS_ONLINE_MAIN).map((id) => [`online/${id}`, "failed"]),
       ...Object.keys(STAYS_ON_CANDIDATE).map((id) => [`online/${id}`, "passed"]),
+      ["route/index-then-page", "passed"],
+      ["route/page-then-index", "failed"],
     ].sort(([a], [b]) => a!.localeCompare(b!))));
   } finally {
     await rm(root, { recursive: true, force: true });

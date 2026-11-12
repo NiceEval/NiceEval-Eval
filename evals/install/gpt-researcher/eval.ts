@@ -193,7 +193,7 @@ export default defineScoreEval({
         task: firstTurn.input,
         status: firstTurn.status,
         commands: firstTurn.toolCalls.map(({ name, input, status }) => ({ name, input, status })),
-        inputRequests: firstTurn.events.flatMap((e) => e.type === "input.requested" ? [e.request] : []),
+        inputRequests: firstTurn.inputRequests,
         reply: firstTurn.reply,
       };
       await t.group("文档与首轮理解", async () => {
@@ -213,19 +213,19 @@ export default defineScoreEval({
         })))
         : await t.send(FOLLOW_UP);
 
-      // 路由看两轮合计：先停下问用户、第二轮才读 Adapter 页面的 agent 不该因此丢分。
-      // 根作用域没有 toolOrder，所以拆成两件各自可以缺失的事，不再要求先后顺序。
-      t.calledTool(toolMatch({ input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }))
-        .score(1).key("install.docs.read-index").label("读了随包 INDEX");
-      t.calledTool(toolMatch({ input: referencesAnyPath([
-        "node_modules/niceeval/docs-site/zh/tutorials/connect-your-agent.mdx",
-        "node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx",
-        "node_modules/niceeval/docs-site/zh/tutorials/quickstart.mdx",
-        "node_modules/niceeval/docs-site/zh/reference/events.mdx",
-      ]) })).score(2).key("install.docs.read-adapter-page").label("读了随包的 Adapter 接入页面");
+      // 路由看整段主会话：先停下问用户、第二轮才读 Adapter 页面的 agent 不该因此丢分。
+      t.toolOrder([
+        toolMatch({ input: referencesAnyPath(["node_modules/niceeval/INDEX.md"]) }),
+        toolMatch({ input: referencesAnyPath([
+          "node_modules/niceeval/docs-site/zh/tutorials/connect-your-agent.mdx",
+          "node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx",
+          "node_modules/niceeval/docs-site/zh/tutorials/quickstart.mdx",
+          "node_modules/niceeval/docs-site/zh/reference/events.mdx",
+        ]) }),
+      ]).score(3).key("install.docs.index-to-relevant-page").label("从随包 INDEX 路由到相关页面");
 
       // 两轮都算：文档站与仓库 main 分支上的任何文件都是另一个版本的内容，带版本 tag 的地址不算。
-      t.notCalledTool(toolMatch({ input: referencesAnyPath(ONLINE_MAIN_DOC_REFERENCES) }))
+      t.notCalledTool(toolMatch({ input: referencesAnyPath(ONLINE_MAIN_DOC_REFERENCES, { ignoreCase: true }) }))
         .score(1).key("install.docs.no-online-main").label("没有退回 online main 文档");
 
       // ── 源码设计：先于所有安装与运行 gate 评审 ──
