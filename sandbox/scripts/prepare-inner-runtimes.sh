@@ -19,9 +19,15 @@ chown -R "$box_user:$box_user" /opt/fixture-secrets
 
 printf '在基础镜像中预安装官方 Codex CLI %s…\n' "$codex_version"
 npm install -g "@openai/codex@$codex_version"
+# NiceEval 的 codexAgent 认的是原生二进制：codex 与 apply_patch 都必须直接指向它，登录 shell 里也要找得到。
+# 指向 npm 的 JS 启动器会让 Agent ensure 判定未安装，每个 Attempt 重新上传一份 170 MB 的发行包。
+codex_native="$(find "$(npm root -g)/@openai/codex" -type f -path '*/vendor/*/bin/codex' -print -quit)"
+test -n "$codex_native"
 mkdir -p "$box_home/.local/bin"
-ln -sf /usr/local/bin/codex "$box_home/.local/bin/codex"
+ln -sf "$codex_native" "$box_home/.local/bin/codex"
+ln -sf "$codex_native" /usr/local/bin/apply_patch
 chown -R "$box_user:$box_user" "$box_home/.local"
+setpriv --reuid="$box_user" --regid="$box_user" --init-groups env HOME="$box_home" bash -lc 'codex --version && command -v apply_patch'
 
 node_tag=cache.invalid/niceeval-harness/runtime:node
 harness_python_tag=cache.invalid/niceeval-harness/runtime:python
