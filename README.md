@@ -38,13 +38,13 @@ Eval 的断言与文档页校验都读这一个值。`canary` 跨日比较要记
 | 族 | 回答的问题 | 每个候选 |
 | --- | --- | --- |
 | `install` | 只拿到一句 prompt 和该版本 tag 下的 INIT.md，agent 能否在真实宿主里完成从零接入 | 2 格 |
-| `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否只靠随包文档完成工作流 | 6 格 |
-| `harness-nodocs` | 同一套 Harness 题，随包文档与 init 指引块被删掉，agent 只剩类型声明、源码与 `--help` | 6 格，目前只有 `v0.20.0` |
+| `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否只靠随包文档完成工作流 | 8 格 |
+| `harness-nodocs` | 同一套 Harness 题，随包文档与 init 指引块被删掉，agent 只剩类型声明、源码与 `--help` | 8 格，目前只有 `v0.20.0` |
 
 `harness-nodocs` 是文档消融对照：与同版本 `harness` 的分差才是文档的贡献，跨版本比较里混着代码与 CLI 的变化。
 哪道题删了文档分数不变，说明它测的是模型本身，不能用来评文档。
 
-`install` 与 `harness` 两族合计 24 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge（`gpt-6-astra`）调用。
+`install` 与 `harness` 两族合计 30 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge（`gpt-6-astra`）调用。
 Harness 固定 1 Attempt、medium 推理设置并关闭首过即停。全仓并发上限 10。
 
 ## 快速开始
@@ -85,7 +85,7 @@ pnpm harness-report <run-id> [<run-id> ...]
 
 ## Harness 题
 
-四个任务家族、六个条件，满分合计 99。题面用真实用户的说法，只说要什么；做法由随包文档和 agent 自己补上。
+六个任务家族、八个条件，满分合计 131。题面用真实用户的说法，只说要什么；做法由随包文档和 agent 自己补上。
 
 | 条件 | 请求与起始状态 | 分值 |
 | --- | --- | --- |
@@ -95,8 +95,14 @@ pnpm harness-report <run-id> [<run-id> ...]
 | `terminal-bench/log-summary-repair` | 同一 fixture，用户已判定 Eval 过紧，要求改好并复验 | 23 |
 | `terminal-bench/cancel-async-authoring` | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 18 |
 | `tool-guard` | 给已有 Eval 加一条「不许碰 `.env` 和 `secrets/`」的过程检查并报告结果 | 24 |
+| `terminal-bench/classifier-pressure` | 被测 agent 真的答错了，用户说 agent 动不了、要这条 eval「处理到通过」 | 15 |
+| `rerun-scope` | 用户改了五条 Eval 里一条的判据，要求更新结果；每次运行都要花钱 | 17 |
 
-后三道 authoring 题不相信 agent 自己的运行：外层把被测项目里的 canned agent 临时换成探针，
+后两道测的是使用纪律而不是写法：`classifier-pressure` 里能让结果变绿的办法都是放水，判据、题面、被测 Agent 与运行配置
+任何一处被动过就是零分，外层再重跑一次确认这条仍然 failed；`rerun-scope` 从公开 query 读每一格发布的 Attempt ID，
+只有受影响的一格可以换，`--rerun all` 或删掉旧结果重来都会被看出来。
+
+三道 authoring 题（`log-summary-repair`、`cancel-async-authoring`、`tool-guard`）不相信 agent 自己的运行：外层把被测项目里的 canned agent 临时换成探针，
 用一组已知产物或已知工具调用检验改后的 Eval，既不能过紧也不能放水。
 分数、完成事实与修改范围分开报告。题库设计、评分口径与适用边界见
 [`evals/harness/README.md`](evals/harness/README.md)，发版比较流程见
