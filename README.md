@@ -12,7 +12,8 @@
 | `evals/install/<宿主>/eval.ts` | 安装题：从零把 NiceEval 接入一个真实开源项目 |
 | `evals/harness/**/eval.ts` | Harness 题：在已装好的项目里运行、诊断、修复、编写 Eval |
 | `fixtures/` | 各题的起始项目与外层探针，不被本仓库的 discovery 扫描 |
-| `lib/` | 取证探针、候选解析与沙箱准备；不登记任何检查 |
+| `lib/` | 取证探针、候选解析与沙箱准备；不登记任何检查。`lib/probes/` 是在被测 sandbox 里执行的取证脚本 |
+| `sandbox/` | Harness 的项目 seed 与沙箱准备脚本（`sandbox/scripts/*.sh`） |
 | `tests/` | 用真实本地 CLI 固定判据读取的字段与 fixture 契约，不调用模型 |
 | `scripts/harness-report.ts` | 把指定 Run 的 Harness 观察值汇成 JSON |
 | `docs/` | 评估协议与历次验收记录 |
@@ -73,6 +74,8 @@ pnpm exec niceeval exp harness/v0.20.0 harness/tool-guard   # 只跑一道题
 pnpm exec niceeval show --experiment <experiment-id>
 pnpm exec niceeval show @<locator> --assertions
 pnpm exec niceeval show @<locator> --execution
+pnpm exec niceeval show --experiment harness/v0.20.0 --experiment harness/canary --assertions   # 判据 × 候选
+pnpm exec niceeval invocation show <invocation-id>     # 运行中：每个 Attempt 的阶段、沙箱实例名与最近动作
 pnpm harness-report <run-id> [<run-id> ...]
 ```
 
@@ -123,7 +126,7 @@ agent 写出的产物会复制到 gitignored 的 `.agent-output/` 供人工复�
 ## 沙箱
 
 Install 与 Harness 都使用 Instabox `universal` 模板，每个 Attempt 独立创建 `instabox-medium` 实例，TTL 90 分钟。
-连接凭据由宿主提供。[`lib/experiment-runtime.ts`](lib/experiment-runtime.ts) 声明全部准备步骤：
+连接凭据由宿主提供。[`lib/experiment-runtime.ts`](lib/experiment-runtime.ts) 声明全部准备步骤，脚本正文在 [`sandbox/scripts/`](sandbox/scripts/)：
 
 1. 安装 Node / pnpm / Codex，从固定 digest 准备 inner Docker runtime 并冒烟；
 2. Harness 另行上传项目 seed，按候选版本安装 NiceEval、运行 `niceeval init` 并物化只读依赖树；

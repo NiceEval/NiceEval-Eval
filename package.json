@@ -7,8 +7,7 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "tsx --test tests/*.test.ts",
-    "harness-report": "tsx scripts/harness-report.ts",
-    "assertion-matrix": "tsx scripts/assertion-matrix.ts"
+    "harness-report": "tsx scripts/harness-report.ts"
   },
   "devEngines": {
     "packageManager": {

@@ -72,7 +72,9 @@ E（tool-guard）测 agent 能否把一条过程规定写成抓得到、又不�
 - C：产物分数、`student-runs`、`target-only`、`assets-unchanged` 与公开证据边界。
 - E：`student-runs`、`assets-unchanged`、`changed-only-evals`，接受与拒绝两组探针分别报告。
 
-`.niceeval` 负向工具匹配只证明没有观察到禁止路径，不是 OS 文件访问审计。Adapter 的 shell
+`.niceeval` 负向工具匹配只证明没有观察到禁止路径，不是 OS 文件访问审计。它也分不出“引用”和“排除”：
+`rg --files -g '!.niceeval/**'` 这类把该目录排除在外的命令同样会命中（2026-11-13 首轮 v0.19.0 的 tool-guard 就是这样），
+所以这一项不计分，命中时要读命令原文再下结论。Adapter 的 shell
 内部 argv 可能不可见，因此不按不可观察的命令序列设置硬门禁。公开 query 失败、截断或成员
 身份不闭合时 verifier 抛出错误，结果不可排名，不能静默变成零分。空 Record 则是确定的“没有运行”。
 
