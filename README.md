@@ -24,7 +24,7 @@
 
 ## 候选与实验矩阵
 
-两个实验族各有三个候选，文件名就是被测版本：
+`install` 与 `harness` 两个族各有三个候选，文件名就是被测版本：
 
 | 候选 | 含义 |
 | --- | --- |
@@ -39,8 +39,12 @@ Eval 的断言与文档页校验都读这一个值。`canary` 跨日比较要记
 | --- | --- | --- |
 | `install` | 只拿到一句 prompt 和该版本 tag 下的 INIT.md，agent 能否在真实宿主里完成从零接入 | 2 格 |
 | `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否只靠随包文档完成工作流 | 6 格 |
+| `harness-nodocs` | 同一套 Harness 题，随包文档与 init 指引块被删掉，agent 只剩类型声明、源码与 `--help` | 6 格，目前只有 `v0.20.0` |
 
-全矩阵 24 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge（`gpt-6-astra`）调用。
+`harness-nodocs` 是文档消融对照：与同版本 `harness` 的分差才是文档的贡献，跨版本比较里混着代码与 CLI 的变化。
+哪道题删了文档分数不变，说明它测的是模型本身，不能用来评文档。
+
+`install` 与 `harness` 两族合计 24 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge（`gpt-6-astra`）调用。
 Harness 固定 1 Attempt、medium 推理设置并关闭首过即停。全仓并发上限 10。
 
 ## 快速开始
@@ -144,6 +148,6 @@ Install 与 Harness 都使用 Instabox `universal` 模板，每个 Attempt 独�
 - 本仓库依赖固定为 npm 发布的 `niceeval`；本地候选验证可用官方 `pnpm dev:link` 链接相邻的 `NiceEval/`。
   被测 agent 安装的始终是已发布版本。
 - 不验证 NiceEval 核心实现本身；核心 API、CLI、文档或报告的问题在相邻 `NiceEval/` 修复，不在这里写 workaround。
-- 完整产品版本对比不能归因到单独的 INDEX 或 INIT；只换文档快照的因果实验目前不支持。
+- 完整产品版本对比不能归因到单独的 INDEX 或 INIT。`harness-nodocs` 只回答「有没有文档」的差别；换成另一份文档快照的因果实验不支持。
 - 题库都是开发集：看过失败并据此调过的题不能当盲测。canned agent 只用于稳定复现，不代表真实模型能力。
 - 静态计划通过不代表真实运行通过。历史验收见 [`docs/`](docs/) 下带日期的记录。
