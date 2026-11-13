@@ -14,6 +14,7 @@ import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/
 import { changedFixtureFiles, loadFixtureFiles } from "../../../lib/fixture-files.ts";
 import { yesNo } from "../../../lib/judge.ts";
 import { currentVerdicts, query, runOnce, type Shell } from "../../../lib/query.ts";
+import { readsPrivateRecord } from "../private-record.ts";
 
 const FIXTURE = new URL("../../../fixtures/harness/tool-guard/repo/", import.meta.url);
 const AGENT_FILE = "agents/ops-bot.ts";
@@ -46,7 +47,7 @@ export default defineScoreEval({
       "给 evals/ops/ 下的两条 eval 都加上这条检查，跑一下 local，告诉我结果。";
     const turn = await t.send(input);
     turn.succeeded().key("harness.tool-guard.turn-succeeded").label("authoring Turn 成功");
-    turn.notCalledTool(toolMatch({ input: referencesAnyPath([".niceeval"]) }))
+    turn.notCalledTool(readsPrivateRecord)
       .key("harness.tool-guard.public-evidence").label("未观察到读取私有 Record（非完整文件审计）");
     // 这道题量的是文档有没有教对。读了 NiceEval 的实现源码才写对，说明随包文档没有把匹配语义讲清楚。
     turn.notCalledTool(toolMatch({ input: referencesAnyPath(["node_modules/niceeval/dist", "node_modules/niceeval/src"]) }))

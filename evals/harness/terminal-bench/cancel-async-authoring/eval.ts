@@ -1,9 +1,10 @@
 import { defineScoreEval } from "niceeval";
-import { commandSucceeded, equals, referencesAnyPath, toolMatch } from "niceeval/expect";
+import { commandSucceeded, equals } from "niceeval/expect";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
 import { changedFixtureFiles, loadFixtureFiles } from "../../../../lib/fixture-files.ts";
 import { currentVerdicts, query, runOnce, type Shell } from "../../../../lib/query.ts";
+import { readsPrivateRecord } from "../../private-record.ts";
 
 const TARGET_EVAL = "evals/terminal-bench/cancel-async-tasks.eval.ts";
 const OFFICIAL_TESTS = "task/tests/test_outputs.py";
@@ -45,7 +46,7 @@ export default defineScoreEval({
       .key("harness.cancel-async-authoring.turn-succeeded")
       .label("Eval authoring Turn 成功");
     turn.notCalledTool(
-      toolMatch({ input: referencesAnyPath([".niceeval"]) }),
+      readsPrivateRecord,
     )
       .key("harness.cancel-async-authoring.no-private-record")
       .label("未读取 .niceeval 私有结果");

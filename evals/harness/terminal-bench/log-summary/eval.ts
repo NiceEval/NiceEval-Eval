@@ -1,11 +1,12 @@
 import { isDeepStrictEqual } from "node:util";
 import { defineScoreEval } from "niceeval";
-import { equals, referencesAnyPath, toolMatch } from "niceeval/expect";
+import { equals } from "niceeval/expect";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
 import { loadFixtureFiles } from "../../../../lib/fixture-files.ts";
 import { yesNo } from "../../../../lib/judge.ts";
 import { currentVerdicts, exp, query } from "../../../../lib/query.ts";
+import { readsPrivateRecord } from "../../private-record.ts";
 
 const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url);
 // fixture 内容进入判据指纹：改了起始项目，旧结果作废。
@@ -44,7 +45,7 @@ export default defineScoreEval({
       .key("harness.log-summary.no-new-runs").label("只读任务没有新发布 Run");
 
     turn.notCalledTool(
-      toolMatch({ input: referencesAnyPath([".niceeval"]) }),
+      readsPrivateRecord,
     )
       .key("harness.log-summary.public-evidence")
       .label("未读取 .niceeval 私有结果");

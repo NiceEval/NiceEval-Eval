@@ -7,11 +7,12 @@
  */
 
 import { defineScoreEval } from "niceeval";
-import { equals, referencesAnyPath, toolMatch } from "niceeval/expect";
+import { equals } from "niceeval/expect";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { changedFixtureFiles, loadFixtureFiles } from "../../../../lib/fixture-files.ts";
 import { yesNo } from "../../../../lib/judge.ts";
 import { currentVerdicts, query } from "../../../../lib/query.ts";
+import { readsPrivateRecord } from "../../private-record.ts";
 
 const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/regex-log/repo/", import.meta.url);
 const RUN_CONFIG = "experiments/local.ts";
@@ -45,7 +46,7 @@ export function regexLogRecoveryEval(condition: {
     async test(t) {
       const turn = await t.send(condition.input);
       turn.succeeded().key(key("turn-succeeded"));
-      turn.notCalledTool(toolMatch({ input: referencesAnyPath([".niceeval"]) }))
+      turn.notCalledTool(readsPrivateRecord)
         .key(key("public-evidence")).label("未观察到读取私有 Record（非完整文件审计）");
       t.sandbox.changedOnlyWithin([RUN_CONFIG])
         .key(key("changed-only-config")).label("范围检查：改动没有越出运行配置");
