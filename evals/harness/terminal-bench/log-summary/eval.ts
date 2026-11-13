@@ -62,6 +62,8 @@ export default defineScoreEval({
     const reply = { task: input, reply: turn.reply };
 
     // 每个失败各 7 分：公开证据链 2 分、最终任务事实 2 分、责任归因 3 分。
+    // classifier-debug 的「A 确实是正确答案」只在证据链一项里要求：agent 如实说“只凭断言不能证明 A 正确”
+    // 是没把题目读完，不是归因错了。2026-11-13 两轮里这一句话同时扣掉三项共 7 分。
     // 两题都不能只凭复述 actual / expected mismatch 获得归因分；最终回复必须
     // 明确判断责任在错误的 agent 结果，还是在拒绝合法结果的过紧 Eval。
     t.judge({ ...reply, commands }, yesNo("classifier-evidence", "【classifier-debug 公开证据】只根据 commands 与 reply 判断 agent 是否形成这条公开证据链：使用公开 niceeval show 或 query 的等价结果，固定本次 local Run 及 classifier-debug 的 Attempt，确认整体 1 passed、2 failed、0 errored，并从公开执行、源码或断言详情确认 agent 写入 B、正确答案与断言要求都是 A。"))
@@ -69,12 +71,12 @@ export default defineScoreEval({
       .key("harness.log-summary.classifier-evidence")
       .label("classifier-debug 公开证据完整");
 
-    t.judge(reply, yesNo("classifier-answer-fact", "【classifier-debug 最终任务事实】只判断最终回复是否明确说明 terminal-bench/classifier-debug 的 agent 实际选择或写入 B，而题目正确答案与 Eval 期望都是 A。只需判断事实是否说清，不在本项判断责任归因。"))
+    t.judge(reply, yesNo("classifier-answer-fact", "【classifier-debug 最终任务事实】只判断最终回复是否明确说明 terminal-bench/classifier-debug 的 agent 实际选择或写入 B，而这条 Eval 期望的答案是 A。只需判断这两个事实是否说清；回复是否另外确认 A 是题目的正确答案、如何归因，都不在本项判断。"))
       .score(2)
       .key("harness.log-summary.classifier-answer-fact")
       .label("classifier-debug 最终事实正确");
 
-    t.judge(reply, yesNo("classifier-agent-attribution", "【classifier-debug 最终责任归因】只判断最终回复是否把 terminal-bench/classifier-debug 的失败解释为：题目正确要求或有效判据是 A，而 agent/canned answer 选择了 B，因此 agent 结果没有满足题目。明确作出这条因果对比即满足，不要求额外使用‘agent 错误’等固定措辞。若回复质疑 A 是正确要求、把责任归为 Eval 对 A 的要求过紧，或没有把 B 与题目要求 A 连接起来，则不满足。"))
+    t.judge(reply, yesNo("classifier-agent-attribution", "【classifier-debug 最终责任归因】只判断最终回复是否把 terminal-bench/classifier-debug 的失败归到 agent 的答案上：Eval 要求 A，agent/canned answer 选择了 B，所以没有通过。明确作出这条因果对比即满足，不要求使用‘agent 错误’等固定措辞。回复附带说明“仅凭断言不能独立证明 A 正确”不影响本项，只要它没有因此把这条失败说成原因不明。若回复把责任归为 Eval 对 A 的要求过紧或有误、归为运行环境，或把它与 log-summary 的失败说成同一类问题，则不满足。"))
       .score(3)
       .key("harness.log-summary.classifier-agent-attribution")
       .label("classifier-debug 最终归因 agent 答案错误");
