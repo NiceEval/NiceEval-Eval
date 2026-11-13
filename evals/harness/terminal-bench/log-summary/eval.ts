@@ -3,11 +3,13 @@ import { defineScoreEval } from "niceeval";
 import { equals, referencesAnyPath, toolMatch } from "niceeval/expect";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { loadCriteria } from "niceeval/loaders";
+import { loadFixtureFiles } from "../../../../lib/fixture-files.ts";
 import { yesNo } from "../../../../lib/judge.ts";
 import { currentVerdicts, exp, query } from "../../../../lib/query.ts";
 
-await loadCriteria({ pattern: "../../../../fixtures/harness/terminal-bench/log-summary/repo/**/*", relativeTo: new URL(import.meta.url) });
+const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url);
+// fixture 内容进入判据指纹：改了起始项目，旧结果作废。
+await loadFixtureFiles(FIXTURE);
 
 export default defineScoreEval({
   description: "只凭公开结果区分 Terminal-Bench agent 产出错误与过紧 eval",
@@ -16,7 +18,7 @@ export default defineScoreEval({
   diff: { ignore: [".niceeval/**"] },
   sandbox: sandboxRequirements({}).before(uploadDirectory({
     id: "niceeval-eval.harness.log-summary.fixture",
-    source: new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url),
+    source: FIXTURE,
     to: ".",
     changeFrequency: changeFrequency.normal,
   })),

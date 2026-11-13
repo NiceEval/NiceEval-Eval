@@ -1,33 +1,25 @@
-import { relative } from "node:path";
-import { fileURLToPath } from "node:url";
-import { readdirSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { defineScoreEval } from "niceeval";
 import { equals, referencesAnyPath, toolMatch } from "niceeval/expect";
-import { loadCriteria, loadText } from "niceeval/loaders";
+import { loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
+import { changedFixtureFiles, loadFixtureFiles } from "../../../../lib/fixture-files.ts";
 import { yesNo } from "../../../../lib/judge.ts";
-import { currentVerdicts, exp, query, type Shell } from "../../../../lib/query.ts";
+import { currentVerdicts, exp, query, runOnce, type Shell } from "../../../../lib/query.ts";
 
 const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url);
 const TARGET_EVAL = "evals/terminal-bench/log-summary.eval.ts";
 const AGENT_FILE = "agents/canned-terminal-bench.ts";
 
-await loadCriteria({ pattern: "../../../../fixtures/harness/terminal-bench/log-summary/repo/**/*", relativeTo: new URL(import.meta.url) });
+const fixtureFiles = await loadFixtureFiles(FIXTURE);
 const probeAgent = await loadText(new URL("../../../../fixtures/harness/terminal-bench/log-summary/probe-agent.ts", import.meta.url));
-
-// 受保护的是题面、判据和被测 Agent。目标 Eval 是要改的；experiments/local.ts 允许改，用来换 Python runtime
-// 跑官方 test.py；README 是说明，顺手记一笔改动不算越界。
-const protectedContents = await Promise.all(
-  readdirSync(FIXTURE, { recursive: true, withFileTypes: true })
-    .filter((entry) => entry.isFile())
-    .map((entry) => relative(fileURLToPath(FIXTURE), `${entry.parentPath}/${entry.name}`))
-    .filter((path) => ![TARGET_EVAL, "experiments/local.ts", "README.md"].includes(path))
-    .map(async (path) => [path, await loadText(new URL(path, FIXTURE))] as const),
-);
-const originalAgent = protectedContents.find(([path]) => path === AGENT_FILE)?.[1];
+const originalAgent = fixtureFiles.get(AGENT_FILE);
 if (originalAgent === undefined) throw new Error(`fixture 缺少 ${AGENT_FILE}`);
+
+// 目标 Eval 是要改的；experiments/local.ts 允许改，用来换 Python runtime 跑官方 test.py；
+// README 是说明，顺手记一笔改动不算越界。其余（题面、官方判据、被测 Agent、另两条 Eval）受保护。
+const EDITABLE = [TARGET_EVAL, "experiments/local.ts", "README.md"];
 
 export default defineScoreEval({
   description: "把判得过紧的 log-summary Eval 改对：合法 CSV 通过，错误产物仍然失败",
@@ -78,32 +70,23 @@ export default defineScoreEval({
       .score(1).key("harness.log-summary-repair.readable").label("改后的判据读得出来");
 
     // 题面、判据或被测 Agent 被改过，后面的探针就不再证明 Eval 本身，任务算失败。
-    const changedAssets: string[] = [];
-    for (const [path, contents] of protectedContents) {
-      if (await t.sandbox.readText(path).catch(() => undefined) !== contents) changedAssets.push(path);
-    }
-    await t.check(changedAssets, equals([])).gate().key("harness.log-summary-repair.assets-unchanged")
+    await t.check(await changedFixtureFiles(t.sandbox, fixtureFiles, { except: EDITABLE }), equals([])).gate().key("harness.log-summary-repair.assets-unchanged")
       .label("题面、官方 test.py、被测 Agent 与另两条 Eval 保持不变").orStop();
 
     // 外层用同一个 local 配置把改后的 Eval 跑在一组已知产物上。每条都 --rerun all，从 receipt 的唯一 Run 读 verdict。
-    const probe = async (name: string | undefined) => {
+    const probe = async (name?: string) => {
       const env = name === undefined ? undefined : { HARNESS_CSV_PROBE: name };
-      const probeShell: Shell = (script) => t.sandbox.runShell(script, { env });
-      const { exitCode, runIds } = await exp(probeShell, ["local", "terminal-bench/log-summary", "--rerun", "all"]);
-      if (runIds.length !== 1) throw new Error(`探针 ${name ?? "original"} 应创建恰好一个 Run，实际 ${JSON.stringify(runIds)}`);
-      const run = await query(shell, { kind: "run.get", runId: runIds[0] });
-      const verdicts = (run.run.plannedAttempts as { evalId: string; verdict?: string | null }[])
-        .map(({ evalId, verdict }) => ({ evalId, verdict: verdict ?? null }));
-      t.log(JSON.stringify({ probe: name ?? "original", exitCode, runId: runIds[0], verdicts }));
-      return verdicts;
+      const run = await runOnce((script) => t.sandbox.runShell(script, { env }), ["local", "terminal-bench/log-summary", "--rerun", "all"]);
+      t.log(JSON.stringify({ probe: name ?? "original", ...run }));
+      return run.results;
     };
-    const verdict = (value: "passed" | "failed") => [{ evalId: "terminal-bench/log-summary", verdict: value }];
+    const verdict = (value: "passed" | "failed") => ({ "terminal-bench/log-summary": value });
 
     try {
       await t.sandbox.writeText(AGENT_FILE, probeAgent);
 
       // 合法产物必须通过。原产物仍被拒绝就是没修好：没修的过紧 Eval 天然能拒绝错误产物，后面的拒绝探针证明不了任何事。
-      await t.check(await probe(undefined), equals(verdict("passed"))).gate().score(3)
+      await t.check(await probe(), equals(verdict("passed"))).gate().score(3)
         .key("harness.log-summary-repair.accept.original").label("原产物（全字段带引号）passed").orStop();
       t.check(await probe("plain"), equals(verdict("passed"))).score(2)
         .key("harness.log-summary-repair.accept.plain").label("不带引号的同一结果 passed");

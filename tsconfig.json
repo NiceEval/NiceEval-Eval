@@ -11,6 +11,6 @@
     "skipLibCheck": true,
     "types": ["node"]
   },
-  "include": ["lib", "evals", "experiments", "scripts", "types", "niceeval.config.ts"],
+  "include": ["lib", "evals", "experiments", "scripts", "tests", "niceeval.config.ts"],
   "exclude": ["node_modules", "fixtures"]
 }

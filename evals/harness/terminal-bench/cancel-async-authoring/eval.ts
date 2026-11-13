@@ -1,29 +1,18 @@
 import { defineScoreEval } from "niceeval";
 import { commandSucceeded, equals, referencesAnyPath, toolMatch } from "niceeval/expect";
-import { loadCriteria, loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { currentVerdicts, exp, query, type Shell } from "../../../../lib/query.ts";
+import { changedFixtureFiles, loadFixtureFiles } from "../../../../lib/fixture-files.ts";
+import { currentVerdicts, query, runOnce, type Shell } from "../../../../lib/query.ts";
 
 const TARGET_EVAL = "evals/terminal-bench/cancel-async-tasks.eval.ts";
-const FIXTURE_ROOT = "../../../../fixtures/harness/terminal-bench/cancel-async-authoring/repo/";
-const PROTECTED_ASSETS = [
-  "task/task.yaml",
-  "task/fixture/Dockerfile",
-  "task/run-tests.sh",
-  "task/solution.sh",
-  "task/tests/test.py",
-  "task/tests/test_outputs.py",
-] as const;
+const OFFICIAL_TESTS = "task/tests/test_outputs.py";
+const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/cancel-async-authoring/repo/", import.meta.url);
 
-await loadCriteria({ pattern: `${FIXTURE_ROOT}**/*`, relativeTo: new URL(import.meta.url) });
-
-const protectedContents = await Promise.all(
-  PROTECTED_ASSETS.map(async (path) => [
-    path,
-    await loadText(new URL(`${FIXTURE_ROOT}${path}`, import.meta.url)),
-  ] as const),
-);
+// 官方题包：题面、Dockerfile、runner、参考答案与两份测试。
+const taskAssets = new Map([...await loadFixtureFiles(FIXTURE)].filter(([path]) => path.startsWith("task/")));
+const originalOfficialTests = taskAssets.get(OFFICIAL_TESTS);
+if (originalOfficialTests === undefined) throw new Error(`fixture 缺少 ${OFFICIAL_TESTS}`);
 
 export default defineScoreEval({
   description: "把真实 Terminal-Bench 题包接成不泄漏判据、带正反控制的正式 Eval",
@@ -32,7 +21,7 @@ export default defineScoreEval({
   diff: { ignore: [".niceeval/**"] },
   sandbox: sandboxRequirements({}).before(uploadDirectory({
     id: "niceeval-eval.harness.cancel-async-authoring.fixture",
-    source: new URL(FIXTURE_ROOT, import.meta.url),
+    source: FIXTURE,
     to: ".",
     changeFrequency: changeFrequency.normal,
   })),
@@ -66,11 +55,7 @@ export default defineScoreEval({
       .key("harness.cancel-async-authoring.target-only")
       .label("只创建目标 Eval");
 
-    const changedAssets: string[] = [];
-    for (const [path, expected] of protectedContents) {
-      if ((await t.sandbox.readText(path).catch(() => undefined)) !== expected) changedAssets.push(path);
-    }
-    t.check(changedAssets, equals([]))
+    t.check(await changedFixtureFiles(t.sandbox, taskAssets), equals([]))
       .score(2)
       .key("harness.cancel-async-authoring.assets-unchanged")
       .label("官方题面、判据与参考答案保持原样");
@@ -86,20 +71,17 @@ export default defineScoreEval({
 
     const expectPassed = { "terminal-bench/cancel-async-tasks": "passed" };
     const expectFailed = { "terminal-bench/cancel-async-tasks": "failed" };
-    const oracle = await inspect(shell, ["oracle", "--rerun", "all"]);
+    const oracle = await runOnce(shell, ["oracle", "--rerun", "all"]);
     t.log(JSON.stringify({ outerProbe: "oracle", ...oracle }));
     t.check({ exitCode: oracle.exitCode, results: oracle.results }, equals({ exitCode: 0, results: expectPassed }))
       .score(6).key("harness.cancel-async-authoring.oracle-passes")
       .label("官方参考实现通过完整官方判据");
 
-    const officialTestsPath = "task/tests/test_outputs.py";
-    const originalOfficialTests = protectedContents.find(([path]) => path === officialTestsPath)?.[1];
-    if (originalOfficialTests === undefined) throw new Error("fixture 缺少官方测试");
     try {
-      await t.sandbox.writeText(officialTestsPath,
+      await t.sandbox.writeText(OFFICIAL_TESTS,
         `${originalOfficialTests}\n# Harness fingerprint probe: behavior intentionally unchanged.\n`);
       // No rerun flag: this specifically tests criteria invalidation.
-      const fingerprint = await inspect(shell, ["oracle"]);
+      const fingerprint = await runOnce(shell, ["oracle"]);
       t.log(JSON.stringify({ outerProbe: "fingerprint", ...fingerprint }));
       // Score invalidation separately: a fresh attempt that times out still proves
       // the old result was not reused. Keep its completion status visible below.
@@ -110,38 +92,22 @@ export default defineScoreEval({
         .key("harness.cancel-async-authoring.fingerprint-probe-completed")
         .label("无行为变化的判据探针运行完成且参考实现仍通过");
 
-      const leak = await inspect(shell, ["leak-probe", "--rerun", "all"]);
+      const leak = await runOnce(shell, ["leak-probe", "--rerun", "all"]);
       t.log(JSON.stringify({ outerProbe: "leak-probe", ...leak }));
       t.check({ exitCode: leak.exitCode, results: leak.results }, equals({ exitCode: 1, results: expectFailed }))
         .score(3).key("harness.cancel-async-authoring.leak-probe-fails")
         .label("未见隐藏材料的负向探针保持 ordinary failed");
 
       // Independent mutation catches skipped tests and ignored verifier exit codes.
-      await t.sandbox.writeText(officialTestsPath,
+      await t.sandbox.writeText(OFFICIAL_TESTS,
         `${originalOfficialTests}\n\ndef test_harness_verifier_must_execute():\n    assert False, "outer harness verifier sentinel"\n`);
-      const sentinel = await inspect(shell, ["oracle", "--rerun", "all"]);
+      const sentinel = await runOnce(shell, ["oracle", "--rerun", "all"]);
       t.log(JSON.stringify({ outerProbe: "verifier-sentinel", ...sentinel }));
       t.check({ exitCode: sentinel.exitCode, results: sentinel.results }, equals({ exitCode: 1, results: expectFailed }))
         .score(2).key("harness.cancel-async-authoring.verifier-enforced")
         .label("真实测试新增失败会使 oracle ordinary failed，而非忽略退出码");
     } finally {
-      await t.sandbox.writeText(officialTestsPath, originalOfficialTests);
+      await t.sandbox.writeText(OFFICIAL_TESTS, originalOfficialTests);
     }
   },
 });
-
-type PlannedAttempt = { evalId: string; verdict?: string; publication?: { action?: string } };
-
-/** 外层跑一次 exp，再用 receipt 里唯一的 Run 读取这次的终态与 publication action。 */
-async function inspect(shell: Shell, args: string[]) {
-  const { exitCode, runIds } = await exp(shell, args);
-  if (runIds.length !== 1) throw new Error(`niceeval exp ${args.join(" ")} 应创建恰好一个 Run，实际 ${JSON.stringify(runIds)}`);
-  const run = await query(shell, { kind: "run.get", runId: runIds[0] });
-  const attempts: PlannedAttempt[] = run.run.plannedAttempts;
-  const result = {
-    exitCode,
-    results: Object.fromEntries(attempts.map((a) => [a.evalId, a.verdict ?? null])),
-    actions: attempts.map((a) => a.publication?.action ?? null),
-  };
-  return result;
-}

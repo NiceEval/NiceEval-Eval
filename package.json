@@ -5,8 +5,8 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsx scripts/typecheck.ts",
-    "test": "tsx --test scripts/test-*.ts",
+    "typecheck": "tsc --noEmit",
+    "test": "tsx --test tests/*.test.ts",
     "harness-report": "tsx scripts/harness-report.ts"
   },
   "devEngines": {

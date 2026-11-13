@@ -12,6 +12,7 @@ import {
   uploadDirectory,
 } from "niceeval/sandbox";
 import { loadRepoEnv } from "./env.ts";
+import { shellQuote } from "./shell.ts";
 import {
   TARGET_APP_ENV_PATH,
   provisionTargetAppEnv,
@@ -235,8 +236,8 @@ printf '运行基线通过：Node %s · pnpm %s · Docker %s · Compose %s\\n' \
 const provisionTargetAppCommand = defineSandboxCommand(
   {
     id: "niceeval-eval.target-app-env",
-    revision: "4",
-    inputs: { path: TARGET_APP_ENV_PATH, proxyProtocol: "target-app-kata-gateway-proxy/v4" }, // 保留既有 identity，避免仅清理死代码导致结果失效。
+    revision: "5",
+    inputs: { path: TARGET_APP_ENV_PATH },
     changeFrequency: changeFrequency.frequent,
   },
   async (sandbox, context) => {
@@ -282,9 +283,6 @@ const provisionAgentEndpointCommand = defineSandboxCommand(
   },
 );
 
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}
 
 /** 每个 Attempt 请求独立 Instabox 实例和有限 TTL。 */
 function attemptSandbox() {

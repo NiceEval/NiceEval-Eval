@@ -1,13 +1,14 @@
 /**
  * install 题共用的取证探针：只从被测 sandbox 取回事实，不登记任何检查。
  *
- * 判据（t.check / closeQA / judge）全部留在各题 eval.ts 正文里，读一道题就能看到它测什么、
+ * 判据（t.check / t.judge）全部留在各题 eval.ts 正文里，读一道题就能看到它测什么、
  * 什么算通过；这里只放「一条命令或一个文件」的取证与归档。
  */
 
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ScoreTestContext } from "niceeval";
+import { query, type Shell } from "./query.ts";
 
 type Sandbox = ScoreTestContext["sandbox"];
 
@@ -92,6 +93,77 @@ done`,
     { cwd: root },
   );
   return result.stdout.trim();
+}
+
+/**
+ * 首轮交给 Judge 的材料：任务、命令输入、HITL 请求与回复。
+ * Codex 适配器会截断过长的工具输出，完整 Turn 历史是 partial；这里只交完整的部分。
+ */
+export function firstTurnFacts(turn: Awaited<ReturnType<ScoreTestContext["send"]>>) {
+  return {
+    task: turn.input,
+    status: turn.status,
+    commands: turn.toolCalls.map(({ name, input, status }) => ({ name, input, status })),
+    inputRequests: turn.inputRequests,
+    reply: turn.reply,
+  };
+}
+
+export interface CurrentAttempt {
+  experimentId: string;
+  evalId: string;
+  /** 未发布的成员没有 locator。 */
+  locator?: string;
+  verdict?: string;
+}
+
+/**
+ * agent 项目里每一格的当前结果（公开 project.get）。局部补跑不丢弃其它格，较早的成功也不掩盖后来的失败。
+ * Query v3 把 verdict 放在成员上，v2 放在 publication 里，这里抹平。
+ */
+export async function readCurrentAttempts(shell: Shell): Promise<CurrentAttempt[]> {
+  type Cell = {
+    experimentId: string;
+    evalId: string;
+    members: { verdict?: string; publication: { attemptLocator?: string; verdict?: string } }[];
+  };
+  const cells: Cell[] = (await query(shell, { kind: "project.get" })).project.cells;
+  return cells.flatMap((cell) => cell.members.map((member) => ({
+    experimentId: cell.experimentId,
+    evalId: cell.evalId,
+    locator: member.publication.attemptLocator,
+    verdict: member.verdict ?? member.publication.verdict,
+  })));
+}
+
+/**
+ * 逐个读取已发布 Attempt 的 overview、--execution 与 --source。
+ * `evidence` 是 Judge 材料（--source 不保证包含 Adapter，不进材料）；`commandResults` 是全部命令结果，供 Eval 检查取证入口可用。
+ */
+export async function readAttemptEvidence(sandbox: Sandbox, root: string, attempts: readonly CurrentAttempt[]) {
+  const evidence: { attempt: CurrentAttempt; overview: string; execution: string }[] = [];
+  const commandResults: Awaited<ReturnType<typeof runCandidateCli>>[] = [];
+  for (const attempt of attempts) {
+    const locator = attempt.locator;
+    if (locator === undefined) throw new Error(`${attempt.evalId} 的当前结果没有发布 Attempt，无法取证`);
+    const [overview, execution, source] = await Promise.all([
+      runCandidateCli(sandbox, root, ["show", locator]),
+      runCandidateCli(sandbox, root, ["show", locator, "--execution"]),
+      runCandidateCli(sandbox, root, ["show", locator, "--source"]),
+    ]);
+    commandResults.push(overview, execution, source);
+    evidence.push({ attempt, overview: overview.stdout, execution: execution.stdout });
+  }
+  return { evidence, commandResults };
+}
+
+/** 解析一段 JSON 输出；不是合法 JSON 时返回 null，由 Eval 决定这算什么。 */
+export function parseJsonOrNull(stdout: string): unknown {
+  try {
+    return JSON.parse(stdout);
+  } catch {
+    return null;
+  }
 }
 
 const AGENT_OUTPUT_ROOT = resolve(import.meta.dirname, "../.agent-output");

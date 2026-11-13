@@ -12,13 +12,18 @@ import { actionRef, command, gitCheckout, sandboxRequirements, uploadDirectory }
 import { assertPagesInCandidate, candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../../../lib/candidate.ts";
 import {
   archiveAgentOutput,
+  firstTurnFacts,
   locateInstallRoot,
+  parseJsonOrNull,
+  readAttemptEvidence,
   readAuthoredSource,
+  readCurrentAttempts,
   readInstallLayout,
   runCandidateCli,
 } from "../../../lib/install-probes.ts";
 import { YES, yesNo } from "../../../lib/judge.ts";
 import { query } from "../../../lib/query.ts";
+import { TASTE_RUBRICS } from "../taste.ts";
 
 /**
  * [key, label, points, question]：交给首轮的任务、命令输入、HITL 请求与回复。
@@ -91,28 +96,6 @@ const SOURCE_RUBRICS = [
     "无任何启动与就绪动作仅盲目假定服务已就绪判 N；使用假 mock 或进程内 fake 替代真实服务判 N。"],
   ["install.experiment.service-cleanup", "目标服务清理", 1,
     "Y 当且仅当在 lifecycle 或任务收尾时对启动的服务进程/容器有可靠清理或回收机制。"],
-] as const;
-
-/**
- * [key, label, points, rubric]：agent 写的 Eval 有没有 NiceEval Taste（随包 niceeval-taste.mdx 的自检清单）。
- * 每条可以独立缺失，各计 1 分。
- */
-const TASTE_RUBRICS = [
-  ["install.taste.readable", "正文读得出判据", 1,
-    "只看 evals/ 下 agent 写的 Eval 文件。Y 当且仅当只读 Eval 正文就能说出它测什么、每项什么算通过、分数或门槛怎么来；" +
-    "关键阈值、数量和分值直接写在检查上，没有藏进辅助函数。"],
-  ["install.taste.deterministic-facts", "事实用确定性检查", 1,
-    "只看 evals/ 下 agent 写的 Eval 文件。Y 当且仅当能直接读到的事实（工具名与参数、次数、文件内容、命令退出码、结构化字段）" +
-    "用确定性检查，没有把这类事实交给 Judge 判断。"],
-  ["install.taste.match-over-arithmetic", "判据写在 Match 上", 1,
-    "只看 evals/ 下 agent 写的 Eval 文件。Y 当且仅当能用现成 Match（equals、includes、pattern、toolMatch、countWhere 等）表达的判据，" +
-    "没有先手算成布尔值或计数，再交给 isTrue 或 equals(true)。"],
-  ["install.taste.unknown-stays-unknown", "未知保持未知", 1,
-    "只看 evals/ 下 agent 写的 Eval 文件。Y 当且仅当缺失的数据（缺记录、缺 token、解析失败）保留为不可判定或直接报错，" +
-    "没有补成 0、false 或空字符串后继续判分。"],
-  ["install.taste.stop-on-prerequisite", "前提失败即停", 1,
-    "只看 evals/ 下 agent 写的 Eval 文件。Y 当且仅当后续检查依赖的前提（如本轮成功、服务可达）不满足时，用 orStop 或等价方式停下，" +
-    "不在前提已失败时继续给依赖它的项判分。没有这种依赖关系时判 Y。"],
 ] as const;
 
 const FOLLOW_UP =
@@ -189,21 +172,15 @@ export default defineScoreEval({
     try {
       // ── 文档与首轮理解 ──
       // Codex 适配器会截断过长的工具输出，完整 Turn 历史是 partial；这里只交完整的部分。
-      const firstTurnFacts = {
-        task: firstTurn.input,
-        status: firstTurn.status,
-        commands: firstTurn.toolCalls.map(({ name, input, status }) => ({ name, input, status })),
-        inputRequests: firstTurn.inputRequests,
-        reply: firstTurn.reply,
-      };
+      const facts = firstTurnFacts(firstTurn);
       await t.group("文档与首轮理解", async () => {
         for (const [key, label, points, question] of FIRST_TURN_QUESTIONS) {
-          t.judge(firstTurnFacts, yesNo(key, `只根据首轮的 commands、inputRequests 与 reply 回答：${question}`))
+          t.judge(facts, yesNo(key, `只根据首轮的 commands、inputRequests 与 reply 回答：${question}`))
             .score(points).key(key).label(label);
         }
       });
 
-      const { inputRequests } = firstTurnFacts;
+      const { inputRequests } = facts;
 
       // 只有 agent 真正提出 input.requested 时按问题作答；否则给一条最小确认。
       const handoff = firstTurn.status === "waiting" && inputRequests.length > 0
@@ -318,7 +295,7 @@ export default defineScoreEval({
       const dry = await t.sandbox.runCommand("pnpm", ["exec", "niceeval", "exp", "--dry", "--json"], { cwd: "." });
       await t.check(dry, commandSucceeded())
         .key("install.gate.dry-command").label("gate · exp --dry --json 成功").orStop();
-      const plan = parseJson(dry.stdout) as { matrix?: unknown[] } | null;
+      const plan = parseJsonOrNull(dry.stdout) as { matrix?: unknown[] } | null;
       await t.check(plan?.matrix, isDefined<unknown[] | undefined>())
         .key("install.gate.dry-matrix").label("gate · dry plan 提供 matrix").orStop();
       await t.check(plan!.matrix!.length, greaterThan(0))
@@ -330,32 +307,12 @@ export default defineScoreEval({
       const runs = (await query(shell, { kind: "run.list" })).runs;
       await t.check(runs.length, greaterThan(0)).gate().score(6)
         .key("install.evidence.real-run").label("agent 真实运行过自己的 Experiment").orStop();
-      const project = (await query(shell, { kind: "project.get" })).project;
-      const attempts: { experimentId: string; evalId: string; locator?: string; verdict?: string }[] = project.cells.flatMap(
-        (cell: { experimentId: string; evalId: string; members: { verdict?: string; publication: { attemptLocator?: string; verdict?: string } }[] }) =>
-          cell.members.map((member) => ({
-            experimentId: cell.experimentId,
-            evalId: cell.evalId,
-            locator: member.publication.attemptLocator,
-            verdict: member.verdict ?? member.publication.verdict,
-          })),
-      );
+      const attempts = await readCurrentAttempts(shell);
       await t.check(attempts.length, greaterThan(0))
         .key("install.gate.current-attempts").label("gate · 当前格包含 Attempt").orStop();
       await t.check(attempts.map((attempt) => attempt.locator), countWhere(isDefined(), equals(attempts.length)))
         .key("install.gate.published-attempt").label("gate · 当前格的所有 Attempt 均已发布").orStop();
-      const evidence: { attempt: (typeof attempts)[number]; overview: string; execution: string }[] = [];
-      const commandResults = [];
-      for (const attempt of attempts) {
-        const locator = attempt.locator!;
-        const [overview, execution, sourceSlice] = await Promise.all([
-          runCandidateCli(t.sandbox, at, ["show", locator]),
-          runCandidateCli(t.sandbox, at, ["show", locator, "--execution"]),
-          runCandidateCli(t.sandbox, at, ["show", locator, "--source"]),
-        ]);
-        commandResults.push(overview, execution, sourceSlice);
-        evidence.push({ attempt, overview: overview.stdout, execution: execution.stdout });
-      }
+      const { evidence, commandResults } = await readAttemptEvidence(t.sandbox, at, attempts);
       await t.check(commandResults, countWhere(commandSucceeded(), equals(commandResults.length)))
         .key("install.gate.evidence-commands").label("gate · 所有当前 Attempt 的 overview/--execution/--source 都成功").orStop();
 
@@ -386,11 +343,3 @@ export default defineScoreEval({
     }
   },
 });
-
-function parseJson(stdout: string): unknown {
-  try {
-    return JSON.parse(stdout);
-  } catch {
-    return null;
-  }
-}

@@ -1,6 +1,7 @@
 /** 目标应用直接连接 LLM 出口；凭据写入每个 Attempt 的独立 Sandbox。 */
 import type { SandboxCommandContext, SandboxCommandTarget } from "niceeval/sandbox";
 import { ENV_FILE, loadRepoEnv } from "./env.ts";
+import { shellQuote } from "./shell.ts";
 
 const REQUIRED_HOST_VARS = [
   "TARGET_APP_OPENAI_API_KEY",
@@ -39,8 +40,4 @@ export async function provisionTargetAppEnv(
   );
   ctx.signal.throwIfAborted();
   ctx.progress({ message: "目标应用 LLM 环境变量已就绪" });
-}
-
-function shellQuote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
 }

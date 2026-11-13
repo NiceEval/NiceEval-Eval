@@ -1,47 +1,58 @@
-import { spawnSync } from "node:child_process";
-import { query, type Shell } from "../lib/query.ts";
+/**
+ * 把指定 Run 的 Harness 观察值汇成一份 JSON：逐题分数、来源、覆盖和用量。
+ * 只读公开 query；必须给出固定 Run ID，不接受 latest。分数不代表边界合规，
+ * 沿用（carried）与采用（accepted）的结果不算新样本。
+ */
+
+import { query } from "../lib/query.ts";
+import { localShell } from "../tests/support/project.ts";
 
 const runIds = process.argv.slice(2);
 if (runIds.length === 0 || runIds.some((id) => id.startsWith("-")) || new Set(runIds).size !== runIds.length) {
   throw new Error("Usage: pnpm harness-report <fixed-run-id> [<fixed-run-id> ...] (no latest, no duplicate Run)");
 }
-const shell: Shell = async (script) => {
-  const r = spawnSync("sh", ["-c", script], { encoding: "utf8", maxBuffer: 16 * 1024 * 1024 });
-  if (r.error) throw r.error;
-  return { exitCode: r.status ?? 2, stdout: r.stdout, stderr: r.stderr };
-};
+
+type PlannedAttempt = Record<string, any> & { plannedAttemptId: string; evalId: string };
+type SourceMember = { plannedAttemptId: string; action?: string; attempt?: { originRunId?: string; attemptId?: string } };
+
+const shell = localShell(process.cwd());
 const reports = [];
 for (const runId of runIds) {
   const doc = await query(shell, { kind: "run.get", runId });
   if (doc === null) throw new Error(`Run ${runId} 不存在`);
-  const get = doc.run;
-  const value = get.value;
-  const execution = value.context.execution;
-  const flags = execution.flags;
-  const overview = get;
-  const sourceMembers: Record<string, any>[] = get.members;
-  const rows = (overview.plannedAttempts as Record<string, any>[]).map((member) => {
-    const slot = member;
-    const source = sourceMembers.find((s) => s.plannedAttemptId === slot.plannedAttemptId);
-    const ref = source?.attempt ?? undefined;
+  const { run } = doc;
+  const { execution } = run.value.context;
+  const sources: SourceMember[] = run.members;
+  const rows = (run.plannedAttempts as PlannedAttempt[]).map((planned) => {
+    const source = sources.find((member) => member.plannedAttemptId === planned.plannedAttemptId);
     return {
-      evalId: slot.evalId, attemptOrdinal: slot.attemptOrdinal,
-      locator: member.publication?.attemptLocator ?? member.locator,
-      action: source?.action, originRunId: ref?.originRunId, attemptId: ref?.attemptId,
-      newSample: source?.action === "executed" && ref?.originRunId === runId,
-      outcome: member.outcome, verdict: member.verdict, score: member.score, coverage: member.coverage, usage: member.usage,
-      // Score alone never proves the non-scored scope/control assertions passed.
+      evalId: planned.evalId,
+      attemptOrdinal: planned.attemptOrdinal,
+      locator: planned.publication?.attemptLocator ?? planned.locator,
+      action: source?.action,
+      originRunId: source?.attempt?.originRunId,
+      attemptId: source?.attempt?.attemptId,
+      newSample: source?.action === "executed" && source.attempt?.originRunId === runId,
+      outcome: planned.outcome,
+      verdict: planned.verdict,
+      score: planned.score,
+      coverage: planned.coverage,
+      usage: planned.usage,
+      // 分数从不证明不计分的范围与对照断言通过了。
       boundaryReview: "inspect named assertions; not inferred from score",
     };
   });
   reports.push({
-    runId, experimentId: value.experimentId,
-    candidateVersion: flags.candidateVersion, rubricVersion: flags.harnessRubric ?? "legacy/unrecorded",
-    model: execution.model, reasoningEffort: execution.reasoningEffort,
-    denominator: overview.denominator,
-    executed: rows.filter((r) => r.newSample).length,
-    carried: rows.filter((r) => r.action === "carried").length,
-    accepted: rows.filter((r) => r.action === "accepted").length,
+    runId,
+    experimentId: run.value.experimentId,
+    candidateVersion: execution.flags.candidateVersion,
+    rubricVersion: execution.flags.harnessRubric ?? "legacy/unrecorded",
+    model: execution.model,
+    reasoningEffort: execution.reasoningEffort,
+    denominator: run.denominator,
+    executed: rows.filter((row) => row.newSample).length,
+    carried: rows.filter((row) => row.action === "carried").length,
+    accepted: rows.filter((row) => row.action === "accepted").length,
     rows,
   });
 }

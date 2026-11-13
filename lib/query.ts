@@ -7,6 +7,8 @@
  * request 经 stdin 传给 `query run --request -`，不在工作区写临时文件。
  */
 
+import { shellQuote } from "./shell.ts";
+
 export type Shell = (script: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
 
 // query 文档是 CLI 的公开 JSON；稳定版 v2 与 Canary v3 的字段由各判据按协议读取。
@@ -41,9 +43,6 @@ async function discover(shell: Shell) {
   return pending;
 }
 
-function quote(value: string): string {
-  return `'${value.replaceAll("'", `'\\''`)}'`;
-}
 
 /**
  * 执行一个固定 Inspection operation。选择对象不存在（`inspection-selection-missing`，
@@ -56,7 +55,7 @@ export async function query(shell: Shell, operation: Record<string, unknown>): P
     throw new Error(`niceeval query 未提供 operation：${operation.kind}`);
   }
   const request = JSON.stringify({ protocol: discovery.protocol, operation });
-  const result = await shell(`printf '%s' ${quote(request)} | ${CLI} query run --request -`);
+  const result = await shell(`printf '%s' ${shellQuote(request)} | ${CLI} query run --request -`);
   let doc: QueryDocument;
   try {
     doc = JSON.parse(result.stdout);
@@ -72,7 +71,7 @@ export async function query(shell: Shell, operation: Record<string, unknown>): P
 
 /** 运行一次 `niceeval exp <args> --json`，返回退出码与最后一行 receipt 的 createdRunIds。 */
 export async function exp(shell: Shell, args: readonly string[]): Promise<{ exitCode: number; runIds: string[] }> {
-  const result = await shell(`${CLI} exp ${args.map(quote).join(" ")} --json`);
+  const result = await shell(`${CLI} exp ${args.map(shellQuote).join(" ")} --json`);
   const last = result.stdout.trim().split("\n").at(-1) ?? "";
   let receipt: { receipt?: { createdRunIds?: string[] } };
   try {
@@ -81,4 +80,29 @@ export async function exp(shell: Shell, args: readonly string[]): Promise<{ exit
     throw new Error(`niceeval exp ${args.join(" ")} 没有输出 receipt：${result.stderr.slice(-2000)}`);
   }
   return { exitCode: result.exitCode, runIds: receipt.receipt?.createdRunIds ?? [] };
+}
+
+/**
+ * 运行一次 `niceeval exp`，再从 receipt 里唯一的 Run 读回本次每个用例的终态与 publication action。
+ * 只读公开 JSON，不解析终端汇总文案；没有恰好创建一个 Run 时抛错。
+ */
+export async function runOnce(shell: Shell, args: readonly string[]): Promise<{
+  exitCode: number;
+  runId: string;
+  results: Record<string, string | null>;
+  actions: (string | null)[];
+}> {
+  const { exitCode, runIds } = await exp(shell, args);
+  const [runId] = runIds;
+  if (runId === undefined || runIds.length !== 1) {
+    throw new Error(`niceeval exp ${args.join(" ")} 应创建恰好一个 Run，实际 ${JSON.stringify(runIds)}`);
+  }
+  const attempts: { evalId: string; verdict?: string | null; publication?: { action?: string } }[] =
+    (await query(shell, { kind: "run.get", runId })).run.plannedAttempts;
+  return {
+    exitCode,
+    runId,
+    results: Object.fromEntries(attempts.map((a) => [a.evalId, a.verdict ?? null])),
+    actions: attempts.map((a) => a.publication?.action ?? null),
+  };
 }

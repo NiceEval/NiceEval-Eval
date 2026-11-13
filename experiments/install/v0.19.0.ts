@@ -1,15 +1,3 @@
-import { defineExperiment } from "niceeval";
-import { ensureCandidate } from "../../lib/candidate.ts";
-import { sandboxCodexAgent, installSandbox } from "../../lib/experiment-runtime.ts";
+import { installExperiment } from "../../lib/experiments.ts";
 
-const NICEEVAL_VERSION = await ensureCandidate("0.19.0");
-
-export default defineExperiment({
-  description: `niceeval@${NICEEVAL_VERSION}（稳定版）：从零接入`,
-  adapter: sandboxCodexAgent(),
-  model: "gpt-6.1-sol",
-  flags: { candidateVersion: NICEEVAL_VERSION },
-  sandbox: installSandbox(),
-  evals: ["install/"],
-  attempts: 1,
-});
+export default await installExperiment("0.19.0", "历史对照");
