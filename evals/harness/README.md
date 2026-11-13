@@ -62,7 +62,8 @@ E（tool-guard）测 agent 能否把一条过程规定写成抓得到、又不�
 不分 `shell` 还是 `read_file`。这道题来自一个真实缺陷：0.19.0 到 0.20.x 的随包文档示例写的是
 `referencesAnyPath([".env", "secrets/**"])`，而它不支持 glob，照抄会得到一条恒通过的检查。
 2026-11-13 首轮三个候选都拿到探针满分，但都是读了 `node_modules/niceeval/dist` 的实现才发现不支持 glob。
-所以另设 3 分：整轮没有读 NiceEval 的 `dist/` 或 `src/`，只靠随包文档完成。它量的是文档，不是 agent 的勤奋程度。
+所以另设 3 分：整轮没有读 NiceEval 的实现代码（`src/` 与 `dist/` 里的可执行文件；`.d.ts` 类型声明不算），
+靠文档、类型声明与 `--help` 完成。它量的是产品有没有把语义讲清楚，不是 agent 的勤奋程度。
 
 ## 分数与完成必须分开报告
 

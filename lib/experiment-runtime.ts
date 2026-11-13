@@ -22,7 +22,6 @@ import {
 const INNER_RUNTIMES_ACTION_ID = "niceeval-eval.prepare-inner-runtimes.v5";
 const HARNESS_SEED_ACTION_ID = "niceeval-eval.upload-harness-seed";
 const HARNESS_CANDIDATE_ACTION_ID = "niceeval-eval.install-candidate-and-prepare-workspace";
-const STRIP_DOCS_ACTION_ID = "niceeval-eval.strip-bundled-docs";
 const RUNTIME_CONTRACT_ACTION_ID = "niceeval-eval.runtime-contract";
 const AGENT_ENDPOINT_COMMAND_ID = "niceeval-eval.instabox-agent-endpoint";
 
@@ -77,17 +76,6 @@ function installCandidateAndPrepareWorkspace(candidateVersion: string) {
     user: "root",
     changeFrequency: changeFrequency.rare + 2,
     dependsOn: [actionRef(INNER_RUNTIMES_ACTION_ID), actionRef(HARNESS_SEED_ACTION_ID)],
-  });
-}
-
-/** 文档消融：删掉随包文档与 init 写入的指引块，其余与 Harness 完全相同。 */
-function stripBundledDocs() {
-  return shell({
-    id: STRIP_DOCS_ACTION_ID,
-    command: script("strip-bundled-docs.sh", {}),
-    user: "root",
-    changeFrequency: changeFrequency.rare + 2,
-    dependsOn: [actionRef(HARNESS_CANDIDATE_ACTION_ID)],
   });
 }
 
@@ -182,9 +170,9 @@ export function installSandbox() {
 }
 
 /** Harness 的 inner runtime、seed、候选安装和 workspace 可缓存；运行态按 Attempt 创建。 */
-export function harnessSandbox(candidateVersion: string, options: { bundledDocs?: "kept" | "stripped" } = {}) {
+export function harnessSandbox(candidateVersion: string) {
   loadRepoEnv();
-  const prepared = attemptSandbox()
+  return attemptSandbox()
     .before(prepareInnerRuntimes())
     .before(uploadDirectory({
       id: HARNESS_SEED_ACTION_ID,
@@ -193,8 +181,7 @@ export function harnessSandbox(candidateVersion: string, options: { bundledDocs?
       changeFrequency: changeFrequency.rare + 1,
       dependsOn: [actionRef(INNER_RUNTIMES_ACTION_ID)],
     }))
-    .before(installCandidateAndPrepareWorkspace(candidateVersion));
-  return (options.bundledDocs === "stripped" ? prepared.before(stripBundledDocs()) : prepared)
+    .before(installCandidateAndPrepareWorkspace(candidateVersion))
     .before(assertRuntime(candidateVersion))
     .before(provisionAgentEndpointCommand);
 }

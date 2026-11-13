@@ -1,7 +1,8 @@
 # NiceEval-Eval
 
-用 NiceEval 评估 coding agent 能否正确安装和实际使用 NiceEval。被测对象是「某个版本的 NiceEval 加它随包发布的文档」，
-评的是 INIT.md、随包 `INDEX.md` 与文档页对 agent 的实际效果，不是 NiceEval 核心的功能测试。
+用 NiceEval 评估 coding agent 能否正确安装和实际使用 NiceEval。被测对象是某个已发布版本的整个产品：
+CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档。评的是这个版本对 agent 好不好用，不是 NiceEval 核心的功能测试，
+也不单独归因到文档——2026-11-13 把随包文档整个删掉重跑同一套 Harness 题，分数没有下降，agent 靠类型声明和 `--help` 就能完成。
 它同时是一个正常的 NiceEval 用户项目。
 
 ## 目录
@@ -38,11 +39,7 @@ Eval 的断言与文档页校验都读这一个值。`canary` 跨日比较要记
 | 族 | 回答的问题 | 每个候选 |
 | --- | --- | --- |
 | `install` | 只拿到一句 prompt 和该版本 tag 下的 INIT.md，agent 能否在真实宿主里完成从零接入 | 2 格 |
-| `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否只靠随包文档完成工作流 | 8 格 |
-| `harness-nodocs` | 同一套 Harness 题，随包文档与 init 指引块被删掉，agent 只剩类型声明、源码与 `--help` | 8 格，目前只有 `v0.20.0` |
-
-`harness-nodocs` 是文档消融对照：与同版本 `harness` 的分差才是文档的贡献，跨版本比较里混着代码与 CLI 的变化。
-哪道题删了文档分数不变，说明它测的是模型本身，不能用来评文档。
+| `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否用这个版本提供的一切完成工作流 | 8 格 |
 
 `install` 与 `harness` 两族合计 30 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge（`gpt-6-astra`）调用。
 Harness 固定 1 Attempt、medium 推理设置并关闭首过即停。全仓并发上限 10。
@@ -85,7 +82,7 @@ pnpm harness-report <run-id> [<run-id> ...]
 
 ## Harness 题
 
-六个任务家族、八个条件，满分合计 131。题面用真实用户的说法，只说要什么；做法由随包文档和 agent 自己补上。
+六个任务家族、八个条件，满分合计 131。题面用真实用户的说法，只说要什么；做法由产品和 agent 自己补上。
 
 | 条件 | 请求与起始状态 | 分值 |
 | --- | --- | --- |
@@ -154,6 +151,6 @@ Install 与 Harness 都使用 Instabox `universal` 模板，每个 Attempt 独�
 - 本仓库依赖固定为 npm 发布的 `niceeval`；本地候选验证可用官方 `pnpm dev:link` 链接相邻的 `NiceEval/`。
   被测 agent 安装的始终是已发布版本。
 - 不验证 NiceEval 核心实现本身；核心 API、CLI、文档或报告的问题在相邻 `NiceEval/` 修复，不在这里写 workaround。
-- 完整产品版本对比不能归因到单独的 INDEX 或 INIT。`harness-nodocs` 只回答「有没有文档」的差别；换成另一份文档快照的因果实验不支持。
+- 版本之间的分差是整个产品的差别，不能归因到单独的 INDEX、INIT 或某一页文档；每个版本的文档本来就不同，不设「同版本换文档」的对照。
 - 题库都是开发集：看过失败并据此调过的题不能当盲测。canned agent 只用于稳定复现，不代表真实模型能力。
 - 静态计划通过不代表真实运行通过。历史验收见 [`docs/`](docs/) 下带日期的记录。

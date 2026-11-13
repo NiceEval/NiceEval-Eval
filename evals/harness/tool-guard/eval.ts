@@ -7,13 +7,14 @@
  */
 
 import { defineScoreEval } from "niceeval";
-import { equals, referencesAnyPath, toolMatch } from "niceeval/expect";
+import { equals } from "niceeval/expect";
 import { loadText } from "niceeval/loaders";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
 import { changedFixtureFiles, loadFixtureFiles } from "../../../lib/fixture-files.ts";
 import { yesNo } from "../../../lib/judge.ts";
 import { currentVerdicts, query, runOnce, type Shell } from "../../../lib/query.ts";
+import { readsImplementation } from "../implementation-read.ts";
 import { readsPrivateRecord } from "../private-record.ts";
 
 const FIXTURE = new URL("../../../fixtures/harness/tool-guard/repo/", import.meta.url);
@@ -49,9 +50,9 @@ export default defineScoreEval({
     turn.succeeded().key("harness.tool-guard.turn-succeeded").label("authoring Turn 成功");
     turn.notCalledTool(readsPrivateRecord)
       .key("harness.tool-guard.public-evidence").label("未观察到读取私有 Record（非完整文件审计）");
-    // 这道题量的是文档有没有教对。读了 NiceEval 的实现源码才写对，说明随包文档没有把匹配语义讲清楚。
-    turn.notCalledTool(toolMatch({ input: referencesAnyPath(["node_modules/niceeval/dist", "node_modules/niceeval/src"]) }))
-      .score(3).key("harness.tool-guard.docs-only").label("只靠随包文档完成，没有读 NiceEval 的实现源码");
+    // 产品给作者看的是文档、类型声明和 --help。读了实现代码才写对，说明这三样都没把匹配语义讲清楚。
+    turn.notCalledTool(readsImplementation)
+      .score(3).key("harness.tool-guard.public-surface").label("靠文档、类型声明与 --help 完成，没有读 NiceEval 的实现代码");
     t.sandbox.changedOnlyWithin(["evals", "README.md"])
       .key("harness.tool-guard.changed-only-evals").label("范围检查：改动没有越出 evals/ 与 README");
 
