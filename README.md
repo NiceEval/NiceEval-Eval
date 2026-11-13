@@ -78,7 +78,7 @@ pnpm harness-report <run-id> [<run-id> ...]
 
 ## Harness 题
 
-四个任务家族、六个条件，满分合计 96。题面用真实用户的说法，只说要什么；做法由随包文档和 agent 自己补上。
+四个任务家族、六个条件，满分合计 99。题面用真实用户的说法，只说要什么；做法由随包文档和 agent 自己补上。
 
 | 条件 | 请求与起始状态 | 分值 |
 | --- | --- | --- |
@@ -87,7 +87,7 @@ pnpm harness-report <run-id> [<run-id> ...]
 | `terminal-bench/log-summary` | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
 | `terminal-bench/log-summary-repair` | 同一 fixture，用户已判定 Eval 过紧，要求改好并复验 | 23 |
 | `terminal-bench/cancel-async-authoring` | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 18 |
-| `tool-guard` | 给已有 Eval 加一条「不许碰 `.env` 和 `secrets/`」的过程检查并报告结果 | 21 |
+| `tool-guard` | 给已有 Eval 加一条「不许碰 `.env` 和 `secrets/`」的过程检查并报告结果 | 24 |
 
 后三道 authoring 题不相信 agent 自己的运行：外层把被测项目里的 canned agent 临时换成探针，
 用一组已知产物或已知工具调用检验改后的 Eval，既不能过紧也不能放水。

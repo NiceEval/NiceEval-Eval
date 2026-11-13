@@ -48,6 +48,9 @@ export default defineScoreEval({
     turn.succeeded().key("harness.tool-guard.turn-succeeded").label("authoring Turn 成功");
     turn.notCalledTool(toolMatch({ input: referencesAnyPath([".niceeval"]) }))
       .key("harness.tool-guard.public-evidence").label("未观察到读取私有 Record（非完整文件审计）");
+    // 这道题量的是文档有没有教对。读了 NiceEval 的实现源码才写对，说明随包文档没有把匹配语义讲清楚。
+    turn.notCalledTool(toolMatch({ input: referencesAnyPath(["node_modules/niceeval/dist", "node_modules/niceeval/src"]) }))
+      .score(3).key("harness.tool-guard.docs-only").label("只靠随包文档完成，没有读 NiceEval 的实现源码");
     t.sandbox.changedOnlyWithin(["evals", "README.md"])
       .key("harness.tool-guard.changed-only-evals").label("范围检查：改动没有越出 evals/ 与 README");
 

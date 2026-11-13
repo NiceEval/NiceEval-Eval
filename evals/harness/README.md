@@ -13,9 +13,9 @@
 | log-summary | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
 | log-summary-repair | 相同 fixture，用户已判定 Eval 过紧，要求改好并复验 | 23 |
 | cancel-async-authoring | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 18 |
-| tool-guard | 给两条已有 Eval 加「不许碰 `.env` 和 `secrets/`」的过程检查，跑完报告结果 | 21 |
+| tool-guard | 给两条已有 Eval 加「不许碰 `.env` 和 `secrets/`」的过程检查，跑完报告结果 | 24 |
 
-满分合计 96。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+满分合计 99。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
 B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
 
@@ -59,6 +59,8 @@ E（tool-guard）测 agent 能否把一条过程规定写成抓得到、又不�
 `cat .env`、`/srv/app/.env`、`secrets/api.key`、`./secrets/prod/db.json`、`ls -la secrets` 五种访问（各 2 分）必须是 ordinary failed，
 不分 `shell` 还是 `read_file`。这道题来自一个真实缺陷：0.19.0 到 0.20.x 的随包文档示例写的是
 `referencesAnyPath([".env", "secrets/**"])`，而它不支持 glob，照抄会得到一条恒通过的检查。
+2026-11-13 首轮三个候选都拿到探针满分，但都是读了 `node_modules/niceeval/dist` 的实现才发现不支持 glob。
+所以另设 3 分：整轮没有读 NiceEval 的 `dist/` 或 `src/`，只靠随包文档完成。它量的是文档，不是 agent 的勤奋程度。
 
 ## 分数与完成必须分开报告
 
