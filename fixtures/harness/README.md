@@ -1,14 +1,19 @@
 # Harness case repos
 
-三个 Harness 任务家族各自拥有一份小 repo；regex-log 的自主/授权两条件共享源码，但各自创建独立 workspace：
+四个 Harness 任务家族各自拥有一份小 repo；regex-log 的自主/授权两条件共享源码，但各自创建独立 workspace：
 
 ```text
 fixtures/harness/
-└── terminal-bench/
-    ├── regex-log/repo/     # hello-world / fix-permissions / classifier-debug / regex-log
-    ├── log-summary/repo/   # hello-world / classifier-debug / log-summary
-    └── cancel-async-authoring/repo/ # 待接入的真实 cancel-async-tasks 题包与正反控制
+├── terminal-bench/
+│   ├── regex-log/repo/     # hello-world / fix-permissions / classifier-debug / regex-log
+│   ├── log-summary/repo/   # hello-world / classifier-debug / log-summary
+│   └── cancel-async-authoring/repo/ # 待接入的真实 cancel-async-tasks 题包与正反控制
+└── tool-guard/repo/        # 会上报工具调用的运维机器人与两条只看回复的 Eval
 ```
+
+`log-summary/probe-agent.ts` 与 `tool-guard/probe-agent.ts` 是外层探针：agent 收工后由外层临时替换
+被测项目里的 canned agent，用环境变量选一份已知产物或一组已知工具调用。它们不进 agent 的工作区。
+tool-guard 的机器人是普通 `defineAgent`，不需要 inner Docker。
 
 每份 repo 自己持有 agent、NiceEval 配置、起始 inner eval、TB task 资产与 `local` experiment。
 修改某道题时可以直接编辑它的 repo，不需要同步 canonical fixture 或理解 evaluator 注入逻辑。

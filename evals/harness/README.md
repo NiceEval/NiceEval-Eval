@@ -1,7 +1,7 @@
 # Harness 文档工作流评估 · rubric v2
 
 这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
-可信评估。当前是 **三个任务家族、五个独立条件**，不是五种独立能力样本。
+可信评估。当前是 **四个任务家族、六个独立条件**，不是六种独立能力样本。
 候选安装和 `init` 已由 Harness 完成，agent 只能依靠随包文档（`node_modules/niceeval/INDEX.md`）；
 安装前 `INIT.md` 的效果另由 `evals/install/` 测量。题面用真实用户的说法，只说要什么；
 隐藏判据、指纹和不改题包这类做法不写进题面，由随包文档和 agent 自己补上。
@@ -13,8 +13,9 @@
 | log-summary | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
 | log-summary-repair | 相同 fixture，用户已判定 Eval 过紧，要求改好并复验 | 23 |
 | cancel-async-authoring | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 18 |
+| tool-guard | 给两条已有 Eval 加「不许碰 `.env` 和 `secrets/`」的过程检查，跑完报告结果 | 21 |
 
-满分合计 75。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+满分合计 96。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
 B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
 
@@ -49,6 +50,16 @@ D 测 agent 能否写出既不过紧也不放水的判据。题面只说「eval 
 改后判据是否读得出来（1 分）交给 Judge。探针集合与理由见
 [2026-10-28 判据校准](../../docs/taste-round-2026-10-28.md)。
 
+E（tool-guard）测 agent 能否把一条过程规定写成抓得到、又不误伤的检查。起始项目的运维机器人有两条任务，
+两条 Eval 只检查最终回复所以都 passed；其中 deploy-config 实际读了 `secrets/deploy.key`。题面只说规定，
+不提示机器人现在有没有违规。外层先读 agent 自己的 local 结果：deploy-config 应变成 failed、rotate-logs 仍 passed（3 分），
+交接要指出这条真实违规（2 分，Judge）。机器人、运行配置和项目配置被改过就停止（门槛）：把违规的机器人“修好”不是用户要的。
+随后外层把机器人换成探针，两条任务都发同一组已知的工具调用：只读 `config/` 的调用必须 passed（3 分，门槛），
+`docs/secrets-policy.md`、`secrets-archive/`、`config/env/` 这类相似路径（2 分）与 `.env.example`（1 分）不能误伤；
+`cat .env`、`/srv/app/.env`、`secrets/api.key`、`./secrets/prod/db.json`、`ls -la secrets` 五种访问（各 2 分）必须是 ordinary failed，
+不分 `shell` 还是 `read_file`。这道题来自一个真实缺陷：0.19.0 到 0.20.x 的随包文档示例写的是
+`referencesAnyPath([".env", "secrets/**"])`，而它不支持 glob，照抄会得到一条恒通过的检查。
+
 ## 分数与完成必须分开报告
 
 计分制的高分不自动证明任务完成。每次同时审阅：
@@ -57,6 +68,7 @@ D 测 agent 能否写出既不过紧也不放水的判据。题面只说「eval 
 - B：两项归因与事实得分、`no-changes`、`no-new-runs`、Turn 状态和公开证据边界。
 - D：`student-runs`、`assets-unchanged`、接受与拒绝两组探针分别报告；只拿接受分说明放水，只拿拒绝分说明仍然过紧。
 - C：产物分数、`student-runs`、`target-only`、`assets-unchanged` 与公开证据边界。
+- E：`student-runs`、`assets-unchanged`、`changed-only-evals`，接受与拒绝两组探针分别报告。
 
 `.niceeval` 负向工具匹配只证明没有观察到禁止路径，不是 OS 文件访问审计。Adapter 的 shell
 内部 argv 可能不可见，因此不按不可观察的命令序列设置硬门禁。公开 query 失败、截断或成员
@@ -64,14 +76,14 @@ D 测 agent 能否写出既不过紧也不放水的判据。题面只说「eval 
 
 ## 题库质量与适用边界
 
-B 的两类相似 failed 要求不同责任归因，C 用真实测试和反例检查产物，D 用正反探针检查改后的判据，适合工作流回归。
-A 配对能区分任务理解/自主恢复和明确授权后的执行能力。它们仍只有三个任务家族，且均为
+B 的两类相似 failed 要求不同责任归因，C 用真实测试和反例检查产物，D 与 E 用正反探针检查改后的判据，适合工作流回归。
+A 配对能区分任务理解/自主恢复和明确授权后的执行能力。它们仍只有四个任务家族，且均为
 开发集；重复 Attempt 增加行为稳定性的证据，不增加场景覆盖。canned agent 稳定制造问题，
 不能用这些结果推断真实模型解决 Terminal-Bench 的能力。
 
 保留题必须在调文档前冻结，使用不同依赖、合法失败与输出格式；只更名或替换固定答案不够。
 一旦看过失败并据此调优，就移入开发集。本轮没有新增已宣称为盲测的保留题。
-完整安装链、多轮交互、复杂接入和不熟悉的任务仍需独立测试，不由这五个条件代替。
+完整安装链、多轮交互、复杂接入和不熟悉的任务仍需独立测试，不由这六个条件代替。
 
 ## 验证与发版后重跑
 
@@ -83,12 +95,13 @@ pnpm harness-report <fixed-run-id> [<fixed-run-id> ...]
 ```
 
 `pnpm test` 用临时项目真实运行确定性 CLI，不使用 LLM 或 Docker，不写本项目历史 Record。
-它验证空结果、合法 failed、执行错误、局部修复、沿用、后续退步和证据结构错误。
+它验证空结果、合法 failed、执行错误、局部修复、沿用、后续退步和证据结构错误，
+并固定 tool-guard 的 fixture 契约：写对的检查在八个探针上全部判对，恒不匹配的写法会漏掉 `secrets/` 下的访问。
 `harness-report` 只读取指定 Run，输出逐题分数、来源、覆盖和用量；不从 Score 推断边界合规，
 不将 carried/accepted 当新样本。同一 Attempt ID 跨多个 Run 出现时也只算一个独立样本。
 
-目前两个候选（`v0.19.0` 与 `canary`）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
-单候选最多 5 个 coding-agent attempts，两候选完整矩阵最多 10 个，A/B/D 另有 Judge 调用。
+三个候选（`v0.19.0`、`v0.20.0` 与 `canary`）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
+单候选最多 6 个 coding-agent attempts，三候选完整矩阵最多 18 个，A/B/D/E 另有 Judge 调用。
 预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
 `canary` 每次解析精确版本，跨日比较不能只记录标签。
 
