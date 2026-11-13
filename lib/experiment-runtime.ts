@@ -18,7 +18,7 @@ import {
   provisionTargetAppEnv,
 } from "./target-app-env.ts";
 
-const INNER_RUNTIMES_ACTION_ID = "niceeval-eval.prepare-inner-runtimes.v4";
+const INNER_RUNTIMES_ACTION_ID = "niceeval-eval.prepare-inner-runtimes.v5";
 const HARNESS_SEED_ACTION_ID = "niceeval-eval.upload-harness-seed";
 const HARNESS_CANDIDATE_ACTION_ID = "niceeval-eval.install-candidate-and-prepare-workspace";
 const RUNTIME_CONTRACT_ACTION_ID = "niceeval-eval.runtime-contract";
@@ -59,8 +59,8 @@ setpriv --reuid="$box_user" --regid="$box_user" --init-groups env HOME="$box_hom
 mkdir -p /opt/fixture-secrets
 chown -R "$box_user:$box_user" /opt/fixture-secrets
 
-printf '%s\\n' '在基础镜像中预安装官方 Codex CLI 0.144.1…'
-npm install -g @openai/codex@0.144.1
+printf '%s\\n' '在基础镜像中预安装官方 Codex CLI 0.167.2…'
+npm install -g @openai/codex@0.167.2
 mkdir -p "$box_home/.local/bin"
 ln -sf /usr/local/bin/codex "$box_home/.local/bin/codex"
 chown -R "$box_user:$box_user" "$box_home/.local"
