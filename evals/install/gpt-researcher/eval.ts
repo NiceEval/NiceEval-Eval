@@ -87,10 +87,11 @@ const SOURCE_RUBRICS = [
     "服务生命周期位于项目级命令准备或 Experiment/Plugin/Sandbox 层面才判 Y。"],
   ["install.experiment.target-coupling", "使用本次 GPT Researcher Adapter 与目标 Eval", 5,
     "Y 当且仅当 Experiment 实际选择本次 GPT Researcher Adapter，且它选中的 Eval 测试的也是该研究系统，" +
-    "而不是内置/通用/echo agent 或无关 Eval。必须能从导入和 experiment 选择追到同一对定义。"],
+    "而不是内置/通用/echo agent 或无关 Eval。Adapter 要能从 Experiment 的导入追到定义；Eval 的选择按 NiceEval 的规则判断：" +
+    "`evals` 里的 ID 或路径前缀选中对应文件，省略 `evals` 表示选中 evals/ 下全部 Eval，不要求 Experiment 导入 Eval 文件。"],
   ["install.experiment.config-consumed", "模型、flags 与静态配置不是死配置", 3,
     "Y 当且仅当 Experiment 声明的每个 model、flags 或静态配置都有清楚的消费方：Adapter/lifecycle 读取后传给 GPT Researcher。" +
-    "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。用户已决定沿用服务默认模型，所以不声明 model 或明确拒绝 model 覆盖都算正确。"],
+    "配了值却没有任何读取点、只改显示名或被硬编码覆盖判 N。用户指定目标模型取自凭证文件里的 TARGET_APP_MODEL、不做 model 维度，所以 Experiment 不声明 model 或明确拒绝 model 覆盖都算正确。"],
   ["install.experiment.service-start", "目标服务启动与就绪", 2,
     "Y 当且仅当 agent 按照 GPT Researcher 项目自身的最佳实践（如通过官方 CLI / 脚本启动、配置与健康探测，或 Experiment/Plugin lifecycle）真实启动 GPT Researcher 并确保 WebSocket/HTTP 入口就绪后才跑评测。" +
     "无任何启动与就绪动作仅盲目假定服务已就绪判 N；使用假 mock 或进程内 fake 替代真实服务判 N。"],
@@ -99,7 +100,7 @@ const SOURCE_RUBRICS = [
 ] as const;
 
 const FOLLOW_UP =
-  "确认：选 Tier 1，首跑不接 OTel 或 LangSmith；目标模型沿用服务默认值，搜索使用内置 DuckDuckGo，不做 experiment flags；" +
+  "确认：选 Tier 1，首跑不接 OTel 或 LangSmith；目标模型用 /opt/fixture-secrets/target-app.env 里的 TARGET_APP_MODEL，这个 LLM 出口只接受它，搜索使用内置 DuckDuckGo，不做 experiment flags；" +
   "可以自主运行、诊断、修复和重试，不限制格数、Attempt 数或运行轮次，无需再次申请运行授权；实际成本计入评估。这台机器可以联网，可以按 GPT Researcher 上游方式安装依赖或拉取镜像。" +
   "凭证仅从 /opt/fixture-secrets/target-app.env 注入目标服务进程，不得输出或复制进工作区。请按计划继续完成接入与验证。";
 
@@ -108,7 +109,7 @@ function answerRequestedChoice(question: string): string {
   const answers: string[] = [];
   if (/tier|otel|otlp|trac|telemetry|langsmith|观测|追踪/i.test(question)) answers.push("选 Tier 1；首跑不接 OTel 或 LangSmith。");
   if (/model|judge|flag|variant|report.type|tone|source|search|retriev|tavily|duckduckgo|模型|裁判|变体|配置|搜索|检索/i.test(question)) {
-    answers.push("目标模型沿用目标服务默认值，搜索使用内置 DuckDuckGo；没有可用 Judge key，不做 experiment flags。");
+    answers.push("目标模型用 /opt/fixture-secrets/target-app.env 里的 TARGET_APP_MODEL，这个 LLM 出口只接受它，搜索使用内置 DuckDuckGo；没有可用 Judge key，不做 experiment flags。");
   }
   if (/budget|attempt|cost|time|预算|费用|时间|规模|并发/i.test(question)) answers.push("不限制格数、Attempt 数或运行轮次，可自主诊断、修复和重试，无需再次申请运行授权；实际成本计入评估。");
   if (/image|sandbox|docker|incus|镜像|沙箱|运行时/i.test(question)) {
@@ -333,7 +334,8 @@ export default defineScoreEval({
           .score(3).key("install.evidence.completed").label("Attempt 形成 passed 或 failed，而不是 errored");
         t.judge({ attempts, handoff: handoff.reply }, yesNo("install.evidence.handoff",
           "attempts 是 agent 各格的当前结果。Y 当且仅当最终回复给出这些结果的 locator 或覆盖它们的可复现查看命令，" +
-          "说明主要文件，并与 attempts 的 verdict 一致地报告通过、失败或局限。漏 locator、只写泛化 show 命令、或把 failed/errored/替代物说成全绿判 N。"))
+          "说明主要文件，并与 attempts 的 verdict 一致地报告通过、失败或局限。带具体 Run ID 的 `niceeval show --run <id>` 或 `view --run <id>` 命令算可复现查看命令；" +
+          "只给 Run ID 而没有命令、只写不带 ID 的泛化 show 命令、指向 README 里的步骤，或把 failed/errored/替代物说成全绿，判 N。"))
           .score(3).key("install.evidence.handoff").label("交接引用 locator 并如实报告");
         t.check(attempts.map((attempt) => attempt.verdict), countWhere(equals("passed"), equals(attempts.length)))
           .score(1).key("install.evidence.self-eval-passed").label("agent 自写 Eval passed（弱证据）");

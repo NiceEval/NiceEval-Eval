@@ -8,9 +8,15 @@
 import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ScoreTestContext } from "niceeval";
+import { loadText } from "niceeval/loaders";
 import { query, type Shell } from "./query.ts";
 
 type Sandbox = ScoreTestContext["sandbox"];
+
+// 在 sandbox 里用 `node -e` 执行的取证脚本。它们是真实文件，可以在本地直接运行和测试；
+// 经 loadText 读入，改动会进入 Eval 的判据指纹。
+const INSTALL_LAYOUT_SCRIPT = await loadText(new URL("./probes/install-layout.cjs", import.meta.url));
+const AUTHORED_SOURCE_SCRIPT = await loadText(new URL("./probes/authored-source.cjs", import.meta.url));
 
 export interface InstallLayout {
   manifests: Record<string, {
@@ -31,34 +37,7 @@ export async function readInstallLayout(sandbox: {
   runCommand(bin: string, args: string[], options: { cwd: string }):
     Promise<{ exitCode: number; stdout: string; stderr: string }>;
 }): Promise<InstallLayout> {
-  const result = await sandbox.runCommand("node", ["-e", `
-const { readdirSync, readFileSync } = require('node:fs');
-const { createHash } = require('node:crypto');
-const { join } = require('node:path');
-const result = { manifests: {}, lockfiles: {}, workspaces: {} };
-const ignored = new Set(['node_modules', '.git', '.niceeval', '.venv', 'venv', '__pycache__', '.next', 'dist', 'build']);
-const locks = new Set(['pnpm-lock.yaml', 'package-lock.json', 'npm-shrinkwrap.json', 'yarn.lock', 'bun.lock', 'bun.lockb']);
-function visit(dir) {
-  for (const entry of readdirSync(dir, { withFileTypes: true }).sort((a, b) => a.name.localeCompare(b.name))) {
-    const path = join(dir, entry.name);
-    if (entry.isDirectory() && !ignored.has(entry.name)) visit(path);
-    if (!entry.isFile()) continue;
-    if (entry.name === 'package.json') {
-      const pkg = JSON.parse(readFileSync(path, 'utf8'));
-      result.manifests[path] = Object.fromEntries(
-        ['name', 'type', 'packageManager', 'scripts', 'dependencies', 'devDependencies', 'workspaces']
-          .filter(key => Object.hasOwn(pkg, key)).map(key => [key, pkg[key]])
-      );
-    } else if (locks.has(entry.name)) {
-      result.lockfiles[path] = createHash('sha256').update(readFileSync(path)).digest('hex');
-    } else if (entry.name === 'pnpm-workspace.yaml') {
-      result.workspaces[path] = readFileSync(path, 'utf8');
-    }
-  }
-}
-visit('.');
-process.stdout.write(JSON.stringify(result));
-`], { cwd: "." });
+  const result = await sandbox.runCommand("node", ["-e", INSTALL_LAYOUT_SCRIPT], { cwd: "." });
   if (result.exitCode !== 0) throw new Error(`读取安装布局失败：${result.stderr}`);
   return JSON.parse(result.stdout) as InstallLayout;
 }
@@ -79,20 +58,15 @@ export function runCandidateCli(sandbox: Sandbox, root: string, args: readonly s
   return sandbox.runCommand("./node_modules/.bin/niceeval", [...args], { cwd: root });
 }
 
-/** agent 写出的 config、Adapter、Experiment 与 Eval 源码，按文件拼成一份 Judge 材料。 */
+/**
+ * agent 写出的 NiceEval 源码，按文件拼成一份 Judge 材料：config 与 evals / experiments / agents / adapters 下的文件，
+ * 再加上它们经相对路径 import 到的项目内文件。agent 常把服务启动、凭证读取放进 runtime/ 这类自己起名的目录，
+ * 只收固定目录会让 Judge 看不到这些实现而判成“无法核实”。
+ */
 export async function readAuthoredSource(sandbox: Sandbox, root: string): Promise<string> {
-  const result = await sandbox.runShell(
-    `for path in niceeval.config.ts evals experiments agents adapters; do
-  if [ -f "$path" ]; then printf '\\n// @file %s\\n' "$path"; cat "$path"; fi
-  if [ -d "$path" ]; then
-    find "$path" -type f -name '*.ts' | sort | head -30 | while IFS= read -r file; do
-      printf '\\n// @file %s\\n' "$file"; cat "$file"
-    done
-  fi
-done`,
-    { cwd: root },
-  );
-  return result.stdout.trim();
+  const result = await sandbox.runCommand("node", ["-e", AUTHORED_SOURCE_SCRIPT], { cwd: root });
+  if (result.exitCode !== 0) throw new Error(`读取 agent 源码失败：${result.stderr}`);
+  return result.stdout;
 }
 
 /**
