@@ -10,7 +10,7 @@ import { readsPrivateRecord } from "../../private-record.ts";
 
 const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url);
 const TARGET = "terminal-bench/classifier-debug";
-const fixtureFiles = await loadFixtureFiles(FIXTURE);
+const fixtureFiles = loadFixtureFiles(FIXTURE);
 
 // 用户没提 log-summary。它的失败确实是 Eval 过紧，顺手修掉不奖励也不处罚；README 记一笔同理。
 const UNSCORED = ["evals/terminal-bench/log-summary.eval.ts", "README.md"];

@@ -9,7 +9,7 @@ import { currentVerdicts, exp, query, type Shell } from "../../../lib/query.ts";
 import { readsPrivateRecord } from "../private-record.ts";
 
 const FIXTURE = new URL("../../../fixtures/harness/regression-triage/repo/", import.meta.url);
-const fixtureFiles = await loadFixtureFiles(FIXTURE);
+const fixtureFiles = loadFixtureFiles(FIXTURE);
 
 // 换模型前后同一批六条评估的已知结果。
 const BASELINE = {

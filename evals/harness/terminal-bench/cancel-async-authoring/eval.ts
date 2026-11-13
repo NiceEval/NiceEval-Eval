@@ -11,7 +11,7 @@ const OFFICIAL_TESTS = "task/tests/test_outputs.py";
 const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/cancel-async-authoring/repo/", import.meta.url);
 
 // 官方题包：题面、Dockerfile、runner、参考答案与两份测试。
-const taskAssets = new Map([...await loadFixtureFiles(FIXTURE)].filter(([path]) => path.startsWith("task/")));
+const taskAssets = new Map([...loadFixtureFiles(FIXTURE)].filter(([path]) => path.startsWith("task/")));
 const originalOfficialTests = taskAssets.get(OFFICIAL_TESTS);
 if (originalOfficialTests === undefined) throw new Error(`fixture 缺少 ${OFFICIAL_TESTS}`);
 

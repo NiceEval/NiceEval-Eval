@@ -16,7 +16,7 @@ import { readsPrivateRecord } from "../../private-record.ts";
 
 const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/regex-log/repo/", import.meta.url);
 const RUN_CONFIG = "experiments/local.ts";
-const fixtureFiles = await loadFixtureFiles(FIXTURE);
+const fixtureFiles = loadFixtureFiles(FIXTURE);
 
 const EXPECTED = {
   "terminal-bench/hello-world": "passed",

@@ -14,7 +14,7 @@ const CHANGED_FILE = "evals/support/refund.eval.ts";
 const OLD_CRITERION = 'includes("within 7 days")';
 const NEW_CRITERION = 'includes("5 business days")';
 
-const fixtureFiles = await loadFixtureFiles(FIXTURE);
+const fixtureFiles = loadFixtureFiles(FIXTURE);
 const originalEval = fixtureFiles.get(CHANGED_FILE);
 if (originalEval === undefined || !originalEval.includes(OLD_CRITERION)) throw new Error(`fixture 的 ${CHANGED_FILE} 不含 ${OLD_CRITERION}`);
 const editedEval = originalEval.replace(OLD_CRITERION, NEW_CRITERION);

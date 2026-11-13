@@ -13,7 +13,7 @@ const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/log-summary
 const TARGET_EVAL = "evals/terminal-bench/log-summary.eval.ts";
 const AGENT_FILE = "agents/canned-terminal-bench.ts";
 
-const fixtureFiles = await loadFixtureFiles(FIXTURE);
+const fixtureFiles = loadFixtureFiles(FIXTURE);
 const probeAgent = await loadText(new URL("../../../../fixtures/harness/terminal-bench/log-summary/probe-agent.ts", import.meta.url));
 const originalAgent = fixtureFiles.get(AGENT_FILE);
 if (originalAgent === undefined) throw new Error(`fixture 缺少 ${AGENT_FILE}`);

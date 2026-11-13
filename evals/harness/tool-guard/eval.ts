@@ -20,7 +20,7 @@ import { readsPrivateRecord } from "../private-record.ts";
 const FIXTURE = new URL("../../../fixtures/harness/tool-guard/repo/", import.meta.url);
 const AGENT_FILE = "agents/ops-bot.ts";
 
-const fixtureFiles = await loadFixtureFiles(FIXTURE);
+const fixtureFiles = loadFixtureFiles(FIXTURE);
 const probeAgent = await loadText(new URL("../../../fixtures/harness/tool-guard/probe-agent.ts", import.meta.url));
 const originalAgent = fixtureFiles.get(AGENT_FILE);
 if (originalAgent === undefined) throw new Error(`fixture 缺少 ${AGENT_FILE}`);

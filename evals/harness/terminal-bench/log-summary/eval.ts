@@ -3,14 +3,11 @@ import { defineScoreEval } from "niceeval";
 import { equals } from "niceeval/expect";
 import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { loadFixtureFiles } from "../../../../lib/fixture-files.ts";
 import { yesNo } from "../../../../lib/judge.ts";
 import { currentVerdicts, exp, query } from "../../../../lib/query.ts";
 import { readsPrivateRecord } from "../../private-record.ts";
 
 const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/log-summary/repo/", import.meta.url);
-// fixture 内容进入判据指纹：改了起始项目，旧结果作废。
-await loadFixtureFiles(FIXTURE);
 
 export default defineScoreEval({
   description: "只凭公开结果区分 Terminal-Bench agent 产出错误与过紧 eval",
