@@ -3,7 +3,7 @@ import { commandSucceeded, defineAgentJudge, equals } from "niceeval/expect";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { pullInnerNodeImage, pullInnerPythonImage } from "../../../../lib/sandbox.ts";
 
-import { changedFixtureFiles, loadFixtureFiles } from "../../../../lib/fixture-files.ts";
+import { readFileSync } from "node:fs";
 import { currentVerdicts, query, runOnce, type Shell } from "../../../../lib/query.ts";
 import { readsPrivateRecord } from "../../private-record.ts";
 
@@ -12,9 +12,7 @@ const OFFICIAL_TESTS = "task/tests/test_outputs.py";
 const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/cancel-async-authoring/repo/", import.meta.url);
 
 // 官方题包：题面、Dockerfile、runner、参考答案与两份测试。
-const taskAssets = new Map([...loadFixtureFiles(FIXTURE)].filter(([path]) => path.startsWith("task/")));
-const originalOfficialTests = taskAssets.get(OFFICIAL_TESTS);
-if (originalOfficialTests === undefined) throw new Error(`fixture 缺少 ${OFFICIAL_TESTS}`);
+const originalOfficialTests = readFileSync(new URL(OFFICIAL_TESTS, FIXTURE), "utf8");
 
 /** 评审者：读 agent 写出的 Eval，按 NiceEval 品味逐题打分。 */
 const tasteReviewer = defineAgentJudge({
@@ -80,7 +78,7 @@ export default defineScoreEval({
       .score(1)
       .label("只创建目标 Eval");
 
-    t.check(await changedFixtureFiles(t.sandbox, taskAssets), equals([]))
+    t.sandbox.unchangedWithin(["task"])
       .score(2)
       .label("官方题面、判据与参考答案保持原样");
 

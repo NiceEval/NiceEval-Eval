@@ -3,7 +3,7 @@ import { defineScoreEval } from "niceeval";
 import { equals } from "niceeval/expect";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { changedFixtureFiles, loadFixtureFiles } from "../../../lib/fixture-files.ts";
+import { readFileSync } from "node:fs";
 import { yesNo } from "../../../lib/judge.ts";
 import { currentAttemptIds, currentVerdicts, exp, query, type Shell } from "../../../lib/query.ts";
 import { readsPrivateRecord } from "../private-record.ts";
@@ -14,12 +14,9 @@ const CHANGED_FILE = "evals/support/refund.eval.ts";
 const OLD_CRITERION = 'includes("within 7 days")';
 const NEW_CRITERION = 'includes("5 business days")';
 
-const fixtureFiles = loadFixtureFiles(FIXTURE);
-const originalEval = fixtureFiles.get(CHANGED_FILE);
-if (originalEval === undefined || !originalEval.includes(OLD_CRITERION)) throw new Error(`fixture 的 ${CHANGED_FILE} 不含 ${OLD_CRITERION}`);
+const originalEval = readFileSync(new URL(CHANGED_FILE, FIXTURE), "utf8");
+if (!originalEval.includes(OLD_CRITERION)) throw new Error(`fixture 的 ${CHANGED_FILE} 不含 ${OLD_CRITERION}`);
 const editedEval = originalEval.replace(OLD_CRITERION, NEW_CRITERION);
-// agent 接手时的项目：五条都跑过，用户刚改了一条的判据。
-const handedOver = new Map(fixtureFiles).set(CHANGED_FILE, editedEval);
 
 export default defineScoreEval({
   description: "改了一条 Eval 之后更新结果：只重跑受影响的一格，其余沿用",
@@ -39,8 +36,13 @@ export default defineScoreEval({
     // 起点：五条全部 passed，然后用户改了 refund 的判据但还没重跑。
     await exp(shell, ["local"]);
     const before = await current();
-    const allPassed = Object.fromEntries([...fixtureFiles.keys()]
-      .filter((path) => path.startsWith("evals/")).map((path) => [path.slice("evals/".length, -".eval.ts".length), "passed"]));
+    const allPassed = {
+      "support/cancel": "passed",
+      "support/order-status": "passed",
+      "support/password-reset": "passed",
+      "support/refund": "passed",
+      "support/shipping": "passed",
+    };
     if (!isDeepStrictEqual(currentVerdicts(before), allPassed)) {
       throw new Error(`fixture 未形成五条 passed 的初始结果（实际：${JSON.stringify(currentVerdicts(before))}），不能对 agent 判分`);
     }
@@ -76,7 +78,7 @@ export default defineScoreEval({
       .label("另外四条沿用旧结果，没有重新执行");
     t.check(executed, equals(1)).score(2)
       .label("总共只执行了一次 Attempt");
-    t.check(await changedFixtureFiles(t.sandbox, handedOver), equals([])).score(2)
+    t.sandbox.unchangedWithin(["evals", "agents", "experiments", "niceeval.config.ts"]).score(2)
       .label("用户改过的判据、其余 Eval、机器人与运行配置保持不变");
 
     t.judge({ task: input, verified: { verdicts: verdictsAfter, reexecuted, executedAttempts: executed }, reply: turn.reply }, yesNo("rerun-scope-handoff",

@@ -14,15 +14,14 @@ CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档�
 | `evals/harness/**/eval.ts` | Harness 题：在已装好的项目里运行、诊断、修复、编写 Eval |
 | `fixtures/` | 各题的起始项目与外层探针，不被本仓库的 discovery 扫描 |
 | `lib/` | 候选解析、沙箱准备步骤与读取被测项目结果的 query 封装；不登记任何检查 |
-| `evals/install/probes.ts` | 安装题的取证探针，`probes/` 下是在被测 sandbox 里执行的脚本 |
 | `sandbox/harness-project/` | Harness 的项目 seed |
 | `tests/` | 用真实本地 CLI 固定判据读取的字段与 fixture 契约，不调用模型 |
 | `scripts/harness-report.ts` | 把指定 Run 的 Harness 观察值汇成 JSON |
 | `docs/` | 评估协议与历次验收记录 |
 
 每道题自己持有题面、续轮回答和全部判据，读一个 `eval.ts` 就能看到它测什么、什么算通过。
-`lib/` 只负责「一条命令或一个文件」的取证；多道题确实相同的判据放在题目旁边
-（[`evals/install/taste.ts`](evals/install/taste.ts)、[`regex-log/recovery.ts`](evals/harness/terminal-bench/regex-log/recovery.ts)）。
+文件改动用 NiceEval 的 agent 归因 diff 断言（`t.sandbox.unchangedWithin` 等），源码设计与品味交给在 Sandbox 里自己取证的 Agent Judge；
+`lib/` 只剩读取被测项目结果的 query 封装等运行基建。两种授权条件共用的判据放在题目旁边（[`regex-log/recovery.ts`](evals/harness/terminal-bench/regex-log/recovery.ts)）。
 
 ## 候选与实验矩阵
 
@@ -133,7 +132,7 @@ agent 收到官网首页那句 prompt，URL 指向候选 tag 下的 INIT.md，�
 安装题不限制被测 agent 的格数、Attempt 数或运行轮次，它可自主诊断、修复和重试；
 规则见[安装题自主运行](docs/install-autonomous-runs.md)。GPT Researcher 叠加了已有的根目录 pnpm workspace
 与 CommonJS 工具脚本，检验混合语言仓库是否复用宿主工具链，见[安装位置与宿主工具链验收](docs/install-layout.md)。
-agent 写出的产物会复制到 gitignored 的 `.agent-output/` 供人工复核。
+agent 写出的产物用 `niceeval show @<locator> --diff` 查看。
 
 ## 沙箱
 

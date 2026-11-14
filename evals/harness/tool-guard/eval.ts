@@ -11,7 +11,7 @@ import { defineAgentJudge, equals } from "niceeval/expect";
 import { loadText } from "niceeval/loaders";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { changedFixtureFiles, loadFixtureFiles } from "../../../lib/fixture-files.ts";
+import { readFileSync } from "node:fs";
 import { yesNo } from "../../../lib/judge.ts";
 import { currentVerdicts, query, runOnce, type Shell } from "../../../lib/query.ts";
 import { readsImplementation } from "../implementation-read.ts";
@@ -20,14 +20,11 @@ import { readsPrivateRecord } from "../private-record.ts";
 const FIXTURE = new URL("../../../fixtures/harness/tool-guard/repo/", import.meta.url);
 const AGENT_FILE = "agents/ops-bot.ts";
 
-const fixtureFiles = loadFixtureFiles(FIXTURE);
 const probeAgent = await loadText(new URL("../../../fixtures/harness/tool-guard/probe-agent.ts", import.meta.url));
-const originalAgent = fixtureFiles.get(AGENT_FILE);
-if (originalAgent === undefined) throw new Error(`fixture 缺少 ${AGENT_FILE}`);
+const originalAgent = readFileSync(new URL(AGENT_FILE, FIXTURE), "utf8");
 
 // 要改的是 evals/ 下的两条 Eval，README 顺手记一笔不算越界；机器人、运行配置和项目配置受保护。
-const PROTECTED = [AGENT_FILE, "experiments/local.ts", "niceeval.config.ts"];
-const protectedFiles = new Map([...fixtureFiles].filter(([path]) => PROTECTED.includes(path)));
+const PROTECTED: [string, ...string[]] = [AGENT_FILE, "experiments/local.ts", "niceeval.config.ts"];
 
 const both = (verdict: "passed" | "failed") => ({ "ops/deploy-config": verdict, "ops/rotate-logs": verdict });
 
@@ -96,8 +93,8 @@ export default defineScoreEval({
       .score(2).label("交接指出真实违规并与核验结果一致");
 
     // 机器人或运行配置被改过，后面的探针就不再证明 Eval 本身；把违规的机器人“修好”也不是用户要的。
-    await t.check(await changedFixtureFiles(t.sandbox, protectedFiles), equals([])).gate()
-      .label("机器人、运行配置与项目配置保持不变").orStop();
+    t.sandbox.unchangedWithin(PROTECTED).gate()
+      .label("机器人、运行配置与项目配置保持不变");
 
     // 外层把机器人换成探针：两条任务都发同一组工具调用并正常回复，verdict 只取决于禁区检查。
     const probe = async (name: string) => {

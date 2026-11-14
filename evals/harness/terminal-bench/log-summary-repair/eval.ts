@@ -5,7 +5,7 @@ import { loadText } from "niceeval/loaders";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { pullInnerNodeImage } from "../../../../lib/sandbox.ts";
 
-import { changedFixtureFiles, loadFixtureFiles } from "../../../../lib/fixture-files.ts";
+import { readFileSync } from "node:fs";
 import { yesNo } from "../../../../lib/judge.ts";
 import { currentVerdicts, exp, query, runOnce, type Shell } from "../../../../lib/query.ts";
 import { readsPrivateRecord } from "../../private-record.ts";
@@ -14,13 +14,10 @@ const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/log-summary
 const TARGET_EVAL = "evals/terminal-bench/log-summary.eval.ts";
 const AGENT_FILE = "agents/canned-terminal-bench.ts";
 
-const fixtureFiles = loadFixtureFiles(FIXTURE);
 const probeAgent = await loadText(new URL("../../../../fixtures/harness/terminal-bench/log-summary/probe-agent.ts", import.meta.url));
-const originalAgent = fixtureFiles.get(AGENT_FILE);
-if (originalAgent === undefined) throw new Error(`fixture 缺少 ${AGENT_FILE}`);
+const originalAgent = readFileSync(new URL(AGENT_FILE, FIXTURE), "utf8");
 const OFFICIAL_TEST = "evals/terminal-bench/log-summary.test.py";
-const officialTest = fixtureFiles.get(OFFICIAL_TEST);
-if (officialTest === undefined) throw new Error(`fixture 缺少 ${OFFICIAL_TEST}`);
+const officialTest = readFileSync(new URL(OFFICIAL_TEST, FIXTURE), "utf8");
 
 // 目标 Eval 是要改的；experiments/local.ts 允许改，用来换 Python runtime 跑官方 test.py；
 // README 是说明，顺手记一笔改动不算越界。其余（题面、官方判据、被测 Agent、另两条 Eval）受保护。
@@ -76,8 +73,11 @@ export default defineScoreEval({
       .score(1).label("改后的判据读得出来");
 
     // 题面、判据或被测 Agent 被改过，后面的探针就不再证明 Eval 本身，任务算失败。
-    await t.check(await changedFixtureFiles(t.sandbox, fixtureFiles, { except: EDITABLE }), equals([])).gate()
-      .label("题面、官方 test.py、被测 Agent 与另两条 Eval 保持不变").orStop();
+    t.sandbox.unchangedWithin([
+      "tasks", "agents", "niceeval.config.ts", OFFICIAL_TEST,
+      "evals/terminal-bench/classifier-debug.eval.ts", "evals/terminal-bench/hello-world.eval.ts",
+    ]).gate()
+      .label("题面、官方 test.py、被测 Agent 与另两条 Eval 保持不变");
 
     // 外层用同一个 local 配置把改后的 Eval 跑在一组已知产物上。每条都 --rerun all，从 receipt 的唯一 Run 读 verdict。
     const probe = async (name?: string) => {

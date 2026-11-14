@@ -15,7 +15,7 @@ export type Shell = (script: string) => Promise<{ exitCode: number; stdout: stri
 export type QueryDocument = any;
 
 // Query v3 把 verdict 放在成员上，稳定版的 v2 放在 publication 里。
-type Cell = { evalId: string; members: { verdict?: string | null; publication?: { verdict?: string; attemptId?: string } }[] };
+type Cell = { evalId: string; members: { verdict?: string | null; publication?: { verdict?: string; attemptId?: string; attemptLocator?: string } }[] };
 
 /** experiment.get 的当前结果：evalId → 已发布 verdict（每格 1 次 Attempt）。没跑过为空表。 */
 export function currentVerdicts(doc: { experiment: { cells: Cell[] } } | null): Record<string, string | null> {
@@ -33,6 +33,19 @@ export function currentAttemptIds(doc: { experiment: { cells: Cell[] } } | null)
     if (id === undefined) throw new Error(`niceeval query experiment.get 没有给出 ${c.evalId} 的 Attempt ID`);
     return [c.evalId, id];
   }));
+}
+
+/**
+ * project.get 的当前结果：每一格的每个成员。局部补跑不丢弃其它格，较早的成功也不掩盖后来的失败。
+ * 未发布的成员没有 locator。
+ */
+export function currentAttempts(doc: { project: { cells: (Cell & { experimentId: string })[] } } | null) {
+  return (doc?.project.cells ?? []).flatMap((cell) => cell.members.map((member) => ({
+    experimentId: cell.experimentId,
+    evalId: cell.evalId,
+    locator: member.publication?.attemptLocator ?? null,
+    verdict: member.verdict ?? member.publication?.verdict ?? null,
+  })));
 }
 
 const CLI = "./node_modules/.bin/niceeval";
