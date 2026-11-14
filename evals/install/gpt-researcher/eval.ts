@@ -233,7 +233,8 @@ export default defineScoreEval({
       t.sandbox.unchangedWithin(["pnpm-workspace.yaml", "scripts/check.js", "tools/repo-check"]).gate()
         .label("保留已有 workspace 边界与原有检查源码");
       // 根目录的 package.json 与 pnpm-lock.yaml 本来就该改；其它目录下的 Node manifest 或锁文件一个都不该新增、修改或删除。
-      t.sandbox.notInDiff(/^[\w.@-]+(\/[\w.@-]+)*\/(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/m).gate()
+      // 只比较路径：大锁文件的正文会被省略，扫描变化行会让这条判定变成不可判定。
+      t.sandbox.notInDiff(/^[\w.@-]+(\/[\w.@-]+)*\/(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/m, { content: "none" }).gate()
         .label("不另建或改动子目录的 Node 项目与锁文件");
       // 必须在验收方执行 install 之前检查，避免冻结安装替 agent 补装缺失的 CLI。
       const cliVersion = await t.sandbox.runCommand("pnpm", ["exec", "niceeval", "--version"], { cwd: "." });
