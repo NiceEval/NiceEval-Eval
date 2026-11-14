@@ -5,8 +5,8 @@ export const YES = 0.5;
 
 /**
  * 二值验收 Judge：材料由调用方用语义字段显式给出（`t.judge({ reply, overview }, yesNo(...))`），
- * rubric 写明满足条件。材料上限容纳作者源码与公开执行切片；每项审计预留 1 MiB，
- * 让完整安装题的多项评分落在 Attempt 总预算内。超限时保留 unavailable。
+ * rubric 写明满足条件。材料上限容纳首轮完整的命令与回复；需要进 Sandbox 取证的判据改用 defineAgentJudge。
+ * 超限时保留 unavailable。
  */
 export function yesNo(name: string, rubric: string) {
   return defineJudge({

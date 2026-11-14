@@ -16,9 +16,8 @@ type Sandbox = ScoreTestContext["sandbox"];
 // 在 sandbox 里用 `node -e` 执行的取证脚本。它们是真实文件，可以在本地直接运行和测试；
 // 经 loadText 读入，改动会进入 Eval 的判据指纹。
 const INSTALL_LAYOUT_SCRIPT = await loadText(new URL("./probes/install-layout.cjs", import.meta.url));
-const AUTHORED_SOURCE_SCRIPT = await loadText(new URL("./probes/authored-source.cjs", import.meta.url));
 
-export interface InstallLayout {
+export type InstallLayout = {
   manifests: Record<string, {
     name?: string;
     type?: string;
@@ -26,11 +25,11 @@ export interface InstallLayout {
     scripts?: Record<string, string>;
     dependencies?: Record<string, string>;
     devDependencies?: Record<string, string>;
-    workspaces?: unknown;
+    workspaces?: string[] | { packages?: string[] };
   }>;
   lockfiles: Record<string, string>;
   workspaces: Record<string, string>;
-}
+};
 
 /** 安装前后的依赖归属事实；不读取 secrets、依赖树或运行产物，不替 Eval 判分。 */
 export async function readInstallLayout(sandbox: {
@@ -59,17 +58,6 @@ export function runCandidateCli(sandbox: Sandbox, root: string, args: readonly s
 }
 
 /**
- * agent 写出的 NiceEval 源码，按文件拼成一份 Judge 材料：config 与 evals / experiments / agents / adapters 下的文件，
- * 再加上它们经相对路径 import 到的项目内文件。agent 常把服务启动、凭证读取放进 runtime/ 这类自己起名的目录，
- * 只收固定目录会让 Judge 看不到这些实现而判成“无法核实”。
- */
-export async function readAuthoredSource(sandbox: Sandbox, root: string): Promise<string> {
-  const result = await sandbox.runCommand("node", ["-e", AUTHORED_SOURCE_SCRIPT], { cwd: root });
-  if (result.exitCode !== 0) throw new Error(`读取 agent 源码失败：${result.stderr}`);
-  return result.stdout;
-}
-
-/**
  * 首轮交给 Judge 的材料：任务、命令输入、HITL 请求与回复。
  * Codex 适配器会截断过长的工具输出，完整 Turn 历史是 partial；这里只交完整的部分。
  */
@@ -83,13 +71,13 @@ export function firstTurnFacts(turn: Awaited<ReturnType<ScoreTestContext["send"]
   };
 }
 
-export interface CurrentAttempt {
+export type CurrentAttempt = {
   experimentId: string;
   evalId: string;
   /** 未发布的成员没有 locator。 */
   locator?: string;
   verdict?: string;
-}
+};
 
 /**
  * agent 项目里每一格的当前结果（公开 project.get）。局部补跑不丢弃其它格，较早的成功也不掩盖后来的失败。
@@ -110,25 +98,19 @@ export async function readCurrentAttempts(shell: Shell): Promise<CurrentAttempt[
   })));
 }
 
-/**
- * 逐个读取已发布 Attempt 的 overview、--execution 与 --source。
- * `evidence` 是 Judge 材料（--source 不保证包含 Adapter，不进材料）；`commandResults` 是全部命令结果，供 Eval 检查取证入口可用。
- */
+/** 每个已发布 Attempt 的 overview、--execution 与 --source 命令结果，供 Eval 检查公开取证入口可用。 */
 export async function readAttemptEvidence(sandbox: Sandbox, root: string, attempts: readonly CurrentAttempt[]) {
-  const evidence: { attempt: CurrentAttempt; overview: string; execution: string }[] = [];
   const commandResults: Awaited<ReturnType<typeof runCandidateCli>>[] = [];
   for (const attempt of attempts) {
     const locator = attempt.locator;
     if (locator === undefined) throw new Error(`${attempt.evalId} 的当前结果没有发布 Attempt，无法取证`);
-    const [overview, execution, source] = await Promise.all([
+    commandResults.push(...await Promise.all([
       runCandidateCli(sandbox, root, ["show", locator]),
       runCandidateCli(sandbox, root, ["show", locator, "--execution"]),
       runCandidateCli(sandbox, root, ["show", locator, "--source"]),
-    ]);
-    commandResults.push(overview, execution, source);
-    evidence.push({ attempt, overview: overview.stdout, execution: execution.stdout });
+    ]));
   }
-  return { evidence, commandResults };
+  return { commandResults };
 }
 
 /** 解析一段 JSON 输出；不是合法 JSON 时返回 null，由 Eval 决定这算什么。 */

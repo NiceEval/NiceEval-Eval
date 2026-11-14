@@ -56,7 +56,7 @@ export default defineConfig({judgeProvider:OpenAIProvider({model:'fixture',baseU
 import {yesNo} from ${JSON.stringify(resolve("lib/judge.ts"))};
 export default defineScoreEval({async test(t){
   // 34 项覆盖完整安装题的 Judge 数量；72 KiB 中文材料超过本次实际单项材料规模。
-  for(let i=0;i<34;i++) t.judge({source:'证据'.repeat(12*1024)},yesNo('check-'+i,'Read the supplied material.')).score(1).key('check-'+i);
+  for(let i=0;i<34;i++) t.judge({source:'证据'.repeat(12*1024)},yesNo('check-'+i,'Read the supplied material.')).score(1).label('check-'+i);
 }});`,
     }, async ({ root, write }) => {
       const cli = (args: string[]) => exec(resolve("node_modules/.bin/niceeval"), args, {

@@ -55,40 +55,40 @@ export default defineScoreEval({
     const input = "我们打算把客服助手的模型从 atlas-1 换成 atlas-2，baseline 和 candidate 两个实验都跑完了。" +
       "帮我看看换完之后哪里退步了、为什么，值不值得换。结果已经留档，不要重跑。";
     const turn = await t.send(input);
-    turn.succeeded().key("harness.regression-triage.turn-succeeded").label("Turn 成功");
+    turn.succeeded().label("Turn 成功");
     turn.notCalledTool(readsPrivateRecord)
-      .key("harness.regression-triage.public-evidence").label("未观察到读取私有 Record（非完整文件审计）");
+      .label("未观察到读取私有 Record（非完整文件审计）");
     t.check(await runIds(), equals(runsBefore)).score(2)
-      .key("harness.regression-triage.no-new-runs").label("没有重跑：没有新发布的 Run");
+      .label("没有重跑：没有新发布的 Run");
     t.check(await changedFixtureFiles(t.sandbox, fixtureFiles), equals([])).score(1)
-      .key("harness.regression-triage.assets-unchanged").label("项目文件保持不变");
+      .label("项目文件保持不变");
 
     const reply = { task: input, reply: turn.reply };
     t.judge(reply, yesNo("regression-triage-regressions",
       "事实：换成 atlas-2 之后，从通过变成失败的评估恰好是 support/refund-policy 与 support/order-status 两条。" +
       "最终回复列为退步的评估是否恰好是这两条？漏掉其中一条、把 support/change-address（两个模型都失败）或其它评估也算作这次换模型造成的退步，判 N。"))
-      .score(4).key("harness.regression-triage.regressions").label("退步的恰好是 refund-policy 与 order-status");
+      .score(4).label("退步的恰好是 refund-policy 与 order-status");
     t.judge(reply, yesNo("regression-triage-refund-cause",
       "事实：atlas-2 对退款政策的回答不再给出 30 天退货期限，其余内容还在。最终回复是否把 refund-policy 的失败原因说成回答里缺了 30 天期限？" +
       "只说“断言失败”或“回复不符合预期”而没有指出缺的是期限，判 N。"))
-      .score(2).key("harness.regression-triage.refund-cause").label("refund-policy：回答丢了 30 天期限");
+      .score(2).label("refund-policy：回答丢了 30 天期限");
     // 两个模型给出的回复一字不差，差别只在 atlas-2 没有调用 lookup_order。只比回复文本看不出这条。
     t.judge(reply, yesNo("regression-triage-order-cause",
       "事实：atlas-2 对订单状态的最终回复与 atlas-1 完全相同，失败原因是它没有调用 lookup_order 查询订单系统就直接作答。" +
       "最终回复是否指出 order-status 的失败在于没有查询订单系统（没有调用 lookup_order / 没有工具调用）？" +
       "把原因说成回复内容有误、承运商或到货时间不对，判 N。"))
-      .score(3).key("harness.regression-triage.order-cause").label("order-status：没有查订单系统就回答");
+      .score(3).label("order-status：没有查订单系统就回答");
     t.judge(reply, yesNo("regression-triage-improvement",
       "事实：support/duplicate-charge 在 atlas-1 下失败、在 atlas-2 下通过，因为 atlas-2 为重复扣款建了工单。" +
       "最终回复是否指出 duplicate-charge 在换模型后变好了（由失败变为通过）？没有提到这条改进，判 N。"))
-      .score(2).key("harness.regression-triage.improvement").label("指出 duplicate-charge 变好了");
+      .score(2).label("指出 duplicate-charge 变好了");
     t.judge(reply, yesNo("regression-triage-preexisting",
       "事实：support/change-address 在两个模型下都失败，回答都没有说明只能在发货前修改地址。" +
       "最终回复是否把 change-address 说成换模型之前就存在、两个模型都失败的问题（而不是这次的退步，也不是没有问题）？完全没提这条，判 N。"))
-      .score(2).key("harness.regression-triage.preexisting").label("change-address 是原本就有的失败");
+      .score(2).label("change-address 是原本就有的失败");
     t.judge(reply, yesNo("regression-triage-recommendation",
       "事实：换成 atlas-2 有两条退步、一条改进、一条原有失败不变。最终回复是否给出了明确的建议（换、不换，或满足什么条件后再换），" +
       "并且这个建议以上述退步与改进为依据？只罗列结果不下结论，或声称 atlas-2 全面更好 / 没有退步，判 N。"))
-      .score(1).key("harness.regression-triage.recommendation").label("给出有依据的结论");
+      .score(1).label("给出有依据的结论");
   },
 });

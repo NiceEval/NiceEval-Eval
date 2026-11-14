@@ -1,5 +1,5 @@
 import { defineScoreEval } from "niceeval";
-import { commandSucceeded, equals } from "niceeval/expect";
+import { commandSucceeded, defineAgentJudge, equals } from "niceeval/expect";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { pullInnerNodeImage, pullInnerPythonImage } from "../../../../lib/sandbox.ts";
 
@@ -15,6 +15,12 @@ const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/cancel-asyn
 const taskAssets = new Map([...loadFixtureFiles(FIXTURE)].filter(([path]) => path.startsWith("task/")));
 const originalOfficialTests = taskAssets.get(OFFICIAL_TESTS);
 if (originalOfficialTests === undefined) throw new Error(`fixture 缺少 ${OFFICIAL_TESTS}`);
+
+/** 评审者：读 agent 写出的 Eval，按 NiceEval 品味逐题打分。 */
+const tasteReviewer = defineAgentJudge({
+  name: "harness.cancel-async-authoring.taste",
+  instructions: "你在评审被测 agent 刚写的 NiceEval Eval 源码写得好不好。自己阅读文件取证，只根据亲眼看到的内容评分。",
+});
 
 export default defineScoreEval({
   description: "把真实 Terminal-Bench 题包接成不泄漏判据、带正反控制的正式 Eval",
@@ -40,25 +46,42 @@ export default defineScoreEval({
     t.check(student, equals({
       oracle: { "terminal-bench/cancel-async-tasks": "passed" },
       "leak-probe": { "terminal-bench/cancel-async-tasks": "failed" },
-    })).key("harness.cancel-async-authoring.student-runs").label("Agent 自己完成正反运行（外层验收不补此事实）");
+    })).label("Agent 自己完成正反运行（外层验收不补此事实）");
 
     turn.succeeded()
-      .key("harness.cancel-async-authoring.turn-succeeded")
       .label("Eval authoring Turn 成功");
+
+    // agent 写出的 Eval 有没有 NiceEval 品味：评审自己去读它写的文件。
+    await t.group("NiceEval 品味", () => {
+      const taste = t.agentJudge(tasteReviewer, { evalFile: TARGET_EVAL });
+      taste.chat("evalFile 是 agent 写的正式 Eval，先读完这些文件。");
+      taste.judge(
+        "Y 当且仅当只读 agent 写的 Eval 正文就能说出它测什么、每项什么算通过、分数或门槛怎么来；" +
+        "关键阈值、数量和分值直接写在检查上，没有藏进辅助函数，也没有先装进数组再用循环登记。")
+        .score(1).label("判据平铺在打分处");
+      taste.judge(
+        "Y 当且仅当能直接读到的事实（工具名与参数、次数、文件内容、命令退出码、结构化字段）用确定性检查，" +
+        "没有把这类事实交给 Judge 判断。")
+        .score(1).label("事实用确定性检查");
+      taste.judge(
+        "Y 当且仅当能用现成 Match（equals、includes、pattern、toolMatch、countWhere、referencesAnyPath 等）表达的判据，" +
+        "没有先手算成布尔值或计数，再交给 isTrue 或 equals(true)。")
+        .score(1).label("判据写在 Match 上");
+      taste.judge(
+        "Y 当且仅当缺失的数据（缺记录、解析失败、读不到文件）保留为不可判定或直接报错，没有补成 0、false 或空字符串后继续判分。")
+        .score(1).label("未知保持未知");
+    });
     turn.notCalledTool(
       readsPrivateRecord,
     )
-      .key("harness.cancel-async-authoring.no-private-record")
       .label("未读取 .niceeval 私有结果");
 
     t.sandbox.changedPaths([TARGET_EVAL])
       .score(1)
-      .key("harness.cancel-async-authoring.target-only")
       .label("只创建目标 Eval");
 
     t.check(await changedFixtureFiles(t.sandbox, taskAssets), equals([]))
       .score(2)
-      .key("harness.cancel-async-authoring.assets-unchanged")
       .label("官方题面、判据与参考答案保持原样");
 
     const dry = await t.sandbox.runCommand(
@@ -67,7 +90,6 @@ export default defineScoreEval({
     );
     t.check(dry, commandSucceeded())
       .score(2)
-      .key("harness.cancel-async-authoring.discovery")
       .label("目标 Eval 可发现并可完成 link plan");
 
     const expectPassed = { "terminal-bench/cancel-async-tasks": "passed" };
@@ -75,7 +97,7 @@ export default defineScoreEval({
     const oracle = await runOnce(shell, ["oracle", "--rerun", "all"]);
     t.log(JSON.stringify({ outerProbe: "oracle", ...oracle }));
     t.check({ exitCode: oracle.exitCode, results: oracle.results }, equals({ exitCode: 0, results: expectPassed }))
-      .score(6).key("harness.cancel-async-authoring.oracle-passes")
+      .score(6)
       .label("官方参考实现通过完整官方判据");
 
     try {
@@ -87,16 +109,15 @@ export default defineScoreEval({
       // Score invalidation separately: a fresh attempt that times out still proves
       // the old result was not reused. Keep its completion status visible below.
       t.check(fingerprint.actions, equals(["executed"]))
-        .score(2).key("harness.cancel-async-authoring.criteria-fingerprint")
+        .score(2)
         .label("隐藏判据变化会自动作废旧结果");
       t.check({ exitCode: fingerprint.exitCode, results: fingerprint.results }, equals({ exitCode: 0, results: expectPassed }))
-        .key("harness.cancel-async-authoring.fingerprint-probe-completed")
         .label("无行为变化的判据探针运行完成且参考实现仍通过");
 
       const leak = await runOnce(shell, ["leak-probe", "--rerun", "all"]);
       t.log(JSON.stringify({ outerProbe: "leak-probe", ...leak }));
       t.check({ exitCode: leak.exitCode, results: leak.results }, equals({ exitCode: 1, results: expectFailed }))
-        .score(3).key("harness.cancel-async-authoring.leak-probe-fails")
+        .score(3)
         .label("未见隐藏材料的负向探针保持 ordinary failed");
 
       // Independent mutation catches skipped tests and ignored verifier exit codes.
@@ -105,7 +126,7 @@ export default defineScoreEval({
       const sentinel = await runOnce(shell, ["oracle", "--rerun", "all"]);
       t.log(JSON.stringify({ outerProbe: "verifier-sentinel", ...sentinel }));
       t.check({ exitCode: sentinel.exitCode, results: sentinel.results }, equals({ exitCode: 1, results: expectFailed }))
-        .score(2).key("harness.cancel-async-authoring.verifier-enforced")
+        .score(2)
         .label("真实测试新增失败会使 oracle ordinary failed，而非忽略退出码");
     } finally {
       await t.sandbox.writeText(OFFICIAL_TESTS, originalOfficialTests);
