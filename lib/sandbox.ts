@@ -37,10 +37,13 @@ export const harnessProject = uploadDirectory({
   to: ".",
 });
 
-/** Harness：安装候选版本。pnpm 默认拦截刚发布的包，被测版本不受包年龄限制。 */
+/**
+ * Harness：安装候选版本。pnpm 默认拦截刚发布的包，被测版本不受包年龄限制。
+ * action id 带版本号：各候选在同一位置装不同版本，同一个 id 会让它们的快照互相取代。
+ */
 export function installCandidate(candidateVersion: string) {
   return command("pnpm", ["add", "-D", `niceeval@${candidateVersion}`], {
-    id: "niceeval-candidate",
+    id: `niceeval-candidate-${candidateVersion}`,
     env: { npm_config_minimum_release_age: "0" },
   });
 }
