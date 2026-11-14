@@ -1,7 +1,7 @@
 # 发版评估协议
 
-本协议从 `harnessRubric: v2` 开始。它约束下一次付费运行与报告；本轮只实现和离线验证，
-没有取得新候选的能力成绩。
+本协议适用于 `harnessRubric: v2` 题库的付费运行与报告。批次的实际结果写入带日期的验收记录，
+不能用协议本身证明候选已通过。
 
 ## 固定比较对象
 
@@ -18,22 +18,27 @@
 ## 运行顺序
 
 1. 完成 VM 内真实请求的网关预检；宿主 443/401 和 dry-run 不能替代 VM 的真实模型请求。
-2. 确认两个精确候选与预算。先跑 `typecheck`、`pnpm test` 与两个精确选择的 `--dry`。
-   全量选择六个条件，两份候选各 3 次是 36 个 coding-agent attempts，另计 Judge/内层成本。
-   这只是初步方向性样本；不能用 36 个 Attempt 伪装成 36 种任务。
-3. 按预定次序交错两个候选，使用独立 Sandbox；关闭首过即停。要求新增独立样本时用
+2. 确认精确候选、运行范围与成本授权。先跑 `typecheck`、`pnpm test` 与相同选择的 `--dry`。
+   默认三个候选为 0.19.0、0.20.0 与解析后的 canary，每个候选九个 Harness 条件、各 1 Attempt，共 27 格。
+   包含安装题时另有每候选两格，共 33 格；Judge 与内层运行成本另计。它们不是 33 种独立任务。
+3. 在同一 Invocation 内选择多个候选，共用全局并发上限 10，使用独立 Sandbox；关闭首过即停。要求新增独立样本时用
    `--rerun all`，不得沿用旧 Attempt 充数。保留完整 created Run IDs。
-4. 对明确 Run 用 `pnpm exec niceeval view --run <baseline-run-id> --run <candidate-run-id>` 并排审阅，脚本化比较用 `niceeval query run` 的 `runs.compare`（逐题配对，见随包 `docs-site/zh/tutorials/compare-runs.mdx`），逐项审阅 README 列出的范围与完成事实。沿用（carried）与采用（accepted）的结果不算新样本。
-   可用 `show @<locator>` 找 Assertion，再用 `attempt.assertion.detail` 读取实际判定。
-5. 开发集有效改善后，使用未参与调优的保留题再验。当前三任务家族不属于保留集。
+4. 运行中定期用 `niceeval invocation show <id> --json` 对照阶段与实例，并只读进入 Sandbox 看进程、工作区与准备结果。
+   不在被测环境写文件、杀进程或改配置。发现会让结果作废的基础设施缺陷时及时停止，保留已完成结果。
+5. 对明确 Run 用 `pnpm exec niceeval view run:<baseline-run-id> run:<candidate-run-id>` 并排审阅，
+   脚本化比较用 `niceeval compare run:<baseline-run-id> -- run:<candidate-run-id> --json`。
+   用 `show @<locator>` 找断言，再用 `show @<locator> assertions <entry-id> --json` 读取实际判定。
+   逐项审阅 README 列出的范围与完成事实；沿用（carried）与采用（accepted）的结果不算新样本。
+6. 开发集有效改善后，使用未参与调优的保留题再验。本仓库参与调优的七个任务家族不属于保留集。
 
 需要重跑的命令必须先以 dry 形式验证，再在用户明确预算内移除 `--dry`。不要自动启动
-整个 `harness` 两候选矩阵，也不要 accept v1 结果到 v2。已有四个条件仍有 `adoption-unproven` 身份失配，
-补跑必须用精确 Eval 选择器，不以全量运行绕过。协议只描述后续动作，本轮未执行。
+整个 `harness` 矩阵，也不要把旧判据结果 adopt 到新判据。局部补跑必须用精确 Eval 选择器，
+全量重跑只有在用户明确授权后执行。旧格式 Record 被拒绝时保留或归档原文件，不自动迁移或清空。
 
 ## 如何说提高了多少
 
-分开报告六个条件：自主修复、授权修复、只读归因、修复过紧判据、authoring、过程禁区检查。A 两条件、B/D 两条件分别按家族关联解释。
+分开报告九个条件：自主修复、授权修复、只读归因、修复过紧判据、authoring、过程禁区检查、
+拒绝放宽判据、局部重跑与回归归因。同 fixture 的条件按家族关联解释。
 对固定题面与同一评分规则，报告完成率差值（候选减基线，单位百分点）、逐题分数变化、
 基线失败→候选成功及基线成功→候选失败的数量。完成率必须结合不计分的边界事实，不能用
 `scored` 或最高总分直接生成。
@@ -42,8 +47,8 @@
 不可判和预算未派发数量；给有效样本分母，同时展示未覆盖比例，不静默丢弃故障批次。
 成本/耗时在完成质量相当时比较；缺少 cost/usage 时写 unavailable，不补零。
 
-重复样本报告原始次数和不确定性。若做区间估计，按任务家族聚类；四个家族的泛化证据很弱，
-不要把 rubric 的 99 分当 99 个独立样本，也不要只引用最好的那次结果。
+重复样本报告原始次数和不确定性。若做区间估计，按任务家族聚类；七个家族的泛化证据很弱，
+不要把 rubric 的 148 分当 148 个独立样本，也不要只引用最好的那次结果。
 旧 Run 的 32/48 只保留为历史审计，新规则分数不能与它直接相减。
 
 固定批次跑完再判断，不因某次全绿选择性提前停止。基础设施故障、不可判、保留题回归或
