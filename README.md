@@ -9,7 +9,7 @@ CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档�
 
 | 路径 | 内容 |
 | --- | --- |
-| `experiments/<族>/<版本>.ts` | 一行一个候选版本；族的定义在 [`lib/experiments.ts`](lib/experiments.ts) |
+| `experiments/<族>/<版本>.ts` | 一个候选版本一份完整的 `defineExperiment`，同族文件之间只差版本号和说明 |
 | `evals/install/<宿主>/eval.ts` | 安装题：从零把 NiceEval 接入一个真实开源项目 |
 | `evals/harness/**/eval.ts` | Harness 题：在已装好的项目里运行、诊断、修复、编写 Eval |
 | `fixtures/` | 各题的起始项目与外层探针，不被本仓库的 discovery 扫描 |

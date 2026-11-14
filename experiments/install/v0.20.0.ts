@@ -1,3 +1,16 @@
-import { installExperiment } from "../../lib/experiments.ts";
+import { defineExperiment } from "niceeval";
+import { ensureCandidate } from "../../lib/candidate.ts";
+import { installSandbox, sandboxCodexAgent } from "../../lib/experiment-runtime.ts";
 
-export default await installExperiment("0.20.0", "稳定版");
+const version = await ensureCandidate("0.20.0");
+
+// 从零接入：agent 只拿到一句 prompt 和该版本 tag 下的 INIT.md。
+export default defineExperiment({
+  description: `niceeval@${version}（稳定版）：从零接入`,
+  adapter: sandboxCodexAgent(),
+  model: "gpt-6.1-sol",
+  flags: { candidateVersion: version },
+  sandbox: installSandbox(),
+  evals: ["install/"],
+  attempts: 1,
+});
