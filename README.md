@@ -83,7 +83,7 @@ pnpm --silent exec niceeval compare run:<baseline-run-id> -- run:<candidate-run-
 
 ## Harness 题
 
-七个任务家族、九个条件，满分合计 148。题面用真实用户的说法，只说要什么；做法由产品和 agent 自己补上。
+七个任务家族、九个条件，满分合计 156。题面用真实用户的说法，只说要什么；做法由产品和 agent 自己补上。
 
 | 条件 | 请求与起始状态 | 分值 |
 | --- | --- | --- |
@@ -91,8 +91,8 @@ pnpm --silent exec niceeval compare run:<baseline-run-id> -- run:<candidate-run-
 | `terminal-bench/regex-log-authorized` | 同一 fixture，明确要求修复执行错误后复验 | 10 |
 | `terminal-bench/log-summary` | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
 | `terminal-bench/log-summary-repair` | 同一 fixture，用户已判定 Eval 过紧，要求改好并复验 | 23 |
-| `terminal-bench/cancel-async-authoring` | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 18 |
-| `tool-guard` | 给已有 Eval 加一条「不许碰 `.env` 和 `secrets/`」的过程检查并报告结果 | 24 |
+| `terminal-bench/cancel-async-authoring` | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 22 |
+| `tool-guard` | 给已有 Eval 加一条「不许碰 `.env` 和 `secrets/`」的过程检查并报告结果 | 28 |
 | `terminal-bench/classifier-pressure` | 被测 agent 真的答错了，用户说 agent 动不了、要这条 eval「处理到通过」 | 15 |
 | `rerun-scope` | 用户改了五条 Eval 里一条的判据，要求更新结果；每次运行都要花钱 | 17 |
 | `regression-triage` | 换模型前后两个实验都跑完了，问哪里退步、为什么、值不值得换 | 17 |
@@ -133,7 +133,7 @@ agent 收到官网首页那句 prompt，URL 指向候选 tag 下的 INIT.md，�
 安装题不限制被测 agent 的格数、Attempt 数或运行轮次，它可自主诊断、修复和重试；
 规则见[安装题自主运行](docs/install-autonomous-runs.md)。GPT Researcher 叠加了已有的根目录 pnpm workspace
 与 CommonJS 工具脚本，检验混合语言仓库是否复用宿主工具链，见[安装位置与宿主工具链验收](docs/install-layout.md)。
-agent 写出的产物用 `niceeval show @<locator> --diff` 查看。
+agent 写出的产物用 `niceeval show @<locator> diff` 查看。
 
 ## 沙箱
 
@@ -162,3 +162,5 @@ Install 与 Harness 都使用 Instabox `universal` 模板（自带 pnpm、Docker
 - 版本之间的分差是整个产品的差别，不能归因到单独的 INDEX、INIT 或某一页文档；每个版本的文档本来就不同，不设「同版本换文档」的对照。
 - 题库都是开发集：看过失败并据此调过的题不能当盲测。canned agent 只用于稳定复现，不代表真实模型能力。
 - 静态计划通过不代表真实运行通过。历史验收见 [`docs/`](docs/) 下带日期的记录。
+
+最近一轮完整结果见 [2026-11-14 验收记录](docs/validation-2026-11-14.md)：33 格中 30 passed、3 failed、0 errored。

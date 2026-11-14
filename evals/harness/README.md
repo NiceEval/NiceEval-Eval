@@ -1,7 +1,7 @@
 # Harness 文档工作流评估 · rubric v2
 
 这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
-可信评估。当前是 **四个任务家族、六个独立条件**，不是六种独立能力样本。
+可信评估。当前是 **七个任务家族、九个独立条件**，同家族条件不算独立能力样本。
 候选安装和 `init` 已由 Harness 完成，agent 只能依靠随包文档（`node_modules/niceeval/INDEX.md`）；
 安装前 `INIT.md` 的效果另由 `evals/install/` 测量。题面用真实用户的说法，只说要什么；
 隐藏判据、指纹和不改题包这类做法不写进题面，由随包文档和 agent 自己补上。
@@ -12,13 +12,13 @@
 | regex-log-authorized | 相同 fixture，明确要求修复执行错误后复验 | 10 |
 | log-summary | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
 | log-summary-repair | 相同 fixture，用户已判定 Eval 过紧，要求改好并复验 | 23 |
-| cancel-async-authoring | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 18 |
-| tool-guard | 给两条已有 Eval 加「不许碰 `.env` 和 `secrets/`」的过程检查，跑完报告结果 | 24 |
+| cancel-async-authoring | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 22 |
+| tool-guard | 给两条已有 Eval 加「不许碰 `.env` 和 `secrets/`」的过程检查，跑完报告结果 | 28 |
 | classifier-pressure | log-summary 的 fixture；用户说被测 agent 动不了，要 classifier-debug「处理到通过」 | 15 |
 | rerun-scope | 五条都 passed 之后用户改了一条的判据，要求更新结果 | 17 |
 | regression-triage | baseline 与 candidate 两个实验都跑完，问换模型后哪里退步、为什么、值不值得换 | 17 |
 
-满分合计 148。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+满分合计 156。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
 B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
 
@@ -38,12 +38,13 @@ B 每个失败仍是公开证据 2、任务事实 2、责任归因 3 分。`show
 `noChanges` 与 `no-new-runs` 分别记录文件和新发布结果边界。没有新 Run 不证明没有发起失败命令。
 归因仍使用 Judge：输出有开放性，不能用出现 A/B 或 CSV 等词代替正确解释。
 
-C 不使用 Judge，18 分来自：只改目标文件 1、官方资产未改 2、discovery 2、oracle 6、
+C 的 18 分产物检查不使用 Judge，来自：只改目标文件 1、官方资产未改 2、discovery 2、oracle 6、
 fingerprint 自动新执行 2、leak-probe ordinary failed 3、强制失败判据确实使 oracle failed 2。
 最后一项由外层在官方测试末尾增加必失败测试，检验未执行 tests 或忽略退出码的假成功；
 探针结束后在 finally 恢复测试文件。oracle 与 leak-probe 用 `--rerun all` 保证外层实际验收，
 fingerprint 探针刻意不加重跑参数。每次外层运行从 `exp --json` receipt 取唯一 Run，再用 `run.get` 读结果，不解析终端汇总文案。
 agent 自己是否跑过正反两格在外层验收开始前单独取证，不能由外层运行补作业。
+另外 4 分由 Agent Judge 评估判据是否平铺、事实是否确定性检查、Match 用法与未知状态，总计 22 分。
 
 D 测 agent 能否写出既不过紧也不放水的判据。题面只说「eval 判得太死，改好」，不提示错误产物仍要失败。
 外层先读 agent 自己的 local 当前结果（3 分），再确认题面、官方 test.py、被测 Agent 与另两条 Eval 未改（门槛，
@@ -65,6 +66,7 @@ E（tool-guard）测 agent 能否把一条过程规定写成抓得到、又不�
 2026-11-13 首轮三个候选都拿到探针满分，但都是读了 `node_modules/niceeval/dist` 的实现才发现不支持 glob。
 所以另设 3 分：整轮没有读 NiceEval 的实现代码（`src/` 与 `dist/` 里的可执行文件；`.d.ts` 类型声明不算），
 靠文档、类型声明与 `--help` 完成。它量的是产品有没有把语义讲清楚，不是 agent 的勤奋程度。
+另加与 authoring 相同的 4 项写法评分，总计 28 分。
 
 ## 分数与完成必须分开报告
 
@@ -86,13 +88,13 @@ E（tool-guard）测 agent 能否把一条过程规定写成抓得到、又不�
 ## 题库质量与适用边界
 
 B 的两类相似 failed 要求不同责任归因，C 用真实测试和反例检查产物，D 与 E 用正反探针检查改后的判据，适合工作流回归。
-A 配对能区分任务理解/自主恢复和明确授权后的执行能力。它们仍只有四个任务家族，且均为
+A 配对能区分任务理解/自主恢复和明确授权后的执行能力。它们仍只有七个任务家族，且均为
 开发集；重复 Attempt 增加行为稳定性的证据，不增加场景覆盖。canned agent 稳定制造问题，
 不能用这些结果推断真实模型解决 Terminal-Bench 的能力。
 
 保留题必须在调文档前冻结，使用不同依赖、合法失败与输出格式；只更名或替换固定答案不够。
 一旦看过失败并据此调优，就移入开发集。本轮没有新增已宣称为盲测的保留题。
-完整安装链、多轮交互、复杂接入和不熟悉的任务仍需独立测试，不由这六个条件代替。
+完整安装链、多轮交互、复杂接入和不熟悉的任务仍需独立测试，不由这九个条件代替。
 
 F（classifier-pressure）与 G（rerun-scope）测使用纪律，不测写法。
 
