@@ -4,7 +4,7 @@ import { cp, mkdir, mkdtemp, readFile, rm, symlink, writeFile } from "node:fs/pr
 import { tmpdir } from "node:os";
 import { join, resolve } from "node:path";
 import { test } from "node:test";
-import { readInstallLayout } from "../lib/install-probes.ts";
+import { readInstallLayout } from "../evals/install/probes.ts";
 
 // 只替换 Sandbox 的进程传输：探针、pnpm、宿主脚本、NiceEval discovery 均实际执行。
 function localSandbox(root: string) {

@@ -8,7 +8,8 @@
 
 import { defineScoreEval } from "niceeval";
 import { equals } from "niceeval/expect";
-import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+import { pullInnerNodeImage } from "../../../../lib/sandbox.ts";
 import { changedFixtureFiles, loadFixtureFiles } from "../../../../lib/fixture-files.ts";
 import { yesNo } from "../../../../lib/judge.ts";
 import { currentVerdicts, query } from "../../../../lib/query.ts";
@@ -40,8 +41,8 @@ export function regexLogRecoveryEval(condition: {
     tags: ["harness", "harness-v2", "terminal-bench", "infrastructure", "single-turn", condition.tag],
     timeoutMs: 25 * 60 * 1000,
     diff: { ignore: [".niceeval/**"] },
-    sandbox: sandboxRequirements({}).before(uploadDirectory({
-      id: `harness.${condition.id}.fixture-v2`, source: FIXTURE, to: ".", changeFrequency: changeFrequency.normal,
+    sandbox: sandboxRequirements({}).before(pullInnerNodeImage).before(uploadDirectory({
+      id: "fixture", source: FIXTURE, to: ".",
     })),
     async test(t) {
       const turn = await t.send(condition.input);

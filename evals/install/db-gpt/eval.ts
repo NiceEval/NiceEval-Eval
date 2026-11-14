@@ -8,8 +8,8 @@
 
 import { defineScoreEval } from "niceeval";
 import { commandSucceeded, countWhere, equals, greaterThan, isDefined, or, referencesAnyPath, toolMatch } from "niceeval/expect";
-import { actionRef, command, gitCheckout, sandboxRequirements } from "niceeval/sandbox";
-import { assertPagesInCandidate, candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../../../lib/candidate.ts";
+import { command, gitCheckout, sandboxRequirements } from "niceeval/sandbox";
+import { candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../docs.ts";
 import {
   archiveAgentOutput,
   firstTurnFacts,
@@ -20,7 +20,7 @@ import {
   readCurrentAttempts,
   readInstallLayout,
   runCandidateCli,
-} from "../../../lib/install-probes.ts";
+} from "../probes.ts";
 import { YES, yesNo } from "../../../lib/judge.ts";
 import { query } from "../../../lib/query.ts";
 import { TASTE_RUBRICS } from "../taste.ts";
@@ -129,25 +129,16 @@ export default defineScoreEval({
   timeoutMs: 80 * 60 * 1000,
   sandbox: sandboxRequirements({})
     .before(gitCheckout({
-      id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout",
+      id: "checkout",
       repository: "https://github.com/eosphoros-ai/DB-GPT.git",
       ref: "177bfc84f77e7f7760c055a748b0e4bb82d9fa47",
       to: ".",
       sparse: { include: ["/*"], exclude: ["/docs/", "/assets/"] },
-      changeFrequency: 20,
     }))
-    .before(command("rm", ["-rf", ".git"], {
-      id: "niceeval-eval.install-fixture.db-gpt-v0.8.1.detach",
-      changeFrequency: 21,
-      dependsOn: [actionRef("niceeval-eval.install-fixture.db-gpt-v0.8.1.checkout")],
-    })),
+    .before(command("rm", ["-rf", ".git"], { id: "detach-git" })),
   async test(t) {
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
-    assertPagesInCandidate(
-      /docs-site\/zh\/tutorials\/(connect-your-agent|write-send|quickstart)\.mdx/,
-      version,
-    );
 
     // 官网首页给用户复制的同一句 prompt（NiceEval apps/site/lib/content.ts），URL 换成候选 tag 下的 INIT.md。
     // INIT.md 让 agent 装 npm latest；评的是候选版本，所以只多一句版本要求。

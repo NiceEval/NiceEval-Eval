@@ -1,0 +1,108 @@
+/**
+ * Instabox 沙箱的准备步骤。每一步是一个 `.before()` action，按书写顺序执行，内容变了只重做这一步及之后；
+ * 可缓存的步骤由 Instabox 远端快照复用。universal 模板已带 pnpm、Docker 与 Python；被测 Codex CLI 由
+ * codexAgent 自己安装。Experiment 文件把这些值按顺序接成链，读一个 Experiment 文件就能看到完整的准备顺序。
+ */
+
+import { codexAgent } from "niceeval/adapter";
+import { changeFrequency, command, defineSandboxCommand, instaboxSandbox, shell, uploadDirectory } from "niceeval/sandbox";
+import { loadRepoEnv } from "./env.ts";
+import { TARGET_APP_ENV_PATH, provisionTargetAppEnv } from "./target-app-env.ts";
+
+loadRepoEnv();
+const AGENT_BASE_URL = process.env.CODEX_BASE_URL?.trim()
+  || process.env.NICEEVAL_INSTABOX_CODEX_BASE_URL?.trim()
+  || "https://s2a.niceeval.com/v1";
+
+export function sandboxCodexAgent() {
+  return codexAgent({ baseUrl: AGENT_BASE_URL });
+}
+
+/** 每个 Attempt 一台 Instabox universal 实例，补上 niceeval 要求的 Node 24（模板自带的是 Node 22）。 */
+export const instabox = instaboxSandbox({
+  templateId: "universal",
+  lifetimeMs: 90 * 60 * 1000,
+  spec: "instabox-medium",
+}).before(shell({
+  id: "node-24",
+  user: "root",
+  command: "curl -fsSL https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1",
+}));
+
+/** Harness：上传项目 seed 到 workspace。 */
+export const harnessProject = uploadDirectory({
+  id: "harness-project",
+  source: new URL("../sandbox/harness-project/", import.meta.url),
+  to: ".",
+});
+
+/** Harness：安装候选版本。pnpm 默认拦截刚发布的包，被测版本不受包年龄限制。 */
+export function installCandidate(candidateVersion: string) {
+  return command("pnpm", ["add", "-D", `niceeval@${candidateVersion}`], {
+    id: "niceeval-candidate",
+    env: { npm_config_minimum_release_age: "0" },
+  });
+}
+
+/** Harness：运行 niceeval init，拿到这个版本的项目指引。 */
+export const niceevalInit = command("pnpm", ["exec", "niceeval", "init"], { id: "niceeval-init" });
+
+/** Harness：删掉 init 生成的示例源码；题目源码由各 Eval 的 fixture 上传。 */
+export const removeInitExamples = command(
+  "rm", ["-rf", "agents", "config", "docs", "evals", "experiments", "src"],
+  { id: "remove-init-examples" },
+);
+
+/** 题内 inner dockerd 用的镜像，各 fixture 按同一个 digest 引用；预先拉取进快照，Attempt 里不再访问 registry。 */
+export const INNER_NODE_IMAGE =
+  "niceeval/codex@sha256:157152804b0ac443e62936d3ce2c8191a1df125bdcb121370c05c00be7c8ab96";
+export const INNER_PYTHON_IMAGE =
+  "python:3.11.9-bookworm@sha256:c95170ff7d59de63e9445d3d503644a635c1b8cb7f4fa99f19a1c76da92a849a";
+export const pullInnerNodeImage = command("docker", ["pull", INNER_NODE_IMAGE], { id: "pull-inner-node-image" });
+export const pullInnerPythonImage = command("docker", ["pull", INNER_PYTHON_IMAGE], { id: "pull-inner-python-image" });
+
+/** 安装题：目标应用凭据文件所在目录，归普通用户（uid 1000）。 */
+export const targetAppSecretsDir = command(
+  "install", ["-d", "-o", "1000", "-g", "1000", "/opt/fixture-secrets"],
+  { id: "target-app-secrets-dir", user: "root" },
+);
+
+/** 安装题：每个 Attempt 写入目标应用的 LLM 凭据。凭据不进入缓存，所以是每次真实执行的 callback。 */
+export const targetAppEnv = defineSandboxCommand(
+  {
+    id: "target-app-env",
+    revision: "1",
+    inputs: { path: TARGET_APP_ENV_PATH },
+    changeFrequency: changeFrequency.frequent,
+  },
+  async (sandbox, context) => {
+    await provisionTargetAppEnv(sandbox, context);
+  },
+);
+
+/** Agent 启动前确认网关就绪（未鉴权请求应得到 401）。带 Cloudflare Access 凭据，所以是每次真实执行的 callback。 */
+export const agentEndpointCheck = defineSandboxCommand(
+  {
+    id: "agent-endpoint",
+    revision: "1",
+    inputs: { baseUrl: AGENT_BASE_URL },
+    changeFrequency: changeFrequency.frequent,
+  },
+  async (sandbox, context) => {
+    context.progress({ message: "检查被测 Codex 的模型网关" });
+    const cfId = process.env.CF_ACCESS_CLIENT_ID?.trim();
+    const cfSecret = process.env.CF_ACCESS_CLIENT_SECRET?.trim();
+    const cfHeaders = cfId && cfSecret
+      ? ["-H", `CF-Access-Client-Id: ${cfId}`, "-H", `CF-Access-Client-Secret: ${cfSecret}`]
+      : [];
+    const probe = await sandbox.runCommand("curl", [
+      "--proto", "=https", "--tlsv1.2", "--connect-timeout", "5", "--max-time", "15",
+      "--silent", "--show-error", ...cfHeaders,
+      "--output", "/dev/null", "--write-out", "%{http_code}",
+      `${AGENT_BASE_URL.replace(/\/+$/u, "")}/models`,
+    ]);
+    if (probe.exitCode !== 0 || probe.stdout.trim() !== "401") {
+      throw new Error(`被测 Codex 的模型网关未就绪：curl exit=${probe.exitCode} http=${probe.stdout.trim() || "none"}`);
+    }
+  },
+);

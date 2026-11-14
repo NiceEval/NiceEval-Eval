@@ -9,7 +9,7 @@ import { mkdirSync, rmSync, writeFileSync } from "node:fs";
 import { resolve } from "node:path";
 import type { ScoreTestContext } from "niceeval";
 import { loadText } from "niceeval/loaders";
-import { query, type Shell } from "./query.ts";
+import { query, type Shell } from "../../lib/query.ts";
 
 type Sandbox = ScoreTestContext["sandbox"];
 
@@ -140,7 +140,7 @@ export function parseJsonOrNull(stdout: string): unknown {
   }
 }
 
-const AGENT_OUTPUT_ROOT = resolve(import.meta.dirname, "../.agent-output");
+const AGENT_OUTPUT_ROOT = resolve(import.meta.dirname, "../../.agent-output");
 
 /** 把 agent 产出下载到 .agent-output/ 供人工复审；失败只记日志，不影响评分。 */
 export async function archiveAgentOutput(t: ScoreTestContext, target: string): Promise<void> {

@@ -1,7 +1,8 @@
 import { isDeepStrictEqual } from "node:util";
 import { defineScoreEval } from "niceeval";
 import { equals } from "niceeval/expect";
-import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+import { pullInnerNodeImage } from "../../../../lib/sandbox.ts";
 
 import { yesNo } from "../../../../lib/judge.ts";
 import { currentVerdicts, exp, query } from "../../../../lib/query.ts";
@@ -14,11 +15,10 @@ export default defineScoreEval({
   tags: ["harness", "harness-v2", "terminal-bench", "diagnosis", "failed", "single-turn"],
   timeoutMs: 20 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
-  sandbox: sandboxRequirements({}).before(uploadDirectory({
-    id: "niceeval-eval.harness.log-summary.fixture",
+  sandbox: sandboxRequirements({}).before(pullInnerNodeImage).before(uploadDirectory({
+    id: "fixture",
     source: FIXTURE,
     to: ".",
-    changeFrequency: changeFrequency.normal,
   })),
   async test(t) {
     // 先由 fixture 跑完 experiment，再让 agent 接手已经停稳的 Record。

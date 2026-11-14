@@ -34,7 +34,7 @@ send(input){return {status:'completed',events:[
 
 const ONLINE_EVAL = `import {defineEval} from 'niceeval';
 import {referencesAnyPath,toolMatch} from 'niceeval/expect';
-import {ONLINE_MAIN_DOC_REFERENCES} from ${JSON.stringify(resolve("lib/candidate.ts"))};
+import {ONLINE_MAIN_DOC_REFERENCES} from ${JSON.stringify(resolve("evals/install/docs.ts"))};
 const commands = ${JSON.stringify({ ...READS_ONLINE_MAIN, ...STAYS_ON_CANDIDATE })};
 export default Object.fromEntries(Object.entries(commands).map(([id, command]) => [id, defineEval({async test(t){
 await t.send(command);

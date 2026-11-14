@@ -13,8 +13,9 @@ CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档�
 | `evals/install/<宿主>/eval.ts` | 安装题：从零把 NiceEval 接入一个真实开源项目 |
 | `evals/harness/**/eval.ts` | Harness 题：在已装好的项目里运行、诊断、修复、编写 Eval |
 | `fixtures/` | 各题的起始项目与外层探针，不被本仓库的 discovery 扫描 |
-| `lib/` | 取证探针、候选解析与沙箱准备；不登记任何检查。`lib/probes/` 是在被测 sandbox 里执行的取证脚本 |
-| `sandbox/` | Harness 的项目 seed 与沙箱准备脚本（`sandbox/scripts/*.sh`） |
+| `lib/` | 候选解析、沙箱准备步骤与读取被测项目结果的 query 封装；不登记任何检查 |
+| `evals/install/probes.ts` | 安装题的取证探针，`probes/` 下是在被测 sandbox 里执行的脚本 |
+| `sandbox/harness-project/` | Harness 的项目 seed |
 | `tests/` | 用真实本地 CLI 固定判据读取的字段与 fixture 契约，不调用模型 |
 | `scripts/harness-report.ts` | 把指定 Run 的 Harness 观察值汇成 JSON |
 | `docs/` | 评估协议与历次验收记录 |
@@ -33,8 +34,8 @@ CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档�
 | `v0.20.0` | 稳定版 |
 | `canary` | 每次加载时从 npm 全部已发布版本按 semver 取最大值（含预发布版），不依赖 dist-tag |
 
-加载时 `ensureCandidate()` 把候选解析成精确版本，写进 `flags.candidateVersion`；sandbox 里的安装、
-Eval 的断言与文档页校验都读这一个值。`canary` 跨日比较要记录解析出的精确版本，不能只记标签。
+加载时 `resolveCandidate()` 把候选解析成精确版本，写进 `flags.candidateVersion`；sandbox 里的安装与
+Eval 的断言都读这一个值。`canary` 跨日比较要记录解析出的精确版本，不能只记标签。
 
 | 族 | 回答的问题 | 每个候选 |
 | --- | --- | --- |
@@ -136,14 +137,17 @@ agent 写出的产物会复制到 gitignored 的 `.agent-output/` 供人工复�
 
 ## 沙箱
 
-Install 与 Harness 都使用 Instabox `universal` 模板，每个 Attempt 独立创建 `instabox-medium` 实例，TTL 90 分钟。
-连接凭据由宿主提供。[`lib/experiment-runtime.ts`](lib/experiment-runtime.ts) 声明全部准备步骤，脚本正文在 [`sandbox/scripts/`](sandbox/scripts/)：
+Install 与 Harness 都使用 Instabox `universal` 模板（自带 pnpm、Docker、Compose 与 Python），每个 Attempt 独立创建
+`instabox-medium` 实例，TTL 90 分钟。准备步骤是 [`lib/sandbox.ts`](lib/sandbox.ts) 里的一组 `.before()` action，
+每个 Experiment 文件按顺序把它们接成链：
 
-1. 安装 Node / pnpm / Codex，从固定 digest 准备 inner Docker runtime 并冒烟；
-2. Harness 另行上传项目 seed，按候选版本安装 NiceEval、运行 `niceeval init` 并物化只读依赖树；
-3. 每个 Attempt 检查运行契约（Node、pnpm、Docker、Compose、候选版本），再由各题上传自己的 fixture。
+1. 两族都先补上 Node 24（niceeval 要求，模板自带 Node 22）；
+2. Harness 上传项目 seed，`pnpm add` 候选版本，运行 `niceeval init`，删掉 init 生成的示例源码；
+3. 用到 inner Docker 镜像的题在自己的 layer 里预拉固定 digest 的镜像，再上传 fixture；
+4. 每个 Attempt 真实执行：检查被测 Codex 的模型网关；安装题另写目标应用凭据。
 
-前两步通过 Instabox 远端快照按 BeforeCache 复用。本地默认失败挂起以便排查，`CI=true` 时禁用；
+1–3 都是声明式步骤，由 Instabox 远端快照按 BeforeCache 复用，改哪一步只重做这一步及之后。
+被测 Codex CLI 由 `codexAgent` 自己安装，不在准备里预装。本地默认失败挂起以便排查，`CI=true` 时禁用；
 挂起或保留的实例需要另行回收。
 
 被测 Codex 优先使用 `CODEX_BASE_URL`，其次 `NICEEVAL_INSTABOX_CODEX_BASE_URL`，默认 `https://s2a.niceeval.com/v1`。

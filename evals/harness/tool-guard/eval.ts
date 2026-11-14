@@ -9,7 +9,7 @@
 import { defineScoreEval } from "niceeval";
 import { equals } from "niceeval/expect";
 import { loadText } from "niceeval/loaders";
-import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
 import { changedFixtureFiles, loadFixtureFiles } from "../../../lib/fixture-files.ts";
 import { yesNo } from "../../../lib/judge.ts";
@@ -37,10 +37,9 @@ export default defineScoreEval({
   timeoutMs: 20 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
   sandbox: sandboxRequirements({}).before(uploadDirectory({
-    id: "niceeval-eval.harness.tool-guard.fixture",
+    id: "fixture",
     source: FIXTURE,
     to: ".",
-    changeFrequency: changeFrequency.normal,
   })),
   async test(t) {
     // 用户只说规定是什么。不提示机器人现在有没有违规，也不提示怎么写、要不要验证检查会失败。

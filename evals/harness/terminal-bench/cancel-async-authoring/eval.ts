@@ -1,6 +1,7 @@
 import { defineScoreEval } from "niceeval";
 import { commandSucceeded, equals } from "niceeval/expect";
-import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+import { pullInnerNodeImage, pullInnerPythonImage } from "../../../../lib/sandbox.ts";
 
 import { changedFixtureFiles, loadFixtureFiles } from "../../../../lib/fixture-files.ts";
 import { currentVerdicts, query, runOnce, type Shell } from "../../../../lib/query.ts";
@@ -20,11 +21,10 @@ export default defineScoreEval({
   tags: ["harness", "harness-v2", "terminal-bench", "authoring", "hidden-tests", "deterministic", "single-turn"],
   timeoutMs: 30 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
-  sandbox: sandboxRequirements({}).before(uploadDirectory({
-    id: "niceeval-eval.harness.cancel-async-authoring.fixture",
+  sandbox: sandboxRequirements({}).before(pullInnerNodeImage).before(pullInnerPythonImage).before(uploadDirectory({
+    id: "fixture",
     source: FIXTURE,
     to: ".",
-    changeFrequency: changeFrequency.normal,
   })),
   async test(t) {
     // 真实用户只说要什么；隐藏判据、指纹和不改题包，都应由随包文档和 agent 的判断补上。

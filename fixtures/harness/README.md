@@ -30,53 +30,25 @@ sandbox agent 在固定 runtime 缓存里确定性重放 task 产出；authoring
 
 共享的是运行基建，不是题目内容：
 
-- Instabox `universal` 模板提供基础机器环境；共享准备 action 安装 Node/pnpm/Codex，
-  不按 install 或 harness 区分，也不携带项目 seed、候选 NiceEval 或题目资产；
-- Experiment 的声明式 TS `before` action 依次从固定 digest 准备 inner runtime tag、上传项目
-  seed、以解析后的精确版本运行 `pnpm add` / `niceeval init`、清理生成物并物化只读
-  `node_modules` symlink；版本、命令与依赖关系都进入 action identity；
-- BeforeCache 通过 Instabox 远端快照缓存 runtime、seed 与候选安装层；
-  每个 Attempt 恢复后检查 Docker/Compose 和候选项目契约。顺序固定为 runtime → seed → 候选安装/物化 → runtime contract → 各 Eval 的
-  fixture action。fixture 只上传所属小 repo，覆盖已准备 workspace，不重复安装或 init。
+- Instabox `universal` 模板提供基础机器环境，两族共用的准备只补 Node 24；
+- Harness Experiment 的 `.before()` 链依次上传项目 seed、`pnpm add` 解析后的精确版本、`niceeval init`、
+  删掉 init 生成的示例源码；版本与命令都进入 action identity；
+- 各 Eval 的 layer 接在后面：需要 inner 镜像的先预拉镜像，再上传所属小 repo 覆盖 workspace，不重复安装或 init；
+- 这些声明式步骤由 Instabox 远端快照按前缀复用。
 
 case repo 不属于通用 base 或项目 seed，所以改题目不需要重建通用镜像。通用 base 与共享的
-inner-runtime / seed 层不包含任何 case 的正确或错误业务源码、候选版指引或 `node_modules`；后续
+seed 层不包含任何 case 的正确或错误业务源码、候选版指引或 `node_modules`；后续
 候选安装层才按精确版本物化 `node_modules`，仍不包含 case repo。
 
-## Inner runtime tag
+## Inner runtime 镜像
 
-`terminal-bench/regex-log` 与 `cancel-async-authoring` 要求候选 workspace 的 inner dockerd 启动完成后，
-本地已有两个 tag：
+`terminal-bench/regex-log`、`log-summary` 与 `cancel-async-authoring` 的项目在候选 workspace 的 inner dockerd 里跑题，
+镜像直接按固定 digest 引用：
 
-```text
-cache.invalid/niceeval-harness/runtime:node
-cache.invalid/niceeval-harness/runtime:python
-```
+- Node：`niceeval/codex@sha256:1571…`（Debian 12 + Node 24 + git，没有 python3），`experiments/local.ts` 的 `RUNTIME_IMAGE`；
+- Python：`cancel-async-authoring/repo/task/fixture/Dockerfile` 以 `python:3.11.9-bookworm@sha256:c951…` 为底，
+  多阶段 `COPY --from` 补入 Node 镜像里的 node 二进制。
 
-- `runtime:node`：完整 rootfs 物化自固定 digest 的 codex stage（Debian 12 bookworm +
-  Node v24 + git），**没有任何可执行 python3**；缺 Python 的 eval 在它上面必然 errored；
-- `runtime:python`：完整 rootfs 物化自固定 digest 的 python:3.11.9-bookworm stage，并从
-  node stage 补入 node 二进制；python3 真实可运行（含 stdlib / pip / venv）。
+用到它们的 Eval 在自己的 layer 里先 `docker pull` 同一个 digest（[`lib/sandbox.ts`](../../lib/sandbox.ts)），
+结果随远端快照复用，Attempt 内不再访问 registry。改 digest 时两处一起改。
 
-### 构造与生命周期
-
-- `prepareInnerRuntimes` 是最前面的声明式 action：它在 guest 内拉取两枚**固定 digest** source，
-  将 Node source 标为 `runtime:node`，并用 Docker 的 create/cp/export/import surface 将 Node
-  二进制加入 Python rootfs 后得到 `runtime:python`；不安装未固定的包；
-- action 随即对已经准备好的本地 tag 以 `docker run --pull=never` 冒烟：node 变体必须有 node/git 且没有 python3，
-  python 变体必须同时有 node/git/python3。`.invalid` 保留域避免 local tag 与真实 registry
-  名冲突，任一步失败都会让 Sandbox errored；
-- 此 action 的成功结果先由 provider-native SetupPrefix artifact 复用，项目 seed、候选安装与
-  runtime contract 依赖它逐层继续。固定 digest source 首次准备时可能访问 registry；后续本地
-  tag 冒烟不重复请求 registry；这不限制题内容器或 Sandbox 访问公网。
-
-这层基建与候选安装 action、uid 1000 普通用户、guest Docker 生命周期互不影响：题目内容不进入通用
-base 或共享准备层，只有所属 Eval 的 fixture action 将它覆盖到已准备 workspace。
-
-### 被测 agent 的唯一修改面
-
-`terminal-bench/regex-log` 两条件允许修改的范围是 `experiments/local.ts`：
-
-切换到具备 Python 的 runtime 是一种修法，也接受在该配置内实现的等价环境。判分核验实际结果，不匹配固定标签。
-
-改错层（动 eval、动 fixture、改其它配置）或改出多余变化，都属于范围错误。

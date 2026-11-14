@@ -1,8 +1,16 @@
 import { defineExperiment } from "niceeval";
-import { ensureCandidate } from "../../lib/candidate.ts";
-import { harnessSandbox, sandboxCodexAgent } from "../../lib/experiment-runtime.ts";
+import { resolveCandidate } from "../../lib/candidate.ts";
+import {
+  agentEndpointCheck,
+  harnessProject,
+  installCandidate,
+  instabox,
+  niceevalInit,
+  removeInitExamples,
+  sandboxCodexAgent,
+} from "../../lib/sandbox.ts";
 
-const version = await ensureCandidate("0.19.0");
+const version = resolveCandidate("0.19.0");
 
 // 已装好候选的项目里运行、诊断、修复与编写 Eval；agent 拿到的是这个版本的全部：CLI、类型声明与随包文档。
 export default defineExperiment({
@@ -13,6 +21,11 @@ export default defineExperiment({
   attempts: 1,
   earlyExit: false,
   flags: { candidateVersion: version, harnessRubric: "v2" },
-  sandbox: harnessSandbox(version),
+  sandbox: instabox
+    .before(harnessProject)
+    .before(installCandidate(version))
+    .before(niceevalInit)
+    .before(removeInitExamples)
+    .before(agentEndpointCheck),
   evals: ["harness/"],
 });

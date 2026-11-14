@@ -1,7 +1,7 @@
 import { isDeepStrictEqual } from "node:util";
 import { defineScoreEval } from "niceeval";
 import { equals } from "niceeval/expect";
-import { changeFrequency, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
 import { changedFixtureFiles, loadFixtureFiles } from "../../../lib/fixture-files.ts";
 import { yesNo } from "../../../lib/judge.ts";
@@ -33,10 +33,9 @@ export default defineScoreEval({
   timeoutMs: 15 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
   sandbox: sandboxRequirements({}).before(uploadDirectory({
-    id: "niceeval-eval.harness.regression-triage.fixture",
+    id: "fixture",
     source: FIXTURE,
     to: ".",
-    changeFrequency: changeFrequency.normal,
   })),
   async test(t) {
     const shell: Shell = (script) => t.sandbox.runShell(script);

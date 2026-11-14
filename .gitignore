@@ -2,7 +2,6 @@ node_modules/
 
 # 候选包是每次运行现取的构建产物，不签入：签入 tarball 会让仓库随每次评估膨胀，
 # 而它本来就能从 manifest.json 里的版本号复现
-.candidate/
 
 # 本仓库自己跑评估产生的结果；fixture 不携带历史 Record。
 /.niceeval/

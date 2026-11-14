@@ -5,7 +5,7 @@ import { test } from "node:test";
 import { withTempProject } from "./support/project.ts";
 
 // install 题交给 Judge 的源码材料。取证脚本是真实文件，这里直接在本地项目里运行它。
-const SCRIPT = resolve("lib/probes/authored-source.cjs");
+const SCRIPT = resolve("evals/install/probes/authored-source.cjs");
 
 test("agent 源码材料沿相对 import 收进自己起名的目录，不收依赖与项目外的文件", () => withTempProject("authored-source", {
   "evals/sales.eval.ts": "import { startTarget } from '../runtime/service.js';\nexport default startTarget;\n",
