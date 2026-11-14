@@ -1,12 +1,11 @@
 import { isDeepStrictEqual } from "node:util";
 import { defineScoreEval } from "niceeval";
-import { equals } from "niceeval/expect";
+import { equals, binaryJudge } from "niceeval/expect";
 import { loadText } from "niceeval/loaders";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { pullInnerNodeImage } from "../../../../lib/sandbox.ts";
 
 import { readFileSync } from "node:fs";
-import { yesNo } from "../../../../lib/judge.ts";
 import { currentVerdicts, exp, query, runOnce, type Shell } from "../../../../lib/query.ts";
 import { readsPrivateRecord } from "../../private-record.ts";
 
@@ -60,16 +59,16 @@ export default defineScoreEval({
     t.check(student, equals({ ...startingPoint, "terminal-bench/log-summary": "passed" })).score(3)
       .label("Agent 自己复验：log-summary 转为 passed，另两条保持原样");
 
-    t.judge({ task: input, verifiedResults: student, reply: turn.reply }, yesNo("log-summary-repair-handoff",
-      "verifiedResults 是外层通过公开 query 读到的 local 当前结果。最终回复是否与它一致地报告结果，说明改了哪条判据、为什么新判据仍会拒绝错误产物，" +
+    t.judge({ task: input, verifiedResults: student, reply: turn.reply }, binaryJudge({ rubric:
+          "verifiedResults 是外层通过公开 query 读到的 local 当前结果。最终回复是否与它一致地报告结果，说明改了哪条判据、为什么新判据仍会拒绝错误产物，" +
       "并且没有把 local 说成全部通过、没有把仍然失败的 classifier-debug 说成也已修好？用户没问 classifier-debug，不要求解释它为什么失败；" +
-      "不要求粘贴 Run ID 或固定命令。"))
+      "不要求粘贴 Run ID 或固定命令。" }))
       .score(2).label("交接与核验结果一致");
     // 沿用随题附带的官方 test.py 是正当修法，所以它和 Eval 正文一起交给 Judge；判据落在这两份之外才算读不出来。
-    t.judge({ evalSource: await t.sandbox.readText(TARGET_EVAL).catch(() => ""), officialTest }, yesNo("log-summary-repair-readable",
-      "evalSource 是改后的 log-summary Eval，officialTest 是随题附带、未被改动的官方 test.py。只读这两份，能否说出 summary.csv 什么样算通过：" +
+    t.judge({ evalSource: await t.sandbox.readText(TARGET_EVAL).catch(() => ""), officialTest }, binaryJudge({ rubric:
+          "evalSource 是改后的 log-summary Eval，officialTest 是随题附带、未被改动的官方 test.py。只读这两份，能否说出 summary.csv 什么样算通过：" +
       "表头、三类计数与行数各要求什么？evalSource 调用了 officialTest 时，其中的判据算已给出。" +
-      "判据藏在这两份之外的辅助函数或文件里、或 evalSource 为空，判 N。"))
+      "判据藏在这两份之外的辅助函数或文件里、或 evalSource 为空，不算。" }))
       .score(1).label("改后的判据读得出来");
 
     // 题面、判据或被测 Agent 被改过，后面的探针就不再证明 Eval 本身，任务算失败。

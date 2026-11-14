@@ -14,9 +14,8 @@ const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/cancel-asyn
 // 官方题包：题面、Dockerfile、runner、参考答案与两份测试。
 const originalOfficialTests = readFileSync(new URL(OFFICIAL_TESTS, FIXTURE), "utf8");
 
-/** 评审者：读 agent 写出的 Eval，按 NiceEval 品味逐题打分。 */
+/** 评审者：读 agent 写出的 Eval，按 NiceEval 品味逐题打分。*/
 const tasteReviewer = defineAgentJudge({
-  name: "harness.cancel-async-authoring.taste",
   instructions: "你在评审被测 agent 刚写的 NiceEval Eval 源码写得好不好。自己阅读文件取证，只根据亲眼看到的内容评分。",
 });
 
@@ -54,19 +53,19 @@ export default defineScoreEval({
       const taste = t.agentJudge(tasteReviewer, { evalFile: TARGET_EVAL });
       taste.chat("evalFile 是 agent 写的正式 Eval，先读完这些文件。");
       taste.judge(
-        "Y 当且仅当只读 agent 写的 Eval 正文就能说出它测什么、每项什么算通过、分数或门槛怎么来；" +
+        "只读 agent 写的 Eval 正文就能说出它测什么、每项什么算通过、分数或门槛怎么来；" +
         "关键阈值、数量和分值直接写在检查上，没有藏进辅助函数，也没有先装进数组再用循环登记。")
         .score(1).label("判据平铺在打分处");
       taste.judge(
-        "Y 当且仅当能直接读到的事实（工具名与参数、次数、文件内容、命令退出码、结构化字段）用确定性检查，" +
+        "能直接读到的事实（工具名与参数、次数、文件内容、命令退出码、结构化字段）用确定性检查，" +
         "没有把这类事实交给 Judge 判断。")
         .score(1).label("事实用确定性检查");
       taste.judge(
-        "Y 当且仅当能用现成 Match（equals、includes、pattern、toolMatch、countWhere、referencesAnyPath 等）表达的判据，" +
+        "能用现成 Match（equals、includes、pattern、toolMatch、countWhere、referencesAnyPath 等）表达的判据，" +
         "没有先手算成布尔值或计数，再交给 isTrue 或 equals(true)。")
         .score(1).label("判据写在 Match 上");
       taste.judge(
-        "Y 当且仅当缺失的数据（缺记录、解析失败、读不到文件）保留为不可判定或直接报错，没有补成 0、false 或空字符串后继续判分。")
+        "缺失的数据（缺记录、解析失败、读不到文件）保留为不可判定或直接报错，没有补成 0、false 或空字符串后继续判分。")
         .score(1).label("未知保持未知");
     });
     turn.notCalledTool(

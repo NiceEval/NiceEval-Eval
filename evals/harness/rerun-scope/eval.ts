@@ -1,10 +1,9 @@
 import { isDeepStrictEqual } from "node:util";
 import { defineScoreEval } from "niceeval";
-import { equals } from "niceeval/expect";
+import { equals, binaryJudge } from "niceeval/expect";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
 import { readFileSync } from "node:fs";
-import { yesNo } from "../../../lib/judge.ts";
 import { currentAttemptIds, currentVerdicts, exp, query, type Shell } from "../../../lib/query.ts";
 import { readsPrivateRecord } from "../private-record.ts";
 
@@ -81,10 +80,10 @@ export default defineScoreEval({
     t.sandbox.unchangedWithin(["evals", "agents", "experiments", "niceeval.config.ts"]).score(2)
       .label("用户改过的判据、其余 Eval、机器人与运行配置保持不变");
 
-    t.judge({ task: input, verified: { verdicts: verdictsAfter, reexecuted, executedAttempts: executed }, reply: turn.reply }, yesNo("rerun-scope-handoff",
-      "verified 是外层通过公开 query 读到的 local 当前结果、被重新执行的 eval 与实际执行次数。最终回复是否与它一致地说明：" +
+    t.judge({ task: input, verified: { verdicts: verdictsAfter, reexecuted, executedAttempts: executed }, reply: turn.reply }, binaryJudge({ rubric:
+          "verified 是外层通过公开 query 读到的 local 当前结果、被重新执行的 eval 与实际执行次数。最终回复是否与它一致地说明：" +
       "support/refund 现在是 failed，原因是机器人回答的是 7 天而新判据要求 5 个工作日；另外四条仍然 passed？" +
-      "把 refund 说成通过、把失败说成判据或运行出错、或与 verified 的结果矛盾，判 N。不要求粘贴 Run ID 或命令。"))
+      "把 refund 说成通过、把失败说成判据或运行出错、或与 verified 的结果矛盾，不算。不要求粘贴 Run ID 或命令。" }))
       .score(3).label("交接与核验结果一致，并说清 refund 为什么失败");
   },
 });
