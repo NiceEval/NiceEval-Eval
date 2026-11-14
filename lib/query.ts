@@ -1,17 +1,17 @@
 /**
- * 在被测项目里调用它自己安装的 niceeval CLI。只负责传输：发现协议版本后返回 Query 文档或
+ * 在被测项目里调用它自己安装的 niceeval CLI。只负责传输：发现公开出口后返回 Inspection 文档或
  * `exp --json` receipt 原样字段，外加抹平 v2/v3 字段位置的 verdict 投影；不认识任何业务概念，
  * 判据写在各 Eval 正文里。
  *
  * `shell` 在被测项目根目录执行一段 sh（Eval 里是 `(s) => t.sandbox.runShell(s)`）。
- * request 经 stdin 传给 `query run --request -`，不在工作区写临时文件。
+ * 历史 query request 经 stdin 传入；当前 show 使用对象地址，不在工作区写临时文件。
  */
 
 import { shellQuote } from "./shell.ts";
 
 export type Shell = (script: string) => Promise<{ exitCode: number; stdout: string; stderr: string }>;
 
-// query 文档是 CLI 的公开 JSON；稳定版 v2 与 Canary v3 的字段由各判据按协议读取。
+// Inspection 文档是 CLI 的公开 JSON；历史 query v2/v3 与当前 show 的字段由各判据读取。
 export type QueryDocument = any;
 
 // Query v3 把 verdict 放在成员上，稳定版的 v2 放在 publication 里。
@@ -49,25 +49,65 @@ export function currentAttempts(doc: { project: { cells: (Cell & { experimentId:
 }
 
 const CLI = "./node_modules/.bin/niceeval";
-const discoveries = new WeakMap<Shell, Promise<{ protocol: string; operations: { id: string }[] }>>();
+type InspectionExit = { kind: "show" } | { kind: "query"; protocol: string; operations: { id: string }[] };
+const discoveries = new WeakMap<Shell, Promise<InspectionExit>>();
+
+function readDocument(result: Awaited<ReturnType<Shell>>, context: string): QueryDocument {
+  try {
+    const doc = JSON.parse(result.stdout);
+    if (doc === null || typeof doc !== "object" || Array.isArray(doc)) throw new Error("not a document");
+    return doc;
+  } catch {
+    throw new Error(`niceeval ${context} 没有输出 JSON 文档：${result.stderr || result.stdout}`);
+  }
+}
 
 async function discover(shell: Shell) {
   let pending = discoveries.get(shell);
   if (pending === undefined) {
-    pending = (async () => {
+    pending = (async (): Promise<InspectionExit> => {
+      const help = await shell(`${CLI} --help`);
+      if (help.exitCode !== 0) throw new Error(`niceeval 能力发现失败：${help.stderr || help.stdout}`);
+      if (!/^\s*niceeval query(?:\s|$)/m.test(help.stdout)) {
+        if (!/^\s*niceeval show(?:\s|$)/m.test(help.stdout)) throw new Error("niceeval 未提供 query 或 show 出口");
+        return { kind: "show" };
+      }
       const result = await shell(`${CLI} query discover`);
-      const doc = JSON.parse(result.stdout);
+      const doc = readDocument(result, "query discover");
       if (result.exitCode !== 0 || doc.outcome !== "discovery" ||
-          !["niceeval.query/v2", "niceeval.query/v3"].includes(doc.protocol) || !Array.isArray(doc.operations)) {
+          !["niceeval.query/v2", "niceeval.query/v3"].includes(doc.protocol) || !Array.isArray(doc.operations) ||
+          !doc.operations.every((op: { id?: unknown } | null) => op !== null && typeof op.id === "string")) {
         throw new Error(`niceeval query discovery 不支持：${result.stderr || result.stdout}`);
       }
-      return doc as { protocol: string; operations: { id: string }[] };
+      return { kind: "query", protocol: doc.protocol, operations: doc.operations };
     })();
     discoveries.set(shell, pending);
   }
   return pending;
 }
 
+/** 只支持本仓库已确定的四种读取，不静默丢弃当前 show 无法表达的筛选字段。 */
+function showAddress(operation: Record<string, unknown>): string[] {
+  const id = (field: string, prefix: string) => {
+    if (typeof operation[field] !== "string" || operation[field].length === 0) {
+      throw new Error(`niceeval Inspection ${operation.kind} 缺少 ${field}`);
+    }
+    return [`${prefix}:${operation[field]}`];
+  };
+  let fields: string[] = [];
+  let address: string[];
+  switch (operation.kind) {
+    case "project.get": address = []; break;
+    case "run.list": address = ["runs"]; break;
+    case "experiment.get": fields = ["experimentId"]; address = id("experimentId", "exp"); break;
+    case "run.get": fields = ["runId"]; address = id("runId", "run"); break;
+    default: throw new Error(`niceeval Inspection 未提供 operation：${operation.kind}`);
+  }
+  if (Object.keys(operation).some((key) => key !== "kind" && !fields.includes(key))) {
+    throw new Error(`niceeval Inspection ${operation.kind} 有不支持的参数`);
+  }
+  return address;
+}
 
 /**
  * 执行一个固定 Inspection operation。选择对象不存在（`inspection-selection-missing`，
@@ -75,21 +115,29 @@ async function discover(shell: Shell) {
  * 让外层 Attempt 记为 errored，而不是把读不到的证据当成零分。
  */
 export async function query(shell: Shell, operation: Record<string, unknown>): Promise<QueryDocument | null> {
+  const address = showAddress(operation);
   const discovery = await discover(shell);
-  if (!discovery.operations.some(({ id }) => id === operation.kind)) {
-    throw new Error(`niceeval query 未提供 operation：${operation.kind}`);
+  let command: string;
+  if (discovery.kind === "query") {
+    if (!discovery.operations.some(({ id }) => id === operation.kind)) {
+      throw new Error(`niceeval query 未提供 operation：${operation.kind}`);
+    }
+    const request = JSON.stringify({ protocol: discovery.protocol, operation });
+    command = `printf '%s' ${shellQuote(request)} | ${CLI} query run --request -`;
+  } else {
+    command = `${CLI} show ${[...address, "--json"].map(shellQuote).join(" ")}`;
   }
-  const request = JSON.stringify({ protocol: discovery.protocol, operation });
-  const result = await shell(`printf '%s' ${shellQuote(request)} | ${CLI} query run --request -`);
-  let doc: QueryDocument;
-  try {
-    doc = JSON.parse(result.stdout);
-  } catch {
-    throw new Error(`niceeval query ${operation.kind} 没有输出 JSON 文档：${result.stderr || result.stdout}`);
+  const result = await shell(command);
+  const context = `${discovery.kind} ${operation.kind}`;
+  const doc = readDocument(result, context);
+  if (doc.operation !== operation.kind) {
+    throw new Error(`niceeval ${context} operation 不匹配：${JSON.stringify(doc.operation)}`);
   }
+  if (!Array.isArray(doc.issues ?? [])) throw new Error(`niceeval ${context} issues 格式无效`);
+  if ((doc.issues ?? []).length > 0) throw new Error(`niceeval ${context} 证据不可用：${JSON.stringify(doc.issues)}`);
   if (doc.outcome === "failure" && doc.failure?.code === "inspection-selection-missing") return null;
-  if (doc.outcome !== "success" || (doc.issues ?? []).length > 0) {
-    throw new Error(`niceeval query ${operation.kind} 证据不可用：${JSON.stringify(doc.failure ?? doc.issues)}`);
+  if (result.exitCode !== 0 || doc.outcome !== "success") {
+    throw new Error(`niceeval ${context} 证据不可用：${JSON.stringify(doc.failure ?? doc.issues)} ${result.stderr}`);
   }
   return doc;
 }

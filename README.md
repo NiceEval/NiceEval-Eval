@@ -71,12 +71,14 @@ pnpm exec niceeval exp harness/v0.20.0 harness/tool-guard   # 只跑一道题
 读结果只走公开 CLI，不读 `.niceeval/` 下的文件：
 
 ```sh
-pnpm exec niceeval show --experiment <experiment-id>
-pnpm exec niceeval show @<locator> --assertions
-pnpm exec niceeval show @<locator> --execution
-pnpm exec niceeval show --experiment harness/v0.20.0 --experiment harness/canary --assertions   # 判据 × 候选
+pnpm exec niceeval show exp:<experiment-id>
+pnpm exec niceeval show @<locator> assertions
+pnpm exec niceeval show @<locator> execution
+pnpm --silent exec niceeval show runs --json           # 脚本化读取；按 document links 继续
+pnpm exec niceeval show exp:harness/v0.20.0 exp:harness/canary assertions   # 判据 × 候选
 pnpm exec niceeval invocation show <invocation-id>     # 运行中：每个 Attempt 的阶段、沙箱实例名与最近动作
-pnpm exec niceeval view --run <baseline-run-id> --run <candidate-run-id>   # 两次运行逐题并排；脚本化用 query 的 runs.compare
+pnpm exec niceeval view run:<baseline-run-id> run:<candidate-run-id>   # 两次运行逐题并排
+pnpm --silent exec niceeval compare run:<baseline-run-id> -- run:<candidate-run-id> --json
 ```
 
 ## Harness 题

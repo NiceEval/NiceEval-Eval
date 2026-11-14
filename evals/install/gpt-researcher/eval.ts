@@ -293,7 +293,7 @@ export default defineScoreEval({
 
       // 协议对不对，只看源码证明不了，能证明的是真实运行收到了目标响应，所以协议分并入这一项。
       const evidence = t.agentJudge(reviewer, { installRoot: at, attempts });
-      evidence.chat("agent 在 installRoot 下运行过自己的 Experiment，attempts 是当前各格的 locator 与 verdict。在 installRoot 下用 `pnpm exec niceeval show <locator>`、`--execution`、`--source` 查看每个 Attempt。");
+      evidence.chat("agent 在 installRoot 下运行过自己的 Experiment，attempts 是当前各格的 locator 与 verdict。在 installRoot 下先读该版本的 `node_modules/niceeval/INDEX.md` 与公开 CLI 帮助，再用该版本支持的 show/view/query 定位各 Attempt、execution 和 source；旧版的 `show <locator> --execution`、`--source` 与新版的 `show <locator> execution`、`source` 都是等价公开入口。");
       evidence.judge(
         "至少一个正向核心用例的 execution 中，助手消息是 GPT Researcher 本次任务生成的报告（/ws report 帧、POST /report/ 的 report 字段或 path 指向的本次报告文件），" +
         "由 Adapter 解析得到，并呈现与 Eval 研究主题有关的实质报告内容与引用。其它当前结果若是预期负例，合法错误或拒答不因缺少正向业务内容而单独不算。" +
@@ -307,7 +307,7 @@ export default defineScoreEval({
         .score(3).label("Attempt 形成 passed 或 failed，而不是 errored");
       t.judge({ attempts, handoff: handoff.reply }, binaryJudge({ rubric:
           "attempts 是 agent 各格的当前结果。最终回复给出这些结果的 locator 或覆盖它们的可复现查看命令，" +
-        "说明主要文件，并与 attempts 的 verdict 一致地报告通过、失败或局限。带具体 Run ID 的 `niceeval show --run <id>` 或 `view --run <id>` 命令算可复现查看命令；" +
+        "说明主要文件，并与 attempts 的 verdict 一致地报告通过、失败或局限。按目标版本 INDEX/公开帮助支持的等价入口判断：带具体 Run ID 的旧版 `niceeval show --run <id>` / `view --run <id>`、新版 `show run:<id>` / `view run:<id>`，或该版本等价的固定 query 请求，都算可复现查看命令；" +
         "只给 Run ID 而没有命令、只写不带 ID 的泛化 show 命令、指向 README 里的步骤，或把 failed/errored/替代物说成全绿，不算。" }))
         .score(3).label("交接引用 locator 并如实报告");
       t.check(attempts.map((attempt) => attempt.verdict), countWhere(equals("passed"), equals(attempts.length)))

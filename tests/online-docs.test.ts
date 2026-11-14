@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { resolve } from "node:path";
+import { readFile } from "node:fs/promises";
 import { test } from "node:test";
 import { currentVerdicts, exp, query } from "../lib/query.ts";
 import { withTempProject } from "./support/project.ts";
@@ -34,7 +34,7 @@ send(input){return {status:'completed',events:[
 
 const ONLINE_EVAL = `import {defineEval} from 'niceeval';
 import {referencesAnyPath,toolMatch} from 'niceeval/expect';
-import {ONLINE_MAIN_DOC_REFERENCES} from ${JSON.stringify(resolve("evals/install/docs.ts"))};
+import {ONLINE_MAIN_DOC_REFERENCES} from '../support/install-docs.ts';
 const commands = ${JSON.stringify({ ...READS_ONLINE_MAIN, ...STAYS_ON_CANDIDATE })};
 export default Object.fromEntries(Object.entries(commands).map(([id, command]) => [id, defineEval({async test(t){
 await t.send(command);
@@ -51,8 +51,10 @@ t.toolOrder([toolMatch({input:referencesAnyPath(['node_modules/niceeval/INDEX.md
 toolMatch({input:referencesAnyPath(['node_modules/niceeval/docs-site/zh/tutorials/write-send.mdx'])})]);}});
 export default {'index-then-page': routed(index, page), 'page-then-index': routed(page, index)};\n`;
 
-test("install 文档路由：线上 main 被抓到、候选 tag 不误伤，INDEX → 页面的顺序可以跨轮", { timeout: 120_000 }, () => withTempProject("online-docs", {
+test("install 文档路由：线上 main 被抓到、候选 tag 不误伤，INDEX → 页面的顺序可以跨轮", { timeout: 120_000 }, async () => withTempProject("online-docs", {
   "experiments/local.ts": ECHO_SHELL_EXPERIMENT,
+  // 使用真实共享模块，但让它属于临时项目的 source owner，避免跨 owner 绝对导入。
+  "support/install-docs.ts": await readFile(new URL("../evals/install/docs.ts", import.meta.url), "utf8"),
   "evals/online.eval.ts": ONLINE_EVAL,
   "evals/route.eval.ts": ROUTE_EVAL,
 }, async ({ shell }) => {

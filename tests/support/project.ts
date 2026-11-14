@@ -34,11 +34,12 @@ const DEFAULT_FILES = {
   "niceeval.config.ts": "import {defineConfig} from 'niceeval'; export default defineConfig({});\n",
 };
 
-/** 建一个链接到本仓库 node_modules 的临时项目，跑完 `body` 后删除。`files` 覆盖默认的 package.json 与 config。 */
+/** 建一个临时项目，默认链接本仓库依赖；可指定隔离安装的历史候选。跑完 `body` 后删除。 */
 export async function withTempProject<T>(
   name: string,
   files: Record<string, string>,
   body: (project: TempProject) => Promise<T>,
+  options: { nodeModules?: string } = {},
 ): Promise<T> {
   const root = await mkdtemp(join(tmpdir(), `niceeval-${name}-`));
   const write = async (path: string, content: string) => {
@@ -46,7 +47,7 @@ export async function withTempProject<T>(
     await writeFile(join(root, path), content);
   };
   try {
-    await symlink(resolve("node_modules"), join(root, "node_modules"), "dir");
+    await symlink(resolve(options.nodeModules ?? "node_modules"), join(root, "node_modules"), "dir");
     for (const [path, content] of Object.entries({ ...DEFAULT_FILES, ...files })) await write(path, content);
     return await body({ root, shell: localShell(root), shellWith: (env) => localShell(root, env), write });
   } finally {
