@@ -222,7 +222,7 @@ export default defineScoreEval({
       const installed = JSON.parse(await t.sandbox.readText("package.json"));
       t.check(installed.devDependencies?.niceeval, equals(version)).gate()
         .label("根工具项目声明精确候选开发依赖");
-      t.check(installed.packageManager, equals("pnpm@11.12.0")).gate()
+      t.check(installed.packageManager, equals("pnpm@12.20.0")).gate()
         .label("保留已有 pnpm 版本");
       t.check(installed.type, equals("commonjs")).gate()
         .label("保留宿主 CommonJS 格式");

@@ -26,6 +26,7 @@ export const instabox = instaboxSandbox({
 }).before(shell({
   id: "node-24",
   user: "root",
+  changeFrequency: changeFrequency.rare,
   command: "curl -fsSL https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1",
 }));
 
@@ -53,13 +54,16 @@ export const removeInitExamples = command(
   { id: "remove-init-examples" },
 );
 
-/** 题内 inner dockerd 用的镜像，各 fixture 按同一个 digest 引用；预先拉取进快照，Attempt 里不再访问 registry。 */
+/**
+ * 题内 inner dockerd 用的镜像，各 fixture 按同一个 digest 引用；预先拉取进快照，Attempt 里不再访问 registry。
+ * 拉取与候选版本无关，标为 rare 排在 `pnpm add niceeval@<版本>` 之前，三个候选共用这段快照前缀。
+ */
 export const INNER_NODE_IMAGE =
   "niceeval/codex@sha256:157152804b0ac443e62936d3ce2c8191a1df125bdcb121370c05c00be7c8ab96";
 export const INNER_PYTHON_IMAGE =
   "python:3.11.9-bookworm@sha256:c95170ff7d59de63e9445d3d503644a635c1b8cb7f4fa99f19a1c76da92a849a";
-export const pullInnerNodeImage = command("docker", ["pull", INNER_NODE_IMAGE], { id: "pull-inner-node-image" });
-export const pullInnerPythonImage = command("docker", ["pull", INNER_PYTHON_IMAGE], { id: "pull-inner-python-image" });
+export const pullInnerNodeImage = command("docker", ["pull", INNER_NODE_IMAGE], { id: "pull-inner-node-image", changeFrequency: changeFrequency.rare });
+export const pullInnerPythonImage = command("docker", ["pull", INNER_PYTHON_IMAGE], { id: "pull-inner-python-image", changeFrequency: changeFrequency.rare });
 
 /** 安装题：目标应用凭据文件所在目录，归普通用户（uid 1000）。 */
 export const targetAppSecretsDir = command(
