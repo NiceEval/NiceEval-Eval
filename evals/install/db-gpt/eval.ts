@@ -216,26 +216,26 @@ export default defineScoreEval({
 
     // 零分门槛：任何一项不算，后面的运行与取证都没有意义。
     const at = await t.group("安装与 dry plan", async () => {
-      await t.check(root, isDefined<string | null>()).label("niceeval.config.ts 存在").orStop();
+      await t.check(root, isDefined<string | null>()).gate().label("niceeval.config.ts 存在").orStop();
       const at = root!;
 
       const installed = await t.sandbox.runCommand(
         "node", ["-p", "require('./node_modules/niceeval/package.json').version"], { cwd: at },
       );
-      await t.check(installed.stdout.trim(), equals(version))
+      await t.check(installed.stdout.trim(), equals(version)).gate()
         .label(`项目依赖精确为 niceeval@${version}`).orStop();
 
       const list = await t.sandbox.runCommand("./node_modules/.bin/niceeval", ["list"], { cwd: at });
-      await t.check(list, commandSucceeded())
+      await t.check(list, commandSucceeded()).gate()
         .label("项目内 CLI discovery 成功").orStop();
 
       const dry = await t.sandbox.runCommand("./node_modules/.bin/niceeval", ["exp", "--dry", "--json"], { cwd: at });
-      await t.check(dry, commandSucceeded())
+      await t.check(dry, commandSucceeded()).gate()
         .label("exp --dry --json 成功").orStop();
       const plan = JSON.parse(dry.stdout) as { matrix?: unknown[] };
-      await t.check(plan.matrix, isDefined<unknown[] | undefined>())
+      await t.check(plan.matrix, isDefined<unknown[] | undefined>()).gate()
         .label("dry plan 提供 matrix").orStop();
-      await t.check(plan.matrix!.length, greaterThan(0))
+      await t.check(plan.matrix!.length, greaterThan(0)).gate()
         .label("dry plan 包含可运行的格子").orStop();
       return at;
     });
@@ -247,9 +247,10 @@ export default defineScoreEval({
       await t.check(runs.length, greaterThan(0)).gate().score(6)
         .label("agent 真实运行过自己的 Experiment").orStop();
       const attempts = currentAttempts(await query(shell, { kind: "project.get" }));
-      await t.check(attempts.length, greaterThan(0))
+      await t.check(attempts.length, greaterThan(0)).gate()
         .label("当前格包含 Attempt").orStop();
       await t.check(attempts.map((attempt) => attempt.locator), countWhere(isDefined(), equals(attempts.length)))
+        .gate()
         .label("当前格的所有 Attempt 均已发布").orStop();
 
       // 协议对不对，只看源码证明不了，能证明的是真实运行收到了目标响应，所以协议分并入这一项。
