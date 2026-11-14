@@ -34,7 +34,7 @@ export default defineScoreEval({
   timeoutMs: 80 * 60 * 1000,
   sandbox: sandboxRequirements({})
     .before(gitCheckout({
-      id: "checkout",
+      id: "db-gpt-checkout",
       repository: "https://github.com/eosphoros-ai/DB-GPT.git",
       ref: "177bfc84f77e7f7760c055a748b0e4bb82d9fa47",
       to: ".",

@@ -34,7 +34,7 @@ export default defineScoreEval({
   timeoutMs: 80 * 60 * 1000,
   sandbox: sandboxRequirements({})
     .before(gitCheckout({
-      id: "checkout",
+      id: "gpt-researcher-checkout",
       repository: "https://github.com/assafelovic/gpt-researcher.git",
       ref: "5d84d2f5553e70a2765a8ff3a0d2672d60437ce8",
       to: ".",
