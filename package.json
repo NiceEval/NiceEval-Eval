@@ -6,8 +6,7 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts",
-    "harness-report": "tsx scripts/harness-report.ts"
+    "test": "tsx --test tests/*.test.ts"
   },
   "devEngines": {
     "packageManager": {

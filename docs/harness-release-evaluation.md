@@ -23,7 +23,7 @@
    这只是初步方向性样本；不能用 36 个 Attempt 伪装成 36 种任务。
 3. 按预定次序交错两个候选，使用独立 Sandbox；关闭首过即停。要求新增独立样本时用
    `--rerun all`，不得沿用旧 Attempt 充数。保留完整 created Run IDs。
-4. 对明确 Run 使用 `pnpm harness-report <run-id> ...`，逐项审阅 README 列出的范围与完成事实。
+4. 对明确 Run 用 `pnpm exec niceeval view --run <baseline-run-id> --run <candidate-run-id>` 并排审阅，脚本化比较用 `niceeval query run` 的 `runs.compare`（逐题配对，见随包 `docs-site/zh/tutorials/compare-runs.mdx`），逐项审阅 README 列出的范围与完成事实。沿用（carried）与采用（accepted）的结果不算新样本。
    可用 `show @<locator>` 找 Assertion，再用 `attempt.assertion.detail` 读取实际判定。
 5. 开发集有效改善后，使用未参与调优的保留题再验。当前三任务家族不属于保留集。
 

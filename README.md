@@ -16,7 +16,6 @@ CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档�
 | `lib/` | 候选解析、沙箱准备步骤与读取被测项目结果的 query 封装；不登记任何检查 |
 | `sandbox/harness-project/` | Harness 的项目 seed |
 | `tests/` | 用真实本地 CLI 固定判据读取的字段与 fixture 契约，不调用模型 |
-| `scripts/harness-report.ts` | 把指定 Run 的 Harness 观察值汇成 JSON |
 | `docs/` | 评估协议与历次验收记录 |
 
 每道题自己持有题面、续轮回答和全部判据，读一个 `eval.ts` 就能看到它测什么、什么算通过。
@@ -77,7 +76,7 @@ pnpm exec niceeval show @<locator> --assertions
 pnpm exec niceeval show @<locator> --execution
 pnpm exec niceeval show --experiment harness/v0.20.0 --experiment harness/canary --assertions   # 判据 × 候选
 pnpm exec niceeval invocation show <invocation-id>     # 运行中：每个 Attempt 的阶段、沙箱实例名与最近动作
-pnpm harness-report <run-id> [<run-id> ...]
+pnpm exec niceeval view --run <baseline-run-id> --run <candidate-run-id>   # 两次运行逐题并排；脚本化用 query 的 runs.compare
 ```
 
 ## Harness 题
