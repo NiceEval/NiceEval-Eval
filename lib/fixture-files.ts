@@ -9,9 +9,9 @@ import { fileURLToPath } from "node:url";
 
 /**
  * fixture 目录下的全部文件：相对路径 → 内容，只用来和 agent 收工后的 workspace 比对。
- * 这里用普通文件读取，不经 niceeval/loaders：同一个目录已经由 Eval 的 `uploadDirectory` 上传，
- * 它的内容清单进入 Sandbox 身份，改 fixture 会作废旧结果。loader 的读取按调用所在的模块登记，
- * 放在这个共享模块里会把每道题的 fixture 算进所有题的指纹，加一道题就让全部旧结果失效。
+ * 这里用普通文件读取：同一个目录已经由 Eval 的 `uploadDirectory` 上传，它的内容清单进入 Sandbox 身份，
+ * 改 fixture 已经会作废这道题的旧结果，再经 loader 登记一遍只是重复。
+ * （NiceEval 96ae5e505 起，Eval 顶层调用这里的函数时 loader 读取也只算调用它的那道题。）
  */
 export function loadFixtureFiles(root: URL): ReadonlyMap<string, string> {
   const base = fileURLToPath(root);
