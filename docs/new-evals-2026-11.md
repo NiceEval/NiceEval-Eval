@@ -37,7 +37,7 @@ Concord（<https://github.com/CorrectRoadH/Concord>）是本地的 spec 驱动�
   Use niceeval@<version> exactly.
   ```
 
-- `timeoutMs`：120 分钟。
+- `timeoutMs`：85 分钟。安装实验共用的 Instabox 实例寿命是 90 分钟（`lib/sandbox.ts`），实例寿命必须覆盖 Attempt 截止时间再加 30 秒；改共享寿命会让全部现有格作废，所以题目超时服从它。
 - Sandbox before 链：沿用 install 实验已有的 `targetAppSecretsDir`、`agentEndpointCheck`、`targetAppEnv`（由 experiment 提供，题目文件不改它们）。题目自己的 before 只做 checkout 和重建 git。
 
 ### 模拟用户（维护者已经拿定的决定）
@@ -103,7 +103,7 @@ Concord（<https://github.com/CorrectRoadH/Concord>）是本地的 spec 驱动�
 | 交接引用 locator 并如实报告 | 3 | 同 gpt-researcher |
 | 对比结论有节制 | 2 | 报告基线与处理两组的结果差异时写明样本量；单次 Attempt 的差异不说成因果结论 |
 
-设计合计：gate 8 道，计分 37 分。
+设计合计：gate 8 道，计分 32 分（首轮 9 + 实验设计 6 + 评估题质量 12 + 交接 5）。
 
 ### 环境由我们配置
 
