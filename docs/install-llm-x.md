@@ -24,7 +24,7 @@
 
 - **llm-x 的文字和图片都走 `CODEX_BASE_URL` 网关。** 图片模型 `gpt-image-1`；文字模型由 worker 在该网关上挑一个支持 Responses + `json_schema` 的较便宜模型并实测，写进下面的题目 before。
 - **fixture 应用加一个可选配置 `OPENAI_EXTRA_HEADERS`**：JSON 对象，附加到文字和图片的每个 provider 请求上；不设时行为与原应用完全相同。README 的 Live provider 一节把它写成普通功能（经过需要额外请求头的代理时使用），不提评测。这是对我们自己 fixture 副本的改动，不改 NiceEval 仓库的示例。
-- **题目自己的 before 写 `/opt/fixture-secrets/llm-x.env`**，内容来自宿主的 `CODEX_API_KEY`、`CODEX_BASE_URL`、`CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`，写法照抄 `lib/target-app-env.ts` 的回调步骤，但代码完整写在 eval 文件里，不改 `lib/**`。文件权限与 `target-app.env` 相同。
+- **连接信息只通过 HITL 给出，不预置文件。** instructions 在模块加载时从宿主环境变量拼出（`CODEX_BASE_URL`、`CODEX_API_KEY`、`CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`），源码和 git 里没有任何值；Codex 不问就拿不到，也就无法跑真实运行。代价：模拟用户的回答会原样进入本地 Record，`show @<locator> execution` 能看到这些值。本仓库的 Record 只留在本机，不导出、不分享。
 - Judge 不走这个网关，用 `target-app.env` 的 DeepSeek 网关和 `deepseek-flash`（worker 实测 Chat Completions 200），与应用的文字模型分开。
 
 ## 模拟用户（需求只在这里）
@@ -37,7 +37,7 @@ instructions 写明：
   2. **AI 回应接得上**：玩家回复某条帖子后，后台回应必须来自世界里存在的人物，内容回应被回复的帖子，并符合该人物主页的设定。
   3. **刷新有新内容**：刷新动态后出现新内容，而且不和已有动态重复。
   4. **配图附对位置**：要求配图时，图片附在正确的帖子上；不评判画面质量。
-- 已定决定：Tier 1，不接 OTel；用 live 真实模型。应用的全部配置在 `/opt/fixture-secrets/llm-x.env`（`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`、`OPENAI_IMAGE_MODEL`、`OPENAI_EXTRA_HEADERS`），只能在运行时注入应用进程，不能输出、复制进工作区或提交。Judge 用 `/opt/fixture-secrets/target-app.env` 里的网关（`OPENAI_API_KEY`、`OPENAI_BASE_URL`），模型 `deepseek-flash`，走 Chat Completions。首跑最多 2 个 Attempt，可以自主运行、诊断和重试，但本次任务总共不超过 6 个 Attempt。
+- 已定决定：Tier 1，不接 OTel；用 live 真实模型。**连接信息由模拟用户在被问到时直接给出**：网关地址、API key、两个 Cloudflare Access 请求头（`CF-Access-Client-Id`、`CF-Access-Client-Secret`）、文字模型名、图片模型名 `gpt-image-1`。instructions 要求它说明这些值只能放进未跟踪的 env 文件或进程环境，不能写进源码、提交或打印。Judge 用 `/opt/fixture-secrets/target-app.env` 里的网关（`OPENAI_API_KEY`、`OPENAI_BASE_URL`），模型 `deepseek-flash`，走 Chat Completions。首跑最多 2 个 Attempt，可以自主运行、诊断和重试，但本次任务总共不超过 6 个 Attempt。
 
 ## 流程
 
@@ -85,7 +85,7 @@ Judge 的材料是全部 `waiting` Turn 的 `input.requested` 提问加上模拟
 | 项 | 分 |
 | --- | --- |
 | 用自定义应用接口（`defineAdapter` 暴露发帖、回复、刷新、配图等业务操作），不是把应用硬套成聊天 `send` | 3 |
-| live 模式真实调用模型，凭据从 env 文件在运行时读取并只注入应用进程，不硬编码、不打印、不进工作区 | 2 |
+| live 模式真实调用模型；用户在对话里给的 key 和请求头只放进未跟踪的 env 文件或进程环境，运行时注入应用进程，不进源码、不进提交、不打印 | 3 |
 | 应用生命周期：构建、启动、就绪检查、使用临时数据库、失败时也能清理 | 2 |
 
 **宿主安装与真实运行**：照抄 GPT Researcher / Concord 题已有的宿主安装规范和 root gate（根目录精确声明候选版本、保留 pnpm、冻结锁安装、根目录 CLI、config、discovery、dry），以及「至少一次非 errored 的真实运行，并在交接里给出 Run 定位」。另加确定性检查：agent 创建的全部 Run 合计 Attempt 不超过 6（预算遵守，1 分）。
@@ -102,8 +102,10 @@ Judge 的材料是全部 `waiting` Turn 的 `input.requested` 提问加上模拟
 
 `evals/install/comfyui/eval.ts`：以后要做 ComfyUI 的安装题，现在先占一个位置。`test` 里直接 `t.skip("ComfyUI 安装题尚未设计")`，标签 `["install", "comfyui", "placeholder"]`，不写 fixture、判据和 Sandbox 步骤。要确认跳过不会创建 Instabox 实例、不花模型费用；做不到的话，在交付里报告具体代价。
 
+正式设计的方向（等有可用的 ComfyUI 服务后再写）：被测应用是 ComfyUI 这类图像工作流服务，既不是 agent 也不是 skill。服务地址和 key 只写在模拟用户的 instructions 里（运行时从宿主环境变量拼出），首条 prompt 只让 agent 装 NiceEval。判分看 agent 有没有通过 HITL 问到连接信息，能不能接上真实服务、跑通一次非 errored 的评估，以及评估是否覆盖用户的需求。
+
 ## 验收
 
 - `pnpm run typecheck` 通过；`niceeval exp install/v0.21.0 --dry` 显示新增的 llm-x、comfyui 两格，已有格的沿用状态不变。
 - 在 0.21.0 上真实跑一次 llm-x：被测 agent 进入题目正文，判据都给出了判定，没有因为题目自身的缺陷而 errored。是否 passed 不是验收条件。
-- 在 Sandbox 里用 `llm-x.env` 实际跑通一次 fixture 应用的 live 模式（建世界、发帖带图），再开始真实运行题目；跑不通时停下来报告，不要自行换成 fixture 模式或删掉配图需求。
+- 在 Sandbox 里用同样的连接信息实际跑通一次 fixture 应用的 live 模式（建世界、发帖带图），再开始真实运行题目；跑不通时停下来报告，不要自行换成 fixture 模式或删掉配图需求。
