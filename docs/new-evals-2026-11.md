@@ -105,12 +105,15 @@ Concord（<https://github.com/CorrectRoadH/Concord>）是本地的 spec 驱动�
 
 设计合计：gate 8 道，计分 37 分。
 
-### 实现前必须先确认的可行性（任一失败就停止并报告）
+### 环境由我们配置
 
-1. `TARGET_APP_OPENAI_BASE_URL` 加上 `TARGET_APP_MODEL` 能被 Codex 使用。Codex 走 Responses API：从宿主发一个最小的 `/responses` 请求，确认 2xx。不打印 key。如果只支持 chat completions，停止并报告，不要换成别的凭据。
-2. Instabox 安装题实例里有可用的 Docker（DB-GPT 安装题已依赖它，用现有证据确认即可）。
-3. Concord 能装进 Linux 容器：官方 `install.sh` 要求 glibc ≥ 2.39，NiceEval 的 codex 镜像可能不满足。确认至少一条可行路线（官方脚本、Nix，或用 bun 从源码构建），只需证明可行，不写参考答案。
-4. 在固定 ref 的全新 checkout 上，`bun install --frozen-lockfile`、`bun run typecheck`、`bun run concord check` 的 baseline 结果（对应 gate 3 和 gate 5）。
+题目跑在 Instabox 上，外层 Sandbox 和题内环境都由本仓库配置。下面几项是实现时要配好的环境，不是停止条件；哪条路线不通就换一条，并把最终选择和证据写进报告。只有凭据或权限确实无法取得时，才停下报告。
+
+1. **内层 Codex 的模型端点**：Codex 走 Responses API。先从宿主用最小的 `/responses` 请求确认 `TARGET_APP_OPENAI_BASE_URL` 加 `TARGET_APP_MODEL` 是否可用（不打印 key）。不可用时，改为给内层 Codex 提供可用的端点：外层 Codex 用的网关已经支持 Responses。在题目自己的 before 里把对应凭据写进 `/opt/fixture-secrets/` 下的文件，并相应改写模拟用户的说明。凭据不进缓存，也不进工作区。
+2. **Docker 与 Concord 的安装**：外层 Instabox 实例里需要什么（Docker、bun、Concord 的固定版本、内层镜像）就在题目自己的 before 链里准备，可以预拉镜像、预装工具。内层镜像不满足 Concord 的 glibc ≥ 2.39 要求时，换镜像，或者改用 Nix、源码构建等路线。目标是让被测 agent 面对的是装得上的环境；装 Concord、配内层 Sandbox 仍然是被测 agent 自己的事。
+3. **baseline 检查**：在固定 ref 的全新 checkout 上确认 `bun install --frozen-lockfile`、`bun run typecheck`、`bun run concord check` 的结果（对应 gate 3 和 gate 5）。缺 bun 就在 before 里装上。
+
+before 步骤写在 `evals/install/concord/eval.ts` 里，不改 `lib/**`，也不改 experiments。
 
 ## harness/errored-triage
 
