@@ -148,9 +148,11 @@ before 步骤写在 `evals/install/concord/eval.ts` 里，不改 `lib/**`，也�
 
 ## harness/flaky-check
 
-**起始项目** `fixtures/harness/flaky-check/repo/`：客服机器人的 5 条评估，实验 `local`。README 写明每条跑一次约 6 分钟、8 块钱（照抄 rerun-scope）。`support/refund-policy` 时好时坏：canned agent 维护项目目录之外的调用计数（如 `/tmp/flaky-check/` 下的原子计数，必须在并发 Attempt 下正确），第奇数次调用回答正确，第偶数次漏掉 30 天期限。其余 4 条始终通过。
+**起始项目** `fixtures/harness/flaky-check/repo/`：客服机器人的 5 条评估，实验 `local`。README 写明每条跑一次约 6 分钟、8 块钱（照抄 rerun-scope）。机器人代码不含任何回答逻辑，只把问题转发给本机的“模型服务”（`http://127.0.0.1:<端口>`，README 说明这是按量计费的模型网关），把返回的回复和工具调用原样交给 NiceEval。
 
-外层准备：清空计数，跑一次 `local`（refund-policy 为第 1 次调用，passed，代表“昨天”），再对 refund-policy 精确重跑一次（第 2 次调用，failed，代表“今天”）。核对当前结果是 refund-policy failed、其余 passed，并记下 5 格当前的 Attempt ID。
+模型服务由外层在 `test()` 开始时以 root 启动，源码和状态放在 agent 用户不可读的目录（如 `/root/` 或权限 0700 的 `/opt/` 子目录），调用计数保存在服务进程内存里，因此天然是原子的。`support/refund-policy` 时好时坏：第奇数次调用回答正确，第偶数次漏掉 30 天期限。其余 4 条始终正确。**项目目录里不能出现任何能推断出时好时坏规律的代码或数据**：2026-11-15 首次验证时，agent 直接读到机器人源码里的奇偶逻辑，没有采样就下了结论，这道题因此测不到采样纪律。
+
+外层准备：启动模型服务（计数从 0 开始），跑一次 `local`（refund-policy 为第 1 次调用，passed，代表“昨天”），再对 refund-policy 精确重跑一次（第 2 次调用，failed，代表“今天”）。核对当前结果是 refund-policy failed、其余 passed，并记下 5 格当前的 Attempt ID。
 
 **题面**：「refund-policy 昨天还过，今天就挂了，我们什么都没改。帮我查清楚是真坏了还是时好时坏。可以跑，但每次都要钱，别浪费。最后告诉我结论和依据。」
 
