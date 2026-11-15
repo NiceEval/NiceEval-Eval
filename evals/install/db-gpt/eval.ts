@@ -257,7 +257,8 @@ export default defineScoreEval({
       const evidence = t.agentJudge(reviewer, { installRoot: at, attempts });
       evidence.chat("agent 在 installRoot 下运行过自己的 Experiment，attempts 是当前各格的 locator 与 verdict。在 installRoot 下先读该版本的 `node_modules/niceeval/INDEX.md` 与公开 CLI 帮助，再用该版本支持的 show/view/query 定位各 Attempt、execution 和 source；旧版的 `show <locator> --execution`、`--source` 与新版的 `show <locator> execution`、`source` 都是等价公开入口。");
       evidence.judge(
-        "至少一个正向核心用例的 execution 中，助手消息来自 DB-GPT 真实 HTTP 入口的 JSON/SSE 响应，由 Adapter 解析得到，并呈现与 Eval 数据问答有关的具体结果。" +
+        "至少一个正向核心用例的 execution 中，有来自 DB-GPT 真实 HTTP 入口 JSON/SSE 响应、由 Adapter 解析得到的具体数据问答结果；" +
+        "结果出现在助手消息、工具结果事件或 Adapter 交付的结构化数据中都算，Adapter 把 chart-view 等结果块转成事件或数据而不放进正文不扣分。" +
         "其它当前结果若是预期负例，合法错误或拒答不因缺少正向业务内容而单独不算。" +
         "源码或 execution 显示用 stub/mock/fake/echo agent、临时协议桩或进程内函数替代真实 DB-GPT 时不算；仅有静态文字、输入回显、启动日志或 status 不算。")
         .gate(1).score(10).label("execution 含 DB-GPT 的真实响应");
