@@ -90,3 +90,50 @@ pnpm --silent exec niceeval show @1W6XX6APH4T1M assertions
 
 - 03:41 有一次被中断的 Invocation（`s_2b7760e2-5b06-4e9c-9981-0785f23b7eeb`，三个 Run 各完成 1/2），之后 `exp --dry` 一直把三个正式版的 DB-GPT 标成 `running in another invocation`（JSON 里是 `locked: true`），但 `invocation list` 显示没有活跃会话，`run recover --orphaned` 也报告没有孤儿 Run。沿用结果不受影响，但中断后留下的锁没有被释放。这是 NiceEval interrupt 收口的缺陷，由 NiceEval 仓库处理。
 - 每个版本、每道题只有一次外层 Attempt。这是已有开发题上的产品工作流比较，不能单独归因于文档，也推不出统计显著性。
+
+## 第二轮：加入四道保留题后的完整矩阵
+
+同日第二轮按 HEAD `ec17b73` 的判据跑三个正式版，加入了 [new-evals-2026-11](new-evals-2026-11.md) 的四道保留题：`harness/errored-triage`、`harness/flaky-check`、`harness/multiturn-authoring`、`install/concord`。第一轮的结果全部作废，原因有两个：一是 `lib/sandbox.ts` 修了 universal 模板补装 Node 24 后坏掉的 npm（`71d70fb`），二是在共享前缀里预装了 Codex 0.167.2（`34d819a`）。两处都改变了 Sandbox 的物理计划，所以每一格都重新执行。
+
+环境修正后，before 缓存能正常发布和复用。第一轮的前半段没有设 `NICEEVAL_HOME`，落到了默认的 `~/.niceeval`，那里是其它下游旧版本写入的用户库，被当前版本拒绝，所以账本一直报 `ledger-unavailable`。README 现在规定运行前要设 `NICEEVAL_HOME=$PWD/.niceeval-local/homes/current`。
+
+### Harness
+
+36 格全部 passed，每个版本都由一个 Run 新执行：
+
+| 版本 | 分数 | Run |
+| --- | --- | --- |
+| harness/v0.19.0 | 204/213 | `2bf04189-83b8-49ef-816f-7d8e4106fc0c` |
+| harness/v0.20.0 | 201/213 | `5a4fe8ee-ea82-43f3-b301-c5166b9f588f` |
+| harness/v0.21.0 | 210/213 | `3c317c16-2293-425d-bcbb-5f8737cc1a5e` |
+
+| 条件 | v0.19.0 | v0.20.0 | v0.21.0 |
+| --- | --- | --- | --- |
+| errored-triage（保留） | 16/16 | 16/16 | 16/16 |
+| flaky-check（保留） | 12/14 | 13/14 | 13/14 |
+| multiturn-authoring（保留） | 25/27 | 25/27 | 25/27 |
+| log-summary | 14/14 | 12/14 | 14/14 |
+| regex-log | 10/10 | 8/10 | 10/10 |
+| regex-log-authorized | 8/10 | 8/10 | 10/10 |
+| tool-guard | 25/28 | 25/28 | 28/28 |
+
+其余条件三个版本都是满分。三道 Harness 保留题在三个版本上的得分几乎相同，说明这三项行为（区分 errored 与 failed、有限次采样、多轮 Eval 编写）在 0.19.0 到 0.21.0 之间的文档里没有可测的差别。multiturn-authoring 三个版本都在“改写问法的探针”上丢 2 分：agent 写的 Eval 卡死了固定措辞。regex-log 和 log-summary 和第一轮相比在版本间来回变动，属于单次 Attempt 的噪声。稳定的差异仍然只有 tool-guard：0.21.0 满分，两个旧版本都是 25/28。
+
+### Install
+
+| 候选 | DB-GPT | GPT Researcher | Concord（保留题，后转开发集） |
+| --- | --- | --- | --- |
+| v0.19.0 | passed，82/98，`@1BE74WKHAZ2YF` | errored，48/69，`@1E79KTN7EBPER` | failed，16，`@1DXHSY624EFA5` |
+| v0.20.0 | passed，85/98，`@1SQN5AQHGZYP8` | failed，43/69，`@16T1XJD6QHM2T` | failed，17，`@1JBB0SAEJPM8X` |
+| v0.21.0 | passed，98/98，`@1N5A7NSBKP9C2` | passed，77/98，`@1N993HD42PSC5` | failed，2，`@1DYJBKZTZQHG1` |
+
+Invocation `s_87e90d73-7fa0-43bc-8372-db1fe5119b40` 补跑了 6 格：三个版本的 Concord，以及第一次因 Instabox SSH 断线而 errored 的 v0.19.0 两格和 v0.20.0 DB-GPT。按 fix-forward 规则每格只补跑一次。
+
+- **v0.19.0 GPT Researcher 补跑后仍是 errored**，原因换成了 Agent Judge 超时：一个评审会话串行处理 20 道左右的题，用完了默认 600 秒的会话期限，有一道题没评完。这不是环境故障，再跑也会撞上同一限制，所以没有跑第三次。它直接推动了 NiceEval 的判分并发契约（NiceEval `4ee1e5380`）：作者可以把独立的题拆进 `concurrent` 会话并发执行。
+- 判分时间普遍和被测 agent 的执行时间相当。以 `@1N5A7NSBKP9C2` 为例，31 分钟里 agent 两轮 13.5 分钟，`assertions.evaluate` 13.9 分钟。当时公开 timing 看不到判分内部，NiceEval 已补上 Judge 的 timing 区间（NiceEval `4cf8fa7d4`、`aa64d6fb6`）。
+- Concord 三个版本都 failed，被测 agent 都没有把评估对象认成「使用 Concord 指引的 Codex」：v0.21.0 这一格直接给 Concord CLI 写了 Adapter，只拿 2 分；同一版本在验证运行里拿过 12 分，方差很大。根据这一失败，NiceEval 的 INIT 与随包文档已经修订（NiceEval `ff993bd6e`），Concord 题因此移入开发集。
+- GPT Researcher 的 69 仍是提前停止前已登记的分值范围，不能和 98 直接比较。
+
+### 这一轮之后的变化
+
+本轮之后，本仓库做了三处会让全部结果失效的修改：题目兼容原生 HITL 提问（`a2b7609`）、三道题去掉 holdout 标签，以及即将重建的 NiceEval 带入 Record 格式 `niceeval.record.2`。新格式拒绝读取现有 Record，所以本节引用的 Run 与 Attempt 会随 `.niceeval/` 一起归档到 `.niceeval-local/archive/`，用旧版 CLI 指向归档文件仍可复查；之后在新格式下全量重跑。
