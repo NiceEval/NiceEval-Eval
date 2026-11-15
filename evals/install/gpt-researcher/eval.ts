@@ -11,6 +11,7 @@ import { commandSucceeded, countWhere, defineAgentJudge, equals, greaterThan, is
 import { command, gitCheckout, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { parse as parseYaml } from "yaml";
 import { readFileSync } from "node:fs";
+import { firstTurnWrittenNotes } from "../first-turn.ts";
 import { candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../docs.ts";
 import { currentAttempts, query } from "../../../lib/query.ts";
 
@@ -69,41 +70,42 @@ export default defineScoreEval({
     );
 
     // ── 文档与首轮理解 ──
+    const firstRound = { turn: firstTurn, writtenNotes: await firstTurnWrittenNotes(t.sandbox) };
     await t.group("文档与首轮理解", async () => {
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否说清它选用的 GPT Researcher 入口与协议形状，并且本轮命令里能看到它读过定义这个入口的源码？" +
         "仓库里有多条真实入口，例如 FastAPI /ws（发送 `start ` + JSON，返回 logs/images/report/path 帧）和 REST POST /report/（返回含 report 字段的 JSON），选哪条都可以。" +
         "只说“调 API”、猜成 OpenAI messages 接口，或说出的入口在命令读过的源码里找不到，不算。" }))
         .score(2).label("核对接入协议");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否说明核心能力是自主检索多源资料并生成带引用的结构化研究报告，而不是普通对话。" }))
         .score(2).label("核对能力边界");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否在编写 Adapter、Experiment 或 Eval 之前询问了 Judge 用哪个服务、模型或 Key，或者说明没有 Judge 时先只写精确判据？" +
         "此前安装依赖、运行 niceeval init 不算动手实现。" }))
         .score(1).label("询问 Judge");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否在真实运行 Experiment 之前询问了首跑的 Attempt 数、时间或费用预算？安装依赖、写源码与 --dry 都不花预算，不算。" }))
         .score(1).label("询问首跑预算");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否在编写 Adapter、Experiment 或 Eval 之前明确停下，把需要用户决定的选择留给用户？正式 HITL waiting 或普通文本请求确认都算；" +
         "INIT.md 要求先安装再读随包文档，所以停下之前安装依赖、运行 niceeval init、阅读仓库与文档都不算动手。只反问本应从仓库查明的接口事实不算。" }))
         .score(1).label("首轮停下等用户决定");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否主动提出了一条具体的首个 Eval 核心用例：对具体主题自主检索多源资料，产出带引用来源的结构化研究报告正文。仅提 hello、任务提交回执或非空回复不算。" }))
         .score(2).label("提出核心用例");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否说明了这条用例可观察的业务成功结果，例如检查主题相关实质内容、结构化章节和引用 URL？" }))
         .score(1).label("说明成功判据");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否指出了主要失败风险，例如虚构主题被写成看似有据的报告？" }))
         .score(1).label("指出主要风险");
     });

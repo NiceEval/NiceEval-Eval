@@ -9,6 +9,7 @@
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
 import { commandSucceeded, countWhere, defineAgentJudge, equals, greaterThan, isDefined, or, referencesAnyPath, toolMatch, binaryJudge } from "niceeval/expect";
 import { command, gitCheckout, sandboxRequirements } from "niceeval/sandbox";
+import { firstTurnWrittenNotes } from "../first-turn.ts";
 import { candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../docs.ts";
 import { currentAttempts, query } from "../../../lib/query.ts";
 
@@ -57,44 +58,45 @@ export default defineScoreEval({
     );
 
     // ── 文档与首轮理解 ──
+    const firstRound = { turn: firstTurn, writtenNotes: await firstTurnWrittenNotes(t.sandbox) };
     await t.group("文档与首轮理解", async () => {
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否说清它选用的 DB-GPT 入口与协议形状（路径、请求字段、JSON 或 SSE 返回），并且本轮命令里能看到它读过定义这个入口的路由源码？" +
         "仓库里有多条真实入口，例如 POST /api/v2/chat/completions、/api/v1/chat/completions、/api/v1/chat/react-agent，选哪条都可以。" +
         "只说“调 API”、猜 WebSocket，或说出的路径在命令读过的源码里找不到，不算。" }))
         .score(2).label("核对接入协议");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否说明 DB-GPT 的差异化能力是让 LLM 访问数据源、生成并执行 SQL，并把它和只调裸 LLM 的普通聊天区分开？" +
         "chat_data / chat_db_qa / chat_dashboard 对 chat_normal，或 react-agent 数据分析对普通对话，都算。" }))
         .score(2).label("核对能力边界");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否在编写 Adapter、Experiment 或 Eval 之前询问了 Judge 用哪个服务、模型或 Key，或者说明没有 Judge 时先只写精确判据？" +
         "此前安装依赖、运行 niceeval init 不算动手实现。" }))
         .score(1).label("询问 Judge");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否在真实运行 Experiment 之前询问了首跑的 Attempt 数、时间或费用预算？安装依赖、写源码与 --dry 都不花预算，不算。" }))
         .score(1).label("询问首跑预算");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否在编写 Adapter、Experiment 或 Eval 之前明确停下，把需要用户决定的选择留给用户？正式 HITL waiting 或普通文本请求确认都算；" +
         "INIT.md 要求先安装再读随包文档，所以停下之前安装依赖、运行 niceeval init、阅读仓库与文档都不算动手。只反问本应从仓库查明的接口事实不算。" }))
         .score(1).label("首轮停下等用户决定");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否主动提出了一条具体的首个 Eval 核心用例：用户用自然语言问一份内容固定的真实数据里的问题，DB-GPT 访问这份数据、" +
         "执行 SQL 或分析代码，再给出答案？数据可以是数据库表，也可以是交给 react-agent 数据分析的 CSV/Excel 文件。" +
         "要说出具体问题和具体的表或文件；只提 hello、HTTP 成功、非空回复，或“某个销售分析问题”这种还没定下来的计划，不算。" }))
         .score(2).label("提出核心用例");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否说明了这条用例可观察的业务成功结果，例如核对具体数值、表名或 SQL？" }))
         .score(1).label("说明成功判据");
-      t.judge(firstTurn, binaryJudge({ rubric:
-          "只看首轮：" +
+      t.judge(firstRound, binaryJudge({ rubric:
+          "只看首轮（turn 是首轮对话，writtenNotes 是首轮写下的说明文件正文，两者都算 agent 本轮的说明）：" +
         "agent 是否指出了主要失败风险，例如对不存在的表/字段编造结果？" }))
         .score(1).label("指出主要风险");
     });
