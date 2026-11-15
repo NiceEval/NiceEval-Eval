@@ -4,9 +4,10 @@ import { binaryJudge, commandSucceeded, countWhere, defineAgentJudge, equals, gr
 import { command, gitCheckout, sandboxRequirements, shell } from "niceeval/sandbox";
 import { firstTurnQuestions, firstTurnWrittenNotes } from "../first-turn.ts";
 import { candidateInitDocUrl } from "../docs.ts";
-import { currentAttempts, query } from "../../../lib/query.ts";
+import { query } from "../../../lib/query.ts";
 
 const reviewer = defineAgentJudge({
+  concurrent: true,
   instructions: "你在评审 Concord 仓库里的 NiceEval 接入，自己读文件和运行只读命令取证。Concord 没有 AI 入口，被测对象是使用 Concord 指引的 Codex。不得读取 .niceeval 私有文件或 NiceEval 实现源码；结果只走安装版本支持的公开 show/query/view。不得读取或输出凭据实际值，不替 agent 补做运行。",
 });
 const owner = defineSimulatedUser({
@@ -61,9 +62,9 @@ export default defineScoreEval({
     t.note("HITL 回答次数", { answered, firstReplyWasHITL: firstTurn.status === "waiting", stillWaiting: handoff.status === "waiting" });
     const configPath = (await t.sandbox.runShell("find . -maxdepth 3 -name niceeval.config.ts -not -path '*/node_modules/*' | head -1")).stdout.trim();
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
-    const review = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
-    review.chat("baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
     await t.group("实验设计", async () => {
+      const review = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
+      review.chat("baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
       review.judge("至少一组基线和一组处理 Experiment，两组 Codex 模型、推理设置、Eval 集合和 Concord 版本相同，唯一差别是是否提供 Concord 随包 skill/AGENTS 指引；无指引组不能仍从工作区 AGENTS 或 skill 获得同样指引。")
         .score(3).label("对照只差随包指引");
       review.judge("Sandbox 安装的 Concord 锁定具体版本或提交，不能安装不固定的 latest/master。")
@@ -72,6 +73,8 @@ export default defineScoreEval({
         .score(2).label("凭据运行时注入");
     });
     await t.group("评估题质量", async () => {
+      const review = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
+      review.chat("baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
       review.judge("内层 Codex 获得受 Concord 管理的真实项目：有 Feature、Use Case、concepts.md 或等价结构；任务是改行为或修缺陷，不是问答。")
         .score(2).label("工作区真实");
       review.judge("Eval 用真实命令退出码和文件内容确定性检查 concord check、项目测试、Use Case 文件改动和测试标记，不能只看 Codex 回复或把这些事实交给语义 Judge。")
@@ -147,7 +150,39 @@ PY`);
       const shell = (script: string) => t.sandbox.runShell(script);
       const runs = (await query(shell, { kind: "run.list" })).runs;
       await t.check(runs.length, greaterThan(0)).gate().label("真实运行过 Experiment").orStop();
-      const attempts = currentAttempts(await query(shell, { kind: "project.get" }));
+      const latestMembers = new Map<string, { experimentId: string; evalId: string; locator: string | null; verdict: string | null }>();
+      // Run 是完成证据；未声明 behaviorRevision 的合法 Adapter 不会产生可沿用 current。
+      // 按开始时间覆盖同一格/采样位置，后续失败或未发布成员不能被较早成功掩盖。
+      const orderedRuns = [...runs].sort((a, b) => {
+        const time = (run: { startedAt: string | number }) => {
+          const value = typeof run.startedAt === "number" ? run.startedAt : Date.parse(run.startedAt);
+          if (!Number.isFinite(value)) throw new Error("run.list 缺少有效 startedAt，无法确定最新结果");
+          return value;
+        };
+        return time(a) - time(b);
+      });
+      for (const run of orderedRuns) {
+        const id = run.runId ?? run.id;
+        if (typeof id !== "string") throw new Error("run.list 缺少 Run ID");
+        const doc = await query(shell, { kind: "run.get", runId: id });
+        if (!Array.isArray(doc?.run?.plannedAttempts)) throw new Error("run.get 缺少 plannedAttempts，无法读取运行成员");
+        for (const attempt of doc.run.plannedAttempts) {
+          const ordinal = attempt.attemptOrdinal ?? attempt.attempt;
+          if (typeof attempt.evalId !== "string" || !Number.isSafeInteger(ordinal)) throw new Error("run.get 缺少 Eval 或 Attempt ordinal，无法确定最新成员");
+          const experimentId = run.experimentId;
+          if (typeof experimentId !== "string") throw new Error("run.list 缺少 experimentId");
+          const memberKey = JSON.stringify([experimentId, attempt.evalId, ordinal]);
+          if (attempt.relation !== "reference" || !latestMembers.has(memberKey)) {
+            latestMembers.set(memberKey, {
+              experimentId, evalId: attempt.evalId,
+              locator: attempt.publication?.attemptLocator ?? null,
+              verdict: attempt.verdict ?? attempt.publication?.verdict ?? null,
+            });
+          }
+
+        }
+      }
+      const attempts = [...latestMembers.values()];
       await t.check(attempts.length, greaterThan(0)).gate().label("当前格包含 Attempt").orStop();
       await t.check(attempts.map((attempt) => attempt.locator), countWhere(isDefined(), equals(attempts.length))).gate().label("所有当前 member 都发布 Attempt").orStop();
       const executions = await t.sandbox.runShell(`python3 - <<'PY'

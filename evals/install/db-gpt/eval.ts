@@ -11,10 +11,11 @@ import { commandSucceeded, countWhere, defineAgentJudge, equals, greaterThan, is
 import { command, gitCheckout, sandboxRequirements } from "niceeval/sandbox";
 import { firstTurnQuestions, firstTurnWrittenNotes } from "../first-turn.ts";
 import { candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../docs.ts";
-import { currentAttempts, query } from "../../../lib/query.ts";
+import { query } from "../../../lib/query.ts";
 
 /** 评审者：在被测 Sandbox 里自己读文件、跑命令取证，同一会话里逐题打分。*/
 const reviewer = defineAgentJudge({
+  concurrent: true,
   instructions:
     "你在评审被测 agent 刚在这个 DB-GPT 仓库里完成的 NiceEval 接入。自己阅读文件、运行命令取证，只根据亲眼看到的证据评分。",
 });
@@ -140,60 +141,66 @@ export default defineScoreEval({
       "交接必须给出从仓库根目录能使用的本地命令，子目录安装需明确目录参数或根脚本。")
       .score(3).label("安装融入宿主工具链并交付根目录入口");
     await t.group("Adapter、Experiment 与 Eval 源码设计", async () => {
-      review.judge(
+      const adapterReview = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
+      adapterReview.chat("installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
+      adapterReview.judge(
         "NiceEval 助手消息或标准事件的文本来自 DB-GPT 实际 JSON/SSE response/delta，" +
         "并正确组合流式分片和结束。返回输入原文、固定 ASSISTANT 文字、未读 body 或把 logs/status 当最终答案不算。")
         .score(6).label("真实响应映射为 NiceEval 消息或事件");
-      review.judge(
+      adapterReview.judge(
         "Adapter 真正读取所选静态配置（如 base URL、chat_mode 或 react-agent 的数据源参数），并把它们传入 DB-GPT 请求。" +
         "只在 Experiment 声明但 send 不读取，或 send 内全部硬编码，不算。model 是否被消费不在本项判断。")
         .score(3).label("静态配置传到 DB-GPT");
-      review.judge(
+      adapterReview.judge(
         "send 把 NiceEval AbortSignal 或等价取消机制传给网络请求，并设置有界超时。")
         .score(1).label("取消与超时");
-      review.judge(
+      adapterReview.judge(
         "在非 2xx、SSE/JSON 解析错误、连接中断或目标服务报错时抛出或映射为失败。catch 后改返成功空文本或吞错不算。")
         .score(2).label("错误不被吞掉");
-      review.judge(
+      adapterReview.judge(
         "凭证只从环境/目标服务进程边界读取，不硬编码，不写入工作区，不打印，也不混入 Eval 文本或取证输出；" +
         "/opt/fixture-secrets/target-app.env 只注入目标服务进程，不 source 到 agent shell。")
         .score(2).label("凭证边界正确");
-      review.judge(
+      const evalReview = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
+      evalReview.chat("installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
+      evalReview.judge(
         "至少一条 Eval 输入让用户用自然语言问一份内容固定的真实数据，答案只有访问这份数据才能得到，" +
         "并且请求走的是能触达这份数据的模式并带上对应的数据源参数。哪种组合都算，只要 DB-GPT 真的去读这份数据：" +
         "chat_data / chat_db_qa / chat_dashboard 加数据库数据源，react-agent 加数据库数据源（如 ext_info.database_name），或 react-agent 加数据文件。" +
         "chat_normal 只是裸 LLM 闲聊，在它下面问常识或算术不算；没有数据源参数、hello、自我介绍或无关常识不算。")
         .score(6).label("输入覆盖 DB-GPT 核心能力");
-      review.judge(
+      evalReview.judge(
         "断言核对可预期的业务事实，例如查询数值、表/字段名、SQL 片段或与固定测试数据一致的分析结论。" +
         "只检查 succeeded、HTTP 2xx、非空文本、字数或“成功”字样不算。")
         .score(6).label("断言检查具体业务结果");
-      review.judge(
+      evalReview.judge(
         "Eval 询问固定测试数据中不存在的表或字段，并断言系统不得编造数值/SQL。" +
         "prompt 若直接教它标准拒答，或只把网络失败当负例，不算。")
         .score(4).label("真实负例暴露编造风险");
-      review.judge(
+      evalReview.judge(
         "对可有多种正确措辞的输出使用语义 Judge、解析后的结构/数值比较、或能容纳合法变体的 matcher。" +
         "仅匹配一个脆弱短语、完整原文或和业务无关的长度不算。")
         .score(3).label("开放输出使用稳健判断");
-      review.judge(
+      evalReview.judge(
         "Eval 只描述任务和断言，没有在单条 test 用例内自行启动、伪造、重启或代管 DB-GPT 全局服务。" +
         "服务生命周期位于项目级命令准备或 Experiment/Plugin/Sandbox 层面才算。")
         .score(2).label("Eval 不代管目标服务");
-      review.judge(
+      const experimentReview = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
+      experimentReview.chat("installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
+      experimentReview.judge(
         "Experiment 实际选择本次 DB-GPT Adapter，且它选中的 Eval 测试的也是 DB-GPT 数据问答，" +
         "而不是内置/通用/echo agent 或无关 Eval。Adapter 要能从 Experiment 的导入追到定义；Eval 的选择按 NiceEval 的规则判断：" +
         "`evals` 里的 ID 或路径前缀选中对应文件，省略 `evals` 表示选中 evals/ 下全部 Eval，不要求 Experiment 导入 Eval 文件。")
         .score(5).label("使用本次 DB-GPT Adapter 与目标 Eval");
-      review.judge(
+      experimentReview.judge(
         "Experiment 声明的每个 model、flags 或静态配置都有清楚的消费方：Adapter/lifecycle 读取后传给 DB-GPT。" +
         "配了值却没有任何读取点、只改显示名或被硬编码覆盖不算。用户指定目标模型取自凭证文件里的 TARGET_APP_MODEL、不做 model 维度，所以 Experiment 不声明 model 或明确拒绝 model 覆盖都算正确。")
         .score(3).label("模型、flags 与静态配置不是死配置");
-      review.judge(
+      experimentReview.judge(
         "agent 按照 DB-GPT 项目自身的最佳实践（如通过官方 CLI dbgpt start、配置与健康探测，或 Experiment/Plugin lifecycle）真实启动 DB-GPT 并确保 HTTP 入口就绪后才跑评测。" +
         "无任何启动与就绪动作仅盲目假定服务已就绪不算；使用假 mock 或进程内 fake 替代真实服务不算。")
         .score(2).label("目标服务启动与就绪");
-      review.judge(
+      experimentReview.judge(
         "在 lifecycle 或任务收尾时对启动的服务进程/容器有可靠清理或回收机制。")
         .score(1).label("目标服务清理");
     });
@@ -255,7 +262,39 @@ export default defineScoreEval({
       const runs = (await query(shell, { kind: "run.list" })).runs;
       await t.check(runs.length, greaterThan(0)).gate().score(6)
         .label("agent 真实运行过自己的 Experiment").orStop();
-      const attempts = currentAttempts(await query(shell, { kind: "project.get" }));
+      const latestMembers = new Map<string, { experimentId: string; evalId: string; locator: string | null; verdict: string | null }>();
+      // Run 是完成证据；未声明 behaviorRevision 的合法 Adapter 不会产生可沿用 current。
+      // 按开始时间覆盖同一格/采样位置，后续失败或未发布成员不能被较早成功掩盖。
+      const orderedRuns = [...runs].sort((a, b) => {
+        const time = (run: { startedAt: string | number }) => {
+          const value = typeof run.startedAt === "number" ? run.startedAt : Date.parse(run.startedAt);
+          if (!Number.isFinite(value)) throw new Error("run.list 缺少有效 startedAt，无法确定最新结果");
+          return value;
+        };
+        return time(a) - time(b);
+      });
+      for (const run of orderedRuns) {
+        const id = run.runId ?? run.id;
+        if (typeof id !== "string") throw new Error("run.list 缺少 Run ID");
+        const doc = await query(shell, { kind: "run.get", runId: id });
+        if (!Array.isArray(doc?.run?.plannedAttempts)) throw new Error("run.get 缺少 plannedAttempts，无法读取运行成员");
+        for (const attempt of doc.run.plannedAttempts) {
+          const ordinal = attempt.attemptOrdinal ?? attempt.attempt;
+          if (typeof attempt.evalId !== "string" || !Number.isSafeInteger(ordinal)) throw new Error("run.get 缺少 Eval 或 Attempt ordinal，无法确定最新成员");
+          const experimentId = run.experimentId;
+          if (typeof experimentId !== "string") throw new Error("run.list 缺少 experimentId");
+          const memberKey = JSON.stringify([experimentId, attempt.evalId, ordinal]);
+          if (attempt.relation !== "reference" || !latestMembers.has(memberKey)) {
+            latestMembers.set(memberKey, {
+              experimentId, evalId: attempt.evalId,
+              locator: attempt.publication?.attemptLocator ?? null,
+              verdict: attempt.verdict ?? attempt.publication?.verdict ?? null,
+            });
+          }
+
+        }
+      }
+      const attempts = [...latestMembers.values()];
       await t.check(attempts.length, greaterThan(0)).gate()
         .label("当前格包含 Attempt").orStop();
       await t.check(attempts.map((attempt) => attempt.locator), countWhere(isDefined(), equals(attempts.length)))

@@ -4,7 +4,7 @@
 
 首轮评分材料包含对话、首轮说明文件 `writtenNotes` 与原生提问 `questions`；进入 waiting 并提出需要用户决定的问题也算停下等用户。模拟用户仍在首轮后回复一次，随后仅在 waiting 时继续回答，HITL 回答上限为 6 次（含首轮那次若它回答 waiting），最终交接取循环结束后的 Turn，并记录回答次数。达到上限仍 waiting 时保留该状态，不当成完成。
 
-`exp --dry --json` 只要求命令成功并包含非空 matrix，不再要求单格单次。真实运行证据由公开 `run.list` 确认存在，再从 `project.get` 的 `project.cells[].members[].publication` 读取每个格的当前结果；局部补跑不丢弃其它格，较早成功也不能掩盖后来的失败。所有当前 member 必须发布 Attempt，取其 locator 读取 overview、execution、source。每项判据仍只计一次分，Judge 同时审阅所有当前结果，完成状态与弱 passed 分要求所有当前结果满足对应判据。
+`exp --dry --json` 只要求命令成功并包含非空 matrix，不再要求单格单次。真实运行证据由公开 `run.list` 确认存在，再从各 Run 的公开 `run.get` 成员，按 experimentId、evalId 与 attemptOrdinal 选取最新运行结果；局部补跑不丢弃其它格，较早成功也不能掩盖后来的失败。最新成员必须发布 Attempt，取其 locator 读取 overview、execution、source。每项判据仍只计一次分，Judge 同时审阅所有当前结果，完成状态与弱 passed 分要求所有当前结果满足对应判据。
 
 不删除历史 Run 或较早失败的 Attempt。成本比较应保留全部运行的可取得用量，不能仅用最终成功结果代表总成本；缺失费用保持未知。目标应用目前直连 LLM 出口，项目不自行估算或声称已完整记录目标应用费用。
 
@@ -15,3 +15,5 @@ Instabox 的目标应用凭据按 Attempt 写入，随实例回收。当前不�
 完整评分路径还必须容纳所有 Judge 的审计预留。每项配置 2 MiB 会在累计预留达到 Attempt 的 64 MiB 上限时抛错，即使实际材料很小；默认审计预算又不足以保留本题的源码材料。因此 `yesNo` 使用每项 1 MiB，并以真实 CLI、34 项评分与较大材料验证完整结算。材料或审计超限仍保留不可判定，不截断后评分。
 
 验证：仓库 typecheck、现有 query 契约测试覆盖失败后局部修复和历史保留；真实安装题分别检查稳定版与 canary 的结果及取证入口。不以静态检查代替实际接入验收。
+
+安装题运行取证不依赖可沿用的 current：未声明 behaviorRevision 是合法 Adapter 写法，仍应承认其 Run 中发布的真实结果；后续失败或未发布成员不能被较早成功掩盖。Agent Judge 按评分组拆成独立取证的 concurrent 会话，组内需要上下文的题继续串行，以缩短判分等待且保持原有题意、分值与 label。

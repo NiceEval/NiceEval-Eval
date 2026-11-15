@@ -16,6 +16,7 @@ const originalOfficialTests = readFileSync(new URL(OFFICIAL_TESTS, FIXTURE), "ut
 
 /** 评审者：读 agent 写出的 Eval，按 NiceEval 品味逐题打分。*/
 const tasteReviewer = defineAgentJudge({
+  concurrent: true,
   instructions: "你在评审被测 agent 刚写的 NiceEval Eval 源码写得好不好。自己阅读文件取证，只根据亲眼看到的内容评分。",
 });
 

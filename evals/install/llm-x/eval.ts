@@ -34,6 +34,7 @@ function redactConnection(text: string): string {
 }
 
 const reviewer = defineAgentJudge({
+  concurrent: true,
   instructions: "你在评审 LLM X 社交游戏仓库的 NiceEval 自定义应用接入，自己阅读文件、运行只读命令取证。baseline 是 agent 开工前唯一提交，用 git status/git diff 查看新增及修改文件，再读其导入的应用源码。先评源码，安装或运行失败不能抹掉源码证据。不得补做运行，不读取 .niceeval 私有文件或 NiceEval 实现；结果只走安装版本公开 show/query/view。不得输出实际凭据，图片只检查关联位置，不评画面质量。",
 });
 const owner = defineSimulatedUser({
@@ -85,9 +86,9 @@ export default defineScoreEval({
     });
     const configPath = (await t.sandbox.runShell("find . -maxdepth 3 -name niceeval.config.ts -not -path '*/node_modules/*' | head -1")).stdout.trim();
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
-    const review = t.agentJudge(reviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
-    review.chat("用 baseline 后的 diff 及新文件检查用户四条需求。内置 FixtureProvider 是应用原有离线开发工具，评分只接受 live 路径；不能因为有该类就误判 live 代码是 mock，也不能把离线 smoke 当作真实模型运行。");
     await t.group("需求满足", async () => {
+      const review = t.agentJudge(reviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
+      review.chat("用 baseline 后的 diff 及新文件检查用户四条需求。内置 FixtureProvider 是应用原有离线开发工具，评分只接受 live 路径；不能因为有该类就误判 live 代码是 mock，也不能把离线 smoke 当作真实模型运行。");
       review.judge("有 Eval 走真实发帖路径（publishPost 或页面同源 HTTP 操作），检查生成帖子内容遵循玩家意图；开放内容用 Judge 或等价语义判据，不用关键词或输入回显代替。用户原始回复不是模型生成帖子。")
         .score(3).label("发帖遵循意图");
       review.judge("有 Eval 回复指定帖子后等待后台 AI 回应，检查回应者存在于当前世界、内容回应被回复帖子且符合回应人物主页设定。三项都须覆盖，不能只检查用户原文保存或固定等待时间。")
@@ -98,15 +99,17 @@ export default defineScoreEval({
         .score(3).label("配图附对位置");
     });
     await t.group("接入形态", async () => {
+      const review = t.agentJudge(reviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
+      review.chat("用 baseline 后的 diff 及新文件检查用户四条需求。内置 FixtureProvider 是应用原有离线开发工具，评分只接受 live 路径；不能因为有该类就误判 live 代码是 mock，也不能把离线 smoke 当作真实模型运行。");
       review.judge("使用 NiceEval 自定义应用接口 defineAdapter 暴露发帖、回复、刷新、配图等业务操作，让 Eval 直接调用业务方法；不能硬套成聊天 send。")
         .score(3).label("使用自定义应用接口");
       review.judge("live 模式真实调用文字及图片模型；用户在 HITL 对话给出的 API key 和额外请求头仅存于被 gitignore 排除的未跟踪 env 文件或进程环境，运行时注入应用。Judge 从 target-app.env 运行时读取配置。不把实际凭据写入源码、提交或打印。")
         .score(3).label("live 配置运行时注入");
       review.judge("应用生命周期覆盖构建、启动、就绪检查、每 Attempt 临时数据库和资源清理；失败或取消时也会停止服务并清理临时数据库。仅启动日常共享实例不算。")
         .score(2).label("应用生命周期完整");
+      review.judge("安装复用已有根目录 pnpm 开发工具项目，交接说明从仓库根目录运行的本地命令；没有另建第二套 Node 项目或锁文件让用户猜 cd 路径。")
+        .score(3).label("安装融入宿主工具链并交付根目录入口");
     });
-    review.judge("安装复用已有根目录 pnpm 开发工具项目，交接说明从仓库根目录运行的本地命令；没有另建第二套 Node 项目或锁文件让用户猜 cd 路径。")
-      .score(3).label("安装融入宿主工具链并交付根目录入口");
 
     await t.group("宿主安装规范", async () => {
       const installed = JSON.parse(await t.sandbox.readText("package.json"));
