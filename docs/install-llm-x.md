@@ -23,7 +23,7 @@
 因此：
 
 - **llm-x 的文字和图片都走 `CODEX_BASE_URL` 网关。** 图片模型 `gpt-image-1`；文字模型由 worker 在该网关上挑一个支持 Responses + `json_schema` 的较便宜模型并实测，写进下面的题目 before。
-- **fixture 应用加一个可选配置 `OPENAI_EXTRA_HEADERS`**：JSON 对象，附加到文字和图片的每个 provider 请求上；不设时行为与原应用完全相同。README 的 Live provider 一节把它写成普通功能（经过需要额外请求头的代理时使用），不提评测。这是对我们自己 fixture 副本的改动，不改 NiceEval 仓库的示例。
+- **fixture 应用加一个可选配置 `OPENAI_EXTRA_HEADERS`**：JSON 对象，附加到文字和图片的每个 provider 请求上；不设时行为与原应用完全相同。同理再加可选的 `OPENAI_IMAGE_QUALITY`，原样作为 `quality` 发给 `images/generations`；不设时不发这个字段。实测 `gpt-image-1` 不带 `quality` 时一次建世界约 3 分钟后失败，带 `quality=low` 时 15 秒返回 200。README 的 Live provider 一节把它写成普通功能（经过需要额外请求头的代理时使用），不提评测。这是对我们自己 fixture 副本的改动，不改 NiceEval 仓库的示例。
 - **连接信息只通过 HITL 给出，不预置文件。** instructions 在模块加载时从宿主环境变量拼出（`CODEX_BASE_URL`、`CODEX_API_KEY`、`CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`），源码和 git 里没有任何值；Codex 不问就拿不到，也就无法跑真实运行。代价：模拟用户的回答会原样进入本地 Record，`show @<locator> execution` 能看到这些值。本仓库的 Record 只留在本机，不导出、不分享。
 - Judge 不走这个网关，用 `target-app.env` 的 DeepSeek 网关和 `deepseek-flash`（worker 实测 Chat Completions 200），与应用的文字模型分开。
 
@@ -37,7 +37,7 @@ instructions 写明：
   2. **AI 回应接得上**：玩家回复某条帖子后，后台回应必须来自世界里存在的人物，内容回应被回复的帖子，并符合该人物主页的设定。
   3. **刷新有新内容**：刷新动态后出现新内容，而且不和已有动态重复。
   4. **配图附对位置**：要求配图时，图片附在正确的帖子上；不评判画面质量。
-- 已定决定：Tier 1，不接 OTel；用 live 真实模型。**连接信息由模拟用户在被问到时直接给出**：网关地址、API key、两个 Cloudflare Access 请求头（`CF-Access-Client-Id`、`CF-Access-Client-Secret`）、文字模型名、图片模型名 `gpt-image-1`。instructions 要求它说明这些值只能放进未跟踪的 env 文件或进程环境，不能写进源码、提交或打印。Judge 用 `/opt/fixture-secrets/target-app.env` 里的网关（`OPENAI_API_KEY`、`OPENAI_BASE_URL`），模型 `deepseek-flash`，走 Chat Completions。首跑最多 2 个 Attempt，可以自主运行、诊断和重试，但本次任务总共不超过 6 个 Attempt。
+- 已定决定：Tier 1，不接 OTel；用 live 真实模型。**连接信息由模拟用户在被问到时直接给出**：网关地址、API key、两个 Cloudflare Access 请求头（`CF-Access-Client-Id`、`CF-Access-Client-Secret`）、文字模型名、图片模型名 `gpt-image-1`、图片质量 `low`。instructions 要求它说明这些值只能放进未跟踪的 env 文件或进程环境，不能写进源码、提交或打印。Judge 用 `/opt/fixture-secrets/target-app.env` 里的网关（`OPENAI_API_KEY`、`OPENAI_BASE_URL`），模型 `deepseek-flash`，走 Chat Completions。首跑最多 2 个 Attempt，可以自主运行、诊断和重试，但本次任务总共不超过 6 个 Attempt。
 
 ## 流程
 
