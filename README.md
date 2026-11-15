@@ -161,4 +161,4 @@ Install 与 Harness 都使用 Instabox `universal` 模板（自带 pnpm、Docker
 - 题库都是开发集：看过失败并据此调过的题不能当盲测。canned agent 只用于稳定复现，不代表真实模型能力。
 - 静态计划通过不代表真实运行通过。历史验收见 [`docs/`](docs/) 下带日期的记录。
 
-最近一轮完整结果见 [2026-11-14 验收记录](docs/validation-2026-11-14.md)：33 格中 30 passed、3 failed、0 errored。
+最近一轮完整结果见 [2026-11-15 验收记录](docs/validation-2026-11-15.md)：0.19.0、0.20.0、0.21.0 三个正式版共 33 格，31 passed、2 failed、0 errored；GPT Researcher 只有 0.21.0 通过。
