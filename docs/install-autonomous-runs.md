@@ -2,6 +2,8 @@
 
 安装题允许被测 coding agent 自主选择格数、Attempt 数及运行轮次，诊断和修复后无需再次申请运行授权。外层每个候选采样一次的设置保持原义；它不是内层运行预算。首轮仍检验 agent 是否询问未知的运行边界，回答明确给出自主运行授权。
 
+首轮评分材料包含对话、首轮说明文件 `writtenNotes` 与原生提问 `questions`；进入 waiting 并提出需要用户决定的问题也算停下等用户。模拟用户仍在首轮后回复一次，随后仅在 waiting 时继续回答，HITL 回答上限为 6 次（含首轮那次若它回答 waiting），最终交接取循环结束后的 Turn，并记录回答次数。达到上限仍 waiting 时保留该状态，不当成完成。
+
 `exp --dry --json` 只要求命令成功并包含非空 matrix，不再要求单格单次。真实运行证据由公开 `run.list` 确认存在，再从 `project.get` 的 `project.cells[].members[].publication` 读取每个格的当前结果；局部补跑不丢弃其它格，较早成功也不能掩盖后来的失败。所有当前 member 必须发布 Attempt，取其 locator 读取 overview、execution、source。每项判据仍只计一次分，Judge 同时审阅所有当前结果，完成状态与弱 passed 分要求所有当前结果满足对应判据。
 
 不删除历史 Run 或较早失败的 Attempt。成本比较应保留全部运行的可取得用量，不能仅用最终成功结果代表总成本；缺失费用保持未知。目标应用目前直连 LLM 出口，项目不自行估算或声称已完整记录目标应用费用。

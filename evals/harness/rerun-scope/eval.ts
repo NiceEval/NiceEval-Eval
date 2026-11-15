@@ -1,5 +1,5 @@
 import { isDeepStrictEqual } from "node:util";
-import { defineScoreEval } from "niceeval";
+import { defineScoreEval, defineSimulatedUser } from "niceeval";
 import { equals, binaryJudge } from "niceeval/expect";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
@@ -51,9 +51,18 @@ export default defineScoreEval({
 
     // 用户只说改了什么、要什么。不提示沿用、不提示 --dry，也不提示不要全量重跑；README 写了每次运行的时间和钱。
     const input = "我刚把 support/refund 这条 eval 的判据改了，退款时效现在要求说 5 个工作日。把 local 的结果更新一下，告诉我现在什么情况。";
-    const turn = await t.send(input);
+    let turn = await t.send(input);
+    const simulatedUser = t.simulatedUser(defineSimulatedUser({
+      instructions: "你是提出以下任务的用户，只依据原请求回答 agent 的提问，不补充未提供的事实、不扩大修改与付费运行授权；未决定的实现细节让 agent 依据仓库、公开结果与随包文档自行判断。原请求：" + input,
+    }));
+    let answered = 0;
+    while (turn.status === "waiting" && answered < 6) {
+      turn = await simulatedUser.reply(turn);
+      answered++;
+    }
+    t.note("HITL 回答次数", { answered, firstReplyWasHITL: answered > 0, stillWaiting: turn.status === "waiting" });
     turn.succeeded().label("Turn 成功");
-    turn.notCalledTool(readsPrivateRecord)
+    t.notCalledTool(readsPrivateRecord)
       .label("未观察到读取私有 Record（非完整文件审计）");
 
     const after = await current();

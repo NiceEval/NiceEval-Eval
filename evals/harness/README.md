@@ -18,11 +18,12 @@
 | rerun-scope | 五条都 passed 之后用户改了一条的判据，要求更新结果 | 17 |
 | regression-triage | baseline 与 candidate 两个实验都跑完，问换模型后哪里退步、为什么、值不值得换 | 17 |
 | errored-triage（holdout） | nightly 已跑完 2 errored / 2 failed / 1 passed，只读区分环境故障与助手问题 | 16 |
-| flaky-check（holdout） | refund-policy 昨天 passed、今天 failed，有限采样判断是否不稳定 | 14 |
-| multiturn-authoring（holdout） | 新增订房多轮评估，验证先问清两个日期、等用户回答才按回答下单 | 27 |
+| flaky-check | refund-policy 昨天 passed、今天 failed，有限采样判断是否不稳定 | 14 |
+| multiturn-authoring | 新增订房多轮评估，验证先问清两个日期、等用户回答才按回答下单 | 27 |
 
 满分合计 213。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
+所有条件在首轮后仅为原生 waiting 提问续答，模拟用户只依据原请求回答，不扩大授权，最多回答 6 次；没有 waiting 时仍是单轮。记录 HITL 回答次数，交接使用最后的 Turn，工具读取审计覆盖全部轮次。达到上限仍 waiting 时保留该状态，不算成功结束。
 B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
 
 ## 评分在评什么
@@ -115,12 +116,12 @@ K（multiturn-authoring，27 分）测多轮行为判据。先读 agent 自己�
 ## 题库质量与适用边界
 
 B 的两类相似 failed 要求不同责任归因，C 用真实测试和反例检查产物，D 与 E 用正反探针检查改后的判据，适合工作流回归。
-A 配对能区分任务理解/自主恢复和明确授权后的执行能力。原有题覆盖七个任务家族，属于开发集；新增三个家族作为保留题冻结。
+A 配对能区分任务理解/自主恢复和明确授权后的执行能力。原有题覆盖七个任务家族，属于开发集；新增三个家族曾作为保留题冻结。2026-11-15 根据失败修改 NiceEval 文档后，flaky-check 与 multiturn-authoring 移入开发集，errored-triage 仍是保留题。
 重复 Attempt 增加行为稳定性的证据，不增加场景覆盖。canned agent 稳定制造问题，
 不能用这些结果推断真实模型解决 Terminal-Bench 的能力。
 
 保留题必须在调文档前冻结，使用不同依赖、合法失败与输出格式；只更名或替换固定答案不够。
-三道新增题统一打 `holdout` 标签。可以修正判据本身的误判（Judge rubric 与事实矛盾、外层核验 bug），
+三道新增题最初统一打 `holdout` 标签；当前只有 errored-triage 保留此标签。可以修正判据本身的误判（Judge rubric 与事实矛盾、外层核验 bug），
 但一旦根据某道题的失败修改 NiceEval 的 docs，就把该题移入开发集并去掉 `holdout` 标签。
 保留身份不代表尚未运行过；本轮真实运行只验证题目本身，不据此调产品文档。
 完整安装链、复杂接入和不熟悉的任务仍需独立测试，不由这十二个条件代替。

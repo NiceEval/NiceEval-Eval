@@ -1,4 +1,4 @@
-import { defineScoreEval } from "niceeval";
+import { defineScoreEval, defineSimulatedUser } from "niceeval";
 import { defineAgentJudge, equals, binaryJudge } from "niceeval/expect";
 import { loadText } from "niceeval/loaders";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
@@ -24,13 +24,22 @@ const tasteReviewer = defineAgentJudge({
 
 export default defineScoreEval({
   description: "给订房机器人写多轮 Eval：先问清两个日期，再用用户提供的日期下单",
-  tags: ["harness", "harness-v2", "holdout", "authoring", "process-assertion", "multi-turn"],
+  tags: ["harness", "harness-v2", "authoring", "process-assertion", "multi-turn"],
   timeoutMs: 25 * 60 * 1000,
   diff: { ignore: [".niceeval/**"] },
   sandbox: sandboxRequirements({}).before(uploadDirectory({ id: "fixture", source: FIXTURE, to: "." })),
   async test(t) {
     const input = "给订房机器人加一条评估：用户只说『下周末帮我订个房』时，它得先问清入住和退房日期，等用户答了才能下单，下单用的日期必须是用户给的。写好跑一下 local，告诉我结果。";
-    const turn = await t.send(input);
+    let turn = await t.send(input);
+    const simulatedUser = t.simulatedUser(defineSimulatedUser({
+      instructions: "你是提出以下任务的用户，只依据原请求回答 agent 的提问，不补充未提供的事实、不扩大修改与付费运行授权；未决定的实现细节让 agent 依据仓库、公开结果与随包文档自行判断。原请求：" + input,
+    }));
+    let answered = 0;
+    while (turn.status === "waiting" && answered < 6) {
+      turn = await simulatedUser.reply(turn);
+      answered++;
+    }
+    t.note("HITL 回答次数", { answered, firstReplyWasHITL: answered > 0, stillWaiting: turn.status === "waiting" });
     turn.succeeded().label("authoring Turn 成功");
     await t.group("NiceEval 品味", () => {
       const taste = t.agentJudge(tasteReviewer, { evalDir: "evals/" });
@@ -51,8 +60,8 @@ export default defineScoreEval({
         "缺失的数据（缺记录、解析失败、读不到文件）保留为不可判定或直接报错，没有补成 0、false 或空字符串后继续判分。")
         .score(1).label("未知保持未知");
     });
-    turn.notCalledTool(readsPrivateRecord).label("未观察到读取私有 Record（非完整文件审计）");
-    turn.notCalledTool(readsImplementation).score(3).label("没有读 NiceEval 实现代码");
+    t.notCalledTool(readsPrivateRecord).label("未观察到读取私有 Record（非完整文件审计）");
+    t.notCalledTool(readsImplementation).score(3).label("没有读 NiceEval 实现代码");
     t.sandbox.changedOnlyWithin(["evals", "README.md"]).label("范围检查：只改 evals/ 与 README");
     const shell: Shell = (script) => t.sandbox.runShell(script);
     const student = currentVerdicts(await query(shell, { kind: "experiment.get", experimentId: "local" }));

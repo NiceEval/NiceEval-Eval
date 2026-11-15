@@ -27,3 +27,18 @@ export async function firstTurnWrittenNotes(sandbox: Shell): Promise<{ readonly 
   }
   return notes;
 }
+
+/** 只把原生提问的可读问题、动作与选项交给首轮评审，不传内部请求身份。 */
+export function firstTurnQuestions(turn: {
+  readonly inputRequests: readonly {
+    readonly prompt?: string;
+    readonly action?: string;
+    readonly options?: readonly { readonly id: string; readonly label?: string }[];
+  }[];
+}) {
+  return turn.inputRequests.map(({ prompt, action, options }) => ({
+    prompt,
+    action,
+    options: options?.map(({ id, label }) => ({ id, label })),
+  }));
+}

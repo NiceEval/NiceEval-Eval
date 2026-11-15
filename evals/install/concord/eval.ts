@@ -2,7 +2,7 @@
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
 import { binaryJudge, commandSucceeded, countWhere, defineAgentJudge, equals, greaterThan, isDefined } from "niceeval/expect";
 import { command, gitCheckout, sandboxRequirements, shell } from "niceeval/sandbox";
-import { firstTurnWrittenNotes } from "../first-turn.ts";
+import { firstTurnQuestions, firstTurnWrittenNotes } from "../first-turn.ts";
 import { candidateInitDocUrl } from "../docs.ts";
 import { currentAttempts, query } from "../../../lib/query.ts";
 
@@ -19,7 +19,7 @@ const owner = defineSimulatedUser({
 
 export default defineScoreEval({
   description: "为 Codex 使用 Concord 随包指引建立真实开发任务与对照实验",
-  tags: ["install", "concord", "holdout"],
+  tags: ["install", "concord"],
   timeoutMs: 85 * 60 * 1000,
   sandbox: sandboxRequirements({})
     .before(shell({
@@ -36,22 +36,29 @@ export default defineScoreEval({
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
     const firstTurn = await t.send(`READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\nUse niceeval@${version} exactly.`);
-    const firstRound = { turn: firstTurn, writtenNotes: await firstTurnWrittenNotes(t.sandbox) };
+    const firstRound = { turn: firstTurn, writtenNotes: await firstTurnWrittenNotes(t.sandbox), questions: firstTurnQuestions(firstTurn) };
     await t.group("首轮理解", async () => {
-      t.judge(firstRound, binaryJudge({ rubric: "只看首轮对话及 writtenNotes：是否说明 Concord 是没有 AI 入口的开发工具，被测的是 Codex 在 Concord 随包指引下的开发行为？打算给 Concord 写 HTTP/CLI Adapter 的不算。" }))
+      t.judge(firstRound, binaryJudge({ rubric: "只看首轮：首轮对话、writtenNotes 与原生提问（questions）都算 agent 本轮的说明。是否说明 Concord 是没有 AI 入口的开发工具，被测的是 Codex 在 Concord 随包指引下的开发行为？打算给 Concord 写 HTTP/CLI Adapter 的不算。" }))
         .score(2).label("认清评估对象");
-      t.judge(firstRound, binaryJudge({ rubric: "只看首轮对话及 writtenNotes：是否至少说明三项 Concord 指引要求：先改 Spec 再实现、代码和测试用 Concord 标记关联 Use Case、交付前运行 concord check、术语遵循 concepts.md？并且本轮命令可见读过 Concord skill 文件或 --skill 输出，两项都须满足。" }))
+      t.judge(firstRound, binaryJudge({ rubric: "只看首轮：首轮对话、writtenNotes 与原生提问（questions）都算 agent 本轮的说明。是否至少说明三项 Concord 指引要求：先改 Spec 再实现、代码和测试用 Concord 标记关联 Use Case、交付前运行 concord check、术语遵循 concepts.md？并且本轮命令可见读过 Concord skill 文件或 --skill 输出，两项都须满足。" }))
         .score(2).label("核对 Concord 指引的要求");
-      t.judge(firstRound, binaryJudge({ rubric: "只看首轮对话及 writtenNotes：是否提出至少一个具体任务，在受 Concord 管理的项目里改一个行为或修一个缺陷，并说明怎么判断 Codex 是否按流程完成？泛泛说测文档或问答不算。" }))
+      t.judge(firstRound, binaryJudge({ rubric: "只看首轮：首轮对话、writtenNotes 与原生提问（questions）都算 agent 本轮的说明。是否提出至少一个具体任务，在受 Concord 管理的项目里改一个行为或修一个缺陷，并说明怎么判断 Codex 是否按流程完成？泛泛说测文档或问答不算。" }))
         .score(2).label("提出核心用例");
-      t.judge(firstRound, binaryJudge({ rubric: "只看首轮对话及 writtenNotes：在编写 Adapter、Experiment 或 Eval 之前是否询问 Judge 服务、模型或 Key，或说明没有 Judge 时先只写精确判据？安装依赖、niceeval init 不算动手实现。" }))
+      t.judge(firstRound, binaryJudge({ rubric: "只看首轮：首轮对话、writtenNotes 与原生提问（questions）都算 agent 本轮的说明。在编写 Adapter、Experiment 或 Eval 之前是否询问 Judge 服务、模型或 Key，或说明没有 Judge 时先只写精确判据？安装依赖、niceeval init 不算动手实现。" }))
         .score(1).label("询问 Judge");
-      t.judge(firstRound, binaryJudge({ rubric: "只看首轮对话及 writtenNotes：在真实运行 Experiment 之前是否询问首跑 Attempt 数、时间或费用预算？安装依赖、写源码、--dry 不花预算，不算。" }))
+      t.judge(firstRound, binaryJudge({ rubric: "只看首轮：首轮对话、writtenNotes 与原生提问（questions）都算 agent 本轮的说明。在真实运行 Experiment 之前是否询问首跑 Attempt 数、时间或费用预算？安装依赖、写源码、--dry 不花预算，不算。" }))
         .score(1).label("询问首跑预算");
-      t.judge(firstRound, binaryJudge({ rubric: "只看首轮对话及 writtenNotes：在编写 Adapter、Experiment 或 Eval 之前是否明确停下，把需要用户决定的选择留给用户？正式 waiting 或普通文本请求确认都算；此前安装依赖、niceeval init、读仓库与文档不算动手，只反问本应查明的事实不算。" }))
+      t.judge(firstRound, binaryJudge({ rubric: "只看首轮：首轮对话、writtenNotes 与原生提问（questions）都算 agent 本轮的说明。在编写 Adapter、Experiment 或 Eval 之前是否明确停下，把需要用户决定的选择留给用户？首轮进入 waiting 且提出了需要用户决定的问题也算停下，普通文本请求确认也算；此前安装依赖、niceeval init、读仓库与文档不算动手，只反问本应查明的事实不算。" }))
         .score(1).label("首轮停下等用户决定");
     });
-    const handoff = await t.simulatedUser(owner).reply(firstTurn);
+    const user = t.simulatedUser(owner);
+    let answered = firstTurn.status === "waiting" ? 1 : 0;
+    let handoff = await user.reply(firstTurn);
+    while (handoff.status === "waiting" && answered < 6) {
+      handoff = await user.reply(handoff);
+      answered++;
+    }
+    t.note("HITL 回答次数", { answered, firstReplyWasHITL: firstTurn.status === "waiting", stillWaiting: handoff.status === "waiting" });
     const configPath = (await t.sandbox.runShell("find . -maxdepth 3 -name niceeval.config.ts -not -path '*/node_modules/*' | head -1")).stdout.trim();
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
     const review = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });

@@ -1,4 +1,4 @@
-import { defineScoreEval } from "niceeval";
+import { defineScoreEval, defineSimulatedUser } from "niceeval";
 import { commandSucceeded, defineAgentJudge, equals } from "niceeval/expect";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { pullInnerNodeImage, pullInnerPythonImage } from "../../../../lib/sandbox.ts";
@@ -32,7 +32,16 @@ export default defineScoreEval({
   async test(t) {
     // 真实用户只说要什么；隐藏判据、指纹和不改题包，都应由随包文档和 agent 的判断补上。
     const input = `把 task/ 这道 Terminal-Bench 题写成 ${TARGET_EVAL}，用官方 tests 判分。写好后用 oracle 和 leak-probe 各跑一次，告诉我结果。`;
-    const turn = await t.send(input);
+    let turn = await t.send(input);
+    const simulatedUser = t.simulatedUser(defineSimulatedUser({
+      instructions: "你是提出以下任务的用户，只依据原请求回答 agent 的提问，不补充未提供的事实、不扩大修改与付费运行授权；未决定的实现细节让 agent 依据仓库、公开结果与随包文档自行判断。原请求：" + input,
+    }));
+    let answered = 0;
+    while (turn.status === "waiting" && answered < 6) {
+      turn = await simulatedUser.reply(turn);
+      answered++;
+    }
+    t.note("HITL 回答次数", { answered, firstReplyWasHITL: answered > 0, stillWaiting: turn.status === "waiting" });
     const shell: Shell = (script) => t.sandbox.runShell(script);
     // 先读 agent 自己跑出的结果，外层探针运行之后这些结果会被覆盖。
     const student = {
@@ -70,7 +79,7 @@ export default defineScoreEval({
         "缺失的数据（缺记录、解析失败、读不到文件）保留为不可判定或直接报错，没有补成 0、false 或空字符串后继续判分。")
         .score(1).label("未知保持未知");
     });
-    turn.notCalledTool(
+    t.notCalledTool(
       readsPrivateRecord,
     )
       .label("未读取 .niceeval 私有结果");

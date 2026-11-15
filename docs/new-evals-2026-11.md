@@ -11,6 +11,8 @@
 
 四道题都打 `holdout` 标签。**保留规则**：可以修正判据本身的误判（例如 Judge rubric 与事实矛盾、外层核验的 bug），但一旦根据这几道题的失败去改 NiceEval 的 docs，就把这道题移入开发集，并去掉 `holdout` 标签。
 
+2026-11-15 根据 `install/concord`、`harness/flaky-check`、`harness/multiturn-authoring` 三道题的失败修改了 NiceEval 文档（NiceEval ff993bd6e），按保留规则将三题移入开发集并去掉 `holdout` 标签；`harness/errored-triage` 仍是保留题。
+
 题目文件按现有题的写法各自完整复制，不抽公共模块（判据逐字重复是有意的）。新题不能改动 `lib/**` 或任何现有题文件，否则三个正式版已沿用的 33 格结果会因源码闭包变化而作废。需要的辅助代码直接写在新题自己的文件里。
 
 ## install/concord
