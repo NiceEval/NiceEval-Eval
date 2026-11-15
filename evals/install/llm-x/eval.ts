@@ -190,7 +190,7 @@ export default defineScoreEval({
       t.check(totalAttempts <= 6, equals(true)).score(1).label("全部 Run 合计 Attempt 不超过六次");
       const attempts = [...latestMembers.values()];
       await t.check(attempts.length, greaterThan(0)).gate().label("各 Run 的最新格包含 Attempt").orStop();
-      await t.check(attempts.map((attempt) => attempt.locator), countWhere(isDefined(), equals(attempts.length))).gate().label("各 Run 的最新成员均已发布").orStop();
+      await t.check(attempts.map((attempt) => attempt.locator !== null), countWhere(equals(true), equals(attempts.length))).gate().label("各 Run 的最新成员均已发布").orStop();
       const evidence = t.agentJudge(reviewer, { installRoot: root, attempts, handoff: redactConnection(handoff.reply) });
       evidence.chat("从候选 INDEX 和公开 CLI 帮助定位所有当前 Attempt 的 overview/execution/source。旧版 show <locator> --execution/--source 与新版 show <locator> execution/source 都可。自定义应用无聊天消息是合法的，应检查业务操作和断言值；自己读 Adapter 及其导入源码核对输入、结果和 provider，不能替 agent 补做运行。");
       evidence.judge("至少一个非 errored 的正向核心用例实际运行 live LLM X，产生真实文字响应或图片并用于断言。必须从公开 execution/overview 的业务操作、断言值及作者源码解释真实 provider 路径；仅启动日志、离线 FixtureProvider、mock/stub/echo 或静态 JSON 不算。")

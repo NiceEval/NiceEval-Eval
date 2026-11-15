@@ -346,7 +346,7 @@ export default defineScoreEval({
       const attempts = [...latestMembers.values()];
       await t.check(attempts.length, greaterThan(0)).gate()
         .label("当前格包含 Attempt").orStop();
-      await t.check(attempts.map((attempt) => attempt.locator), countWhere(isDefined(), equals(attempts.length)))
+      await t.check(attempts.map((attempt) => attempt.locator !== null), countWhere(equals(true), equals(attempts.length)))
         .gate()
         .label("当前格的所有 Attempt 均已发布").orStop();
 

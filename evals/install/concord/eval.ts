@@ -184,7 +184,7 @@ PY`);
       }
       const attempts = [...latestMembers.values()];
       await t.check(attempts.length, greaterThan(0)).gate().label("当前格包含 Attempt").orStop();
-      await t.check(attempts.map((attempt) => attempt.locator), countWhere(isDefined(), equals(attempts.length))).gate().label("所有当前 member 都发布 Attempt").orStop();
+      await t.check(attempts.map((attempt) => attempt.locator !== null), countWhere(equals(true), equals(attempts.length))).gate().label("所有当前 member 都发布 Attempt").orStop();
       const executions = await t.sandbox.runShell(`python3 - <<'PY'
 import json,subprocess
 attempts=json.loads(${JSON.stringify(JSON.stringify(attempts))})
