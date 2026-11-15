@@ -18,7 +18,10 @@ export function sandboxCodexAgent() {
   return codexAgent({ baseUrl: AGENT_BASE_URL });
 }
 
-/** 每个 Attempt 一台 Instabox universal 实例，补上 niceeval 要求的 Node 24（模板自带的是 Node 22）。 */
+/**
+ * 每个 Attempt 一台 Instabox universal 实例，补上 niceeval 要求的 Node 24（模板自带的是 Node 22）。
+ * 先删掉模板自带的 npm 10 与 corepack：直接解压覆盖会混出跑不起来的 npm，内置 Codex 安装器靠 npm 安装锁定版本。
+ */
 export const instabox = instaboxSandbox({
   templateId: "universal",
   lifetimeMs: 90 * 60 * 1000,
@@ -27,7 +30,7 @@ export const instabox = instaboxSandbox({
   id: "node-24",
   user: "root",
   changeFrequency: changeFrequency.rare,
-  command: "curl -fsSL https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1",
+  command: "rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack && curl -fsSL https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1",
 }));
 
 /** Harness：上传项目 seed 到 workspace。 */
