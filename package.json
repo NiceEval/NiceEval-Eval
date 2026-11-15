@@ -5,8 +5,7 @@
   "private": true,
   "type": "module",
   "scripts": {
-    "typecheck": "tsc --noEmit",
-    "test": "tsx --test tests/*.test.ts"
+    "typecheck": "tsc --noEmit"
   },
   "devEngines": {
     "packageManager": {
@@ -22,7 +21,6 @@
     "react": "^19.2.7",
     "react-dom": "^19.2.7",
     "semver": "^7.8.6",
-    "tsx": "^4.23.1",
     "typescript": "^7.0.2",
     "yaml": "^2.9.0"
   }

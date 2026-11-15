@@ -9,8 +9,13 @@
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
 import { commandSucceeded, countWhere, defineAgentJudge, equals, greaterThan, isDefined, or, referencesAnyPath, toolMatch, binaryJudge } from "niceeval/expect";
 import { command, gitCheckout, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
+import { parse as parseYaml } from "yaml";
+import { readFileSync } from "node:fs";
 import { candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../docs.ts";
 import { currentAttempts, query } from "../../../lib/query.ts";
+
+const ROOT_TOOLING = new URL("../../../fixtures/install/gpt-researcher-root-tooling/", import.meta.url);
+const ORIGINAL_WORKSPACE = parseYaml(readFileSync(new URL("pnpm-workspace.yaml", ROOT_TOOLING), "utf8"));
 
 /** 评审者：在被测 Sandbox 里自己读文件、跑命令取证，同一会话里逐题打分。*/
 const reviewer = defineAgentJudge({
@@ -41,7 +46,7 @@ export default defineScoreEval({
     }))
     .before(uploadDirectory({
       id: "root-tooling",
-      source: new URL("../../../fixtures/install/gpt-researcher-root-tooling/", import.meta.url),
+      source: ROOT_TOOLING,
       to: ".",
     }))
     // 重建一个只有一次 baseline 提交的仓库：agent 面对的是普通 git 项目，评审用 git status / git diff 看它改了什么。
@@ -230,8 +235,14 @@ export default defineScoreEval({
         .label("保留原有检查入口");
       t.check(installed.devDependencies?.["@gpt-researcher/repo-check"], equals("workspace:*")).gate()
         .label("保留已有 workspace 工具依赖");
-      t.sandbox.unchangedWithin(["pnpm-workspace.yaml", "scripts/check.js", "tools/repo-check"]).gate()
-        .label("保留已有 workspace 边界与原有检查源码");
+      t.sandbox.unchangedWithin(["scripts/check.js", "tools/repo-check"]).gate()
+        .label("保留原有检查源码");
+      // 候选发布不足 minimumReleaseAge 时，`pnpm add` 会自己往 pnpm-workspace.yaml 写入该候选的豁免。
+      // 这是包管理器的正常行为，不算 agent 改动 workspace 边界；除这一项外文件必须保持原样。
+      const { minimumReleaseAgeExclude, ...workspace } = parseYaml(await t.sandbox.readText("pnpm-workspace.yaml")) ?? {};
+      t.check({ workspace, minimumReleaseAgeExclude: minimumReleaseAgeExclude ?? [`niceeval@${version}`] },
+        equals({ workspace: ORIGINAL_WORKSPACE, minimumReleaseAgeExclude: [`niceeval@${version}`] })).gate()
+        .label("保留已有 workspace 边界（只容许 pnpm 写入候选的发布期豁免）");
       // 根目录的 package.json 与 pnpm-lock.yaml 本来就该改；其它目录下的 Node manifest 或锁文件一个都不该新增、修改或删除。
       // 只比较路径：大锁文件的正文会被省略，扫描变化行会让这条判定变成不可判定。
       t.sandbox.notInDiff(/^[\w.@-]+(\/[\w.@-]+)*\/(package\.json|package-lock\.json|pnpm-lock\.yaml|yarn\.lock|bun\.lockb?)$/m, { content: "none" }).gate()

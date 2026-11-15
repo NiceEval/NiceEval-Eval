@@ -15,7 +15,6 @@ CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档�
 | `fixtures/` | 各题的起始项目与外层探针，不被本仓库的 discovery 扫描 |
 | `lib/` | 候选解析、沙箱准备步骤与读取被测项目结果的 query 封装；不登记任何检查 |
 | `sandbox/harness-project/` | Harness 的项目 seed |
-| `tests/` | 用真实本地 CLI 固定判据读取的字段与 fixture 契约，不调用模型 |
 | `docs/` | 评估协议与历次验收记录 |
 
 每道题自己持有题面、续轮回答和全部判据，读一个 `eval.ts` 就能看到它测什么、什么算通过。
@@ -51,7 +50,6 @@ export CODEX_API_KEY=...
 export CODEX_BASE_URL=...   # 使用自建 OpenAI-compatible 网关时需要
 
 pnpm run typecheck
-pnpm test
 pnpm exec niceeval list
 ```
 

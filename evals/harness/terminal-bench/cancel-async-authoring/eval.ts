@@ -53,7 +53,9 @@ export default defineScoreEval({
       const taste = t.agentJudge(tasteReviewer, { evalFile: TARGET_EVAL });
       taste.chat("evalFile 是 agent 写的正式 Eval，先读完这些文件。");
       taste.judge(
-        "只读 agent 写的 Eval 正文就能说出它测什么、每项什么算通过、分数或门槛怎么来；" +
+        "只读 agent 写的 Eval 正文就能说出它测什么、什么算通过、分数或门槛怎么来；" +
+        "交给官方测试判定的部分，正文直接写明执行哪份官方测试、按什么门槛（退出码、通过数量）算通过，" +
+        "官方测试内部各项测什么不要求在正文里重复。" +
         "关键阈值、数量和分值直接写在检查上，没有藏进辅助函数，也没有先装进数组再用循环登记。")
         .score(1).label("判据平铺在打分处");
       taste.judge(

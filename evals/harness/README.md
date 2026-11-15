@@ -120,21 +120,14 @@ order-status 的两个回复一字不差，`atlas-2` 只是没有调用 `lookup_
 
 ```sh
 pnpm run typecheck
-pnpm test
 pnpm exec niceeval exp harness/canary --dry
-pnpm harness-report <fixed-run-id> [<fixed-run-id> ...]
 ```
 
-`pnpm test` 用临时项目真实运行确定性 CLI，不使用 LLM 或 Docker，不写本项目历史 Record。
-它验证空结果、合法 failed、执行错误、局部修复、沿用、后续退步和证据结构错误，
-并固定 tool-guard 的 fixture 契约：写对的检查在八个探针上全部判对，恒不匹配的写法会漏掉 `secrets/` 下的访问；
-以及 rerun-scope 的 fixture 契约（改一条判据后默认只重新执行一格，`--rerun all` 重新执行五格）
-和 regression-triage 的 fixture 契约（两个实验之间恰好三条结果不同）。
-`harness-report` 只读取指定 Run，输出逐题分数、来源、覆盖和用量；不从 Score 推断边界合规，
-不将 carried/accepted 当新样本。同一 Attempt ID 跨多个 Run 出现时也只算一个独立样本。
+题目本身就是测试：判据与 fixture 契约不另写单元测试，靠真实运行的 Verdict 与逐项断言验收。
+判据改动后先用 `--dry` 确认只作废受影响的格子，再重跑这些格子并用公开 CLI 读回失分项。
 
 三个候选（`v0.19.0`、`v0.20.0` 与 `canary`）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
-单候选最多 6 个 coding-agent attempts，三候选完整矩阵最多 18 个，A/B/D/E 另有 Judge 调用。
+单候选 9 个 coding-agent attempts，三候选完整矩阵 27 个，Agent Judge 调用另计。
 预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
 `canary` 每次解析精确版本，跨日比较不能只记录标签。
 
