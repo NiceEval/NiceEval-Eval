@@ -16,6 +16,17 @@
 - 用 pnpm 重新生成不含 niceeval 的 `pnpm-lock.yaml`；`pnpm install --frozen-lockfile`、`pnpm typecheck`、`pnpm build`、`pnpm smoke` 必须在 fixture 上通过。
 - 题目的 before：把 fixture 上传到工作区，`git init` 并提交 baseline，写法同 Concord 题。
 
+## 模型出口（2026-11-15 实测后修订）
+
+共享的 `target-app.env` 指向 DeepSeek 网关：Responses 结构化输出可用，但 `/models` 里没有图片模型，`images/generations` 对四个图片模型都返回 404。`CODEX_BASE_URL` 网关有 `gpt-image-1`、`gpt-image-2`，最低画质请求返回 200 和 `b64_json`，但必须带 Cloudflare Access 头（`CF-Access-Client-Id`、`CF-Access-Client-Secret`），不带就是 403。
+
+因此：
+
+- **llm-x 的文字和图片都走 `CODEX_BASE_URL` 网关。** 图片模型 `gpt-image-1`；文字模型由 worker 在该网关上挑一个支持 Responses + `json_schema` 的较便宜模型并实测，写进下面的题目 before。
+- **fixture 应用加一个可选配置 `OPENAI_EXTRA_HEADERS`**：JSON 对象，附加到文字和图片的每个 provider 请求上；不设时行为与原应用完全相同。README 的 Live provider 一节把它写成普通功能（经过需要额外请求头的代理时使用），不提评测。这是对我们自己 fixture 副本的改动，不改 NiceEval 仓库的示例。
+- **题目自己的 before 写 `/opt/fixture-secrets/llm-x.env`**，内容来自宿主的 `CODEX_API_KEY`、`CODEX_BASE_URL`、`CF_ACCESS_CLIENT_ID`、`CF_ACCESS_CLIENT_SECRET`，写法照抄 `lib/target-app-env.ts` 的回调步骤，但代码完整写在 eval 文件里，不改 `lib/**`。文件权限与 `target-app.env` 相同。
+- Judge 不走这个网关，用 `target-app.env` 的 DeepSeek 网关和 `deepseek-flash`（worker 实测 Chat Completions 200），与应用的文字模型分开。
+
 ## 模拟用户（需求只在这里）
 
 instructions 写明：
@@ -26,7 +37,7 @@ instructions 写明：
   2. **AI 回应接得上**：玩家回复某条帖子后，后台回应必须来自世界里存在的人物，内容回应被回复的帖子，并符合该人物主页的设定。
   3. **刷新有新内容**：刷新动态后出现新内容，而且不和已有动态重复。
   4. **配图附对位置**：要求配图时，图片附在正确的帖子上；不评判画面质量。
-- 已定决定：Tier 1，不接 OTel；用 live 真实模型，凭据在 `/opt/fixture-secrets/target-app.env`（`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`TARGET_APP_MODEL`），只能在运行时注入应用进程，不能输出、复制进工作区或提交；图片模型名 `<worker 实测后填写>`；Judge 用同一个网关，模型 `<worker 实测后填写，不能与 TARGET_APP_MODEL 相同>`；首跑最多 2 个 Attempt，可以自主运行、诊断和重试，但本次任务总共不超过 6 个 Attempt。
+- 已定决定：Tier 1，不接 OTel；用 live 真实模型。应用的全部配置在 `/opt/fixture-secrets/llm-x.env`（`OPENAI_API_KEY`、`OPENAI_BASE_URL`、`OPENAI_MODEL`、`OPENAI_IMAGE_MODEL`、`OPENAI_EXTRA_HEADERS`），只能在运行时注入应用进程，不能输出、复制进工作区或提交。Judge 用 `/opt/fixture-secrets/target-app.env` 里的网关（`OPENAI_API_KEY`、`OPENAI_BASE_URL`），模型 `deepseek-flash`，走 Chat Completions。首跑最多 2 个 Attempt，可以自主运行、诊断和重试，但本次任务总共不超过 6 个 Attempt。
 
 ## 流程
 
@@ -95,4 +106,4 @@ Judge 的材料是全部 `waiting` Turn 的 `input.requested` 提问加上模拟
 
 - `pnpm run typecheck` 通过；`niceeval exp install/v0.21.0 --dry` 显示新增的 llm-x、comfyui 两格，已有格的沿用状态不变。
 - 在 0.21.0 上真实跑一次 llm-x：被测 agent 进入题目正文，判据都给出了判定，没有因为题目自身的缺陷而 errored。是否 passed 不是验收条件。
-- 网关不支持 `images/generations` 或 Responses Structured Outputs 时，先停下来报告，不要自行换成 fixture 模式或删掉配图需求。
+- 在 Sandbox 里用 `llm-x.env` 实际跑通一次 fixture 应用的 live 模式（建世界、发帖带图），再开始真实运行题目；跑不通时停下来报告，不要自行换成 fixture 模式或删掉配图需求。
