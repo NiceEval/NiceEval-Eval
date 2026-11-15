@@ -31,6 +31,13 @@ export const instabox = instaboxSandbox({
   user: "root",
   changeFrequency: changeFrequency.rare,
   command: "rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack && curl -fsSL https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1",
+})).before(shell({
+  // 预装内置 Codex Agent 锁定的 CLI，让 agent.install 的探测直接命中；装在 before 里才进 snapshot，被所有 Attempt 共享。
+  // 不预装时每个 Attempt 都要从宿主上传约 320 MB 的原生二进制（约 10 分钟）。NiceEval 改了锁定版本时探测未命中，回退到它自己的安装，只是变慢。
+  id: "codex-cli-0.167.2",
+  user: "root",
+  changeFrequency: changeFrequency.rare,
+  command: "set -eu; d=$(mktemp -d); curl -fsSL https://registry.npmjs.org/@openai/codex/-/codex-0.167.2-linux-x64.tgz -o \"$d/codex.tgz\"; echo \"7df4309f609f12a534817e1eb63a2e8e7ac20797  $d/codex.tgz\" | sha1sum -c -; rm -rf /usr/local/lib/codex; mkdir -p /usr/local/lib/codex; tar -xzf \"$d/codex.tgz\" -C /usr/local/lib/codex --strip-components=1; rm -rf \"$d\"; bin=/usr/local/lib/codex/vendor/x86_64-unknown-linux-musl/bin/codex; chmod +x \"$bin\"; ln -sfn \"$bin\" /usr/local/bin/codex; ln -sfn \"$bin\" /usr/local/bin/apply_patch; codex --version",
 }));
 
 /** Harness：上传项目 seed 到 workspace。 */

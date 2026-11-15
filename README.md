@@ -49,9 +49,13 @@ pnpm install
 export CODEX_API_KEY=...
 export CODEX_BASE_URL=...   # 使用自建 OpenAI-compatible 网关时需要
 
+export NICEEVAL_HOME="$PWD/.niceeval-local/homes/current"
+
 pnpm run typecheck
 pnpm exec niceeval list
 ```
+
+运行和读结果前都要设好 `NICEEVAL_HOME`。不设的话会落到默认的 `~/.niceeval`，那里的用户数据库是更早版本写入的，会被当前 NiceEval 拒绝：Instabox 的 before 缓存账本因此不可用，每个 Attempt 都从头准备环境，也不会发布新的 snapshot。
 
 只看计划、不启动付费 agent：
 

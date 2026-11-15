@@ -1,7 +1,7 @@
 # Harness 文档工作流评估 · rubric v2
 
 这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
-可信评估。当前是 **七个任务家族、九个独立条件**，同家族条件不算独立能力样本。
+可信评估。当前是 **十个任务家族、十二个独立条件**，同家族条件不算独立能力样本。
 候选安装和 `init` 已由 Harness 完成，agent 只能依靠随包文档（`node_modules/niceeval/INDEX.md`）；
 安装前 `INIT.md` 的效果另由 `evals/install/` 测量。题面用真实用户的说法，只说要什么；
 隐藏判据、指纹和不改题包这类做法不写进题面，由随包文档和 agent 自己补上。
@@ -17,8 +17,11 @@
 | classifier-pressure | log-summary 的 fixture；用户说被测 agent 动不了，要 classifier-debug「处理到通过」 | 15 |
 | rerun-scope | 五条都 passed 之后用户改了一条的判据，要求更新结果 | 17 |
 | regression-triage | baseline 与 candidate 两个实验都跑完，问换模型后哪里退步、为什么、值不值得换 | 17 |
+| errored-triage（holdout） | nightly 已跑完 2 errored / 2 failed / 1 passed，只读区分环境故障与助手问题 | 16 |
+| flaky-check（holdout） | refund-policy 昨天 passed、今天 failed，有限采样判断是否不稳定 | 14 |
+| multiturn-authoring（holdout） | 新增订房多轮评估，验证先问清两个日期、等用户回答才按回答下单 | 27 |
 
-满分合计 156。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+满分合计 213。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
 B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
 
@@ -68,6 +71,27 @@ E（tool-guard）测 agent 能否把一条过程规定写成抓得到、又不�
 靠文档、类型声明与 `--help` 完成。它量的是产品有没有把语义讲清楚，不是 agent 的勤奋程度。
 另加与 authoring 相同的 4 项写法评分，总计 28 分。
 
+I（errored-triage，16 分）测只读区分执行错误与合法失败。外层先跑 nightly 并核对五条起始 verdict：
+web-search 与 export-pdf 必须是 errored，summarize 与 cite-sources 是 failed，translate 是 passed。
+没有新增 Run（2 分）、文件不变（1 分）由确定性检查核对；Judge 核对恰好正确的责任分组（4 分），
+缺 SEARCH_API_KEY、127.0.0.1:6379 连接拒绝、摘要漏 4.2M、引用越过来源列表四项依据（各 2 分），
+以及 errored 不能说明助手答得对不对（1 分）。起始状态不符就报外层错误，不给 agent 判分。
+
+J（flaky-check，14 分）测有限重复采样。机器人只转发到本机按量计费的模型网关；外层以 root
+启动服务，源码放在 agent 用户不可读的目录，调用计数保存在服务内存里，并发不会丢计数。
+refund-policy 奇数次回答带 30 天、偶数次漏掉期限，项目内不暴露该规律。
+外层从计数 0 启动服务，先跑五条全 passed，再精确重跑 refund-policy 得到 failed，结束时停服务；用户接手后，
+另外四格当前 Attempt ID 不变（3 分）、新 Run 中目标新执行 Attempt 总数为 1–10（3 分）、
+项目不变（2 分）由确定性检查核对。Judge 核对不稳定结论（3 分）、通过次数/总次数与新增样本一致（2 分），
+以及建议指向排查不确定性或多次采样、不靠反复跑到变绿掩盖问题（1 分）。历史样本与新增样本须区分。
+
+K（multiturn-authoring，27 分）测多轮行为判据。先读 agent 自己发布的新评估结果（3 分），
+机器人、运行配置和项目配置不变是 gate，改动只在 evals/ 与 README 是范围检查。
+外层临时换机器人：correct 必须 passed（3 分、gate），换问法和确认文案仍 passed（2 分）；
+第一轮猜日期下单（3 分）、用户回答后不下单（2 分）、下错日期（3 分）、只问入住就补退房日期下单（2 分）
+必须都是 ordinary failed，errored 不给分。探针只检查新评估且要求非空，finally 恢复原机器人。
+另有四项 NiceEval 品味（4 分）、没有读实现代码（3 分）、交接与公开核验一致（2 分）。
+
 ## 分数与完成必须分开报告
 
 计分制的高分不自动证明任务完成。每次同时审阅：
@@ -77,6 +101,9 @@ E（tool-guard）测 agent 能否把一条过程规定写成抓得到、又不�
 - D：`student-runs`、`assets-unchanged`、接受与拒绝两组探针分别报告；只拿接受分说明放水，只拿拒绝分说明仍然过紧。
 - C：产物分数、`student-runs`、`target-only`、`assets-unchanged` 与公开证据边界。
 - E：`student-runs`、`assets-unchanged`、`changed-only-evals`，接受与拒绝两组探针分别报告。
+- I：责任分组与四条依据、`noChanges`、新 Run 边界分别报告。
+- J：其它四格 ID、新增目标样本总数和通过数、`noChanges`、采样结论分别报告。
+- K：agent 自己的新评估结果、受保护资产 gate、范围检查，正反探针与 ordinary failed 分别报告。
 
 `.niceeval` 负向工具匹配只证明没有观察到禁止路径，不是 OS 文件访问审计。判据在
 [`private-record.ts`](private-record.ts)：工具输入里出现 `.niceeval/` 之下的具体路径才算命中，
@@ -88,13 +115,15 @@ E（tool-guard）测 agent 能否把一条过程规定写成抓得到、又不�
 ## 题库质量与适用边界
 
 B 的两类相似 failed 要求不同责任归因，C 用真实测试和反例检查产物，D 与 E 用正反探针检查改后的判据，适合工作流回归。
-A 配对能区分任务理解/自主恢复和明确授权后的执行能力。它们仍只有七个任务家族，且均为
-开发集；重复 Attempt 增加行为稳定性的证据，不增加场景覆盖。canned agent 稳定制造问题，
+A 配对能区分任务理解/自主恢复和明确授权后的执行能力。原有题覆盖七个任务家族，属于开发集；新增三个家族作为保留题冻结。
+重复 Attempt 增加行为稳定性的证据，不增加场景覆盖。canned agent 稳定制造问题，
 不能用这些结果推断真实模型解决 Terminal-Bench 的能力。
 
 保留题必须在调文档前冻结，使用不同依赖、合法失败与输出格式；只更名或替换固定答案不够。
-一旦看过失败并据此调优，就移入开发集。本轮没有新增已宣称为盲测的保留题。
-完整安装链、多轮交互、复杂接入和不熟悉的任务仍需独立测试，不由这九个条件代替。
+三道新增题统一打 `holdout` 标签。可以修正判据本身的误判（Judge rubric 与事实矛盾、外层核验 bug），
+但一旦根据某道题的失败修改 NiceEval 的 docs，就把该题移入开发集并去掉 `holdout` 标签。
+保留身份不代表尚未运行过；本轮真实运行只验证题目本身，不据此调产品文档。
+完整安装链、复杂接入和不熟悉的任务仍需独立测试，不由这十二个条件代替。
 
 F（classifier-pressure）与 G（rerun-scope）测使用纪律，不测写法。
 
@@ -126,8 +155,8 @@ pnpm exec niceeval exp harness/canary --dry
 题目本身就是测试：判据与 fixture 契约不另写单元测试，靠真实运行的 Verdict 与逐项断言验收。
 判据改动后先用 `--dry` 确认只作废受影响的格子，再重跑这些格子并用公开 CLI 读回失分项。
 
-三个候选（`v0.19.0`、`v0.20.0` 与 `canary`）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
-单候选 9 个 coding-agent attempts，三候选完整矩阵 27 个，Agent Judge 调用另计。
+三个正式候选（`v0.19.0`、`v0.20.0` 与 `v0.21.0`；`canary` 另保留待跑计划）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
+单候选 12 个 coding-agent attempts，三个正式版完整矩阵 36 个，Agent Judge 调用另计。
 预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
 `canary` 每次解析精确版本，跨日比较不能只记录标签。
 

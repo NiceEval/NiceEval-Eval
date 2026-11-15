@@ -52,3 +52,11 @@ seed 层不包含任何 case 的正确或错误业务源码、候选版指引或
 用到它们的 Eval 在自己的 layer 里先 `docker pull` 同一个 digest（[`lib/sandbox.ts`](../../lib/sandbox.ts)），
 结果随远端快照复用，Attempt 内不再访问 registry。改 digest 时两处一起改。
 
+
+## 2026-11 新增保留题
+
+- `errored-triage/repo/`：研究助手 nightly 五条评估；两条 Adapter 执行错误、两条合法失败、一条通过。外层只用公开结果核对起始分类，再让 agent 只读归因。
+- `flaky-check/repo/`：客服五条评估；refund-policy 的项目外计数按工作区隔离，以 `wx` 原子文件创建领取调用序号，并发 Attempt 也不丢计数。外层清零后建立昨天 passed、今天 failed 的起点。
+- `multiturn-authoring/repo/`：正确订房机器人和一条显式日期评估；外层用 `multiturn-authoring/probe-agent.ts` 的六种行为核验 agent 新增的多轮评估，探针不上传给被测 agent，结束时恢复机器人。
+
+三道题均标记 `holdout`。可修正判据误判；一旦依据某题失败修改 NiceEval docs，就移入开发集并去掉该题的 `holdout` 标签。设计契约见 `docs/new-evals-2026-11.md`。
