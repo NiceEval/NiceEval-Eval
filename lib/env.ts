@@ -23,3 +23,14 @@ export function loadRepoEnv(): void {
     process.loadEnvFile(ENV_FILE);
   }
 }
+
+/** Cloudflare Access 的服务凭据仅在运行时读取，不写入源码。 */
+export function cloudflareAccessHeaders(): Record<string, string> {
+  loadRepoEnv();
+  const id = process.env.CF_ACCESS_CLIENT_ID?.trim();
+  const secret = process.env.CF_ACCESS_CLIENT_SECRET?.trim();
+  if (Boolean(id) !== Boolean(secret)) {
+    throw new Error("CF_ACCESS_CLIENT_ID 和 CF_ACCESS_CLIENT_SECRET 必须成对配置");
+  }
+  return id && secret ? { "CF-Access-Client-Id": id, "CF-Access-Client-Secret": secret } : {};
+}

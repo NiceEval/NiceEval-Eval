@@ -26,7 +26,7 @@ const owner = defineSimulatedUser({
     "你是 DB-GPT 仓库的维护者，刚让 agent 把 niceeval 接进这个仓库。你已经决定：" +
     "选 Tier 1，首跑不接 OTel/OTLP；目标模型用 /opt/fixture-secrets/target-app.env 里的 TARGET_APP_MODEL，这个 LLM 出口只接受它，不做 experiment flags；" +
     "可以自主运行、诊断、修复和重试，不限制格数、Attempt 数或运行轮次，无需再次申请运行授权；实际成本计入评估。这台机器可以联网，可以按 DB-GPT 上游方式安装依赖或拉取镜像。" +
-    "凭证仅从 /opt/fixture-secrets/target-app.env 注入目标服务进程，不得输出或复制进工作区。没有可用的 Judge key。" +
+    "凭证仅从 /opt/fixture-secrets/target-app.env 注入目标服务进程，不得输出或复制进工作区。同一凭据文件的 OPENAI_EXTRA_HEADERS 是 JSON 对象，包含 Cloudflare Access 请求头，必须运行时读取并随每次 LLM 请求发送，不能打印或提交。没有可用的 Judge key。" +
     "只回答 agent 问到的事；问到你没决定过的，让它依据仓库与随包文档自己判断。",
 });
 

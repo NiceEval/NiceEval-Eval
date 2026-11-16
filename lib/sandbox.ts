@@ -6,7 +6,7 @@
 
 import { codexAgent } from "niceeval/adapter";
 import { changeFrequency, command, defineSandboxCommand, instaboxSandbox, shell, uploadDirectory } from "niceeval/sandbox";
-import { loadRepoEnv } from "./env.ts";
+import { cloudflareAccessHeaders, loadRepoEnv } from "./env.ts";
 import { TARGET_APP_ENV_PATH, provisionTargetAppEnv } from "./target-app-env.ts";
 
 loadRepoEnv();
@@ -15,7 +15,7 @@ const AGENT_BASE_URL = process.env.CODEX_BASE_URL?.trim()
   || "https://s2a.niceeval.com/v1";
 
 export function sandboxCodexAgent() {
-  return codexAgent({ baseUrl: AGENT_BASE_URL });
+  return codexAgent({ baseUrl: AGENT_BASE_URL, headers: cloudflareAccessHeaders() });
 }
 
 /**
@@ -107,11 +107,7 @@ export const agentEndpointCheck = defineSandboxCommand(
   },
   async (sandbox, context) => {
     context.progress({ message: "检查被测 Codex 的模型网关" });
-    const cfId = process.env.CF_ACCESS_CLIENT_ID?.trim();
-    const cfSecret = process.env.CF_ACCESS_CLIENT_SECRET?.trim();
-    const cfHeaders = cfId && cfSecret
-      ? ["-H", `CF-Access-Client-Id: ${cfId}`, "-H", `CF-Access-Client-Secret: ${cfSecret}`]
-      : [];
+    const cfHeaders = Object.entries(cloudflareAccessHeaders()).flatMap(([name, value]) => ["-H", `${name}: ${value}`]);
     const probe = await sandbox.runCommand("curl", [
       "--proto", "=https", "--tlsv1.2", "--connect-timeout", "5", "--max-time", "15",
       "--silent", "--show-error", ...cfHeaders,

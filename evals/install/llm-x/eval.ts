@@ -41,7 +41,7 @@ const owner = defineSimulatedUser({
   instructions: "你是 LLM X 社交游戏作者，刚让 agent 把 NiceEval 装进来。只回答被问到的事，未决定的让它依据仓库和随包文档自行判断。" +
     "被问要评估什么时，必须如实给出全部四条需求：1 玩家给出发帖意图后，生成帖子内容遵循意图；2 玩家回复某条帖子后，等到后台 AI 回应，回应者来自世界中存在的人物，内容回应被回复帖子，并符合该人物主页设定；3 刷新动态出现新内容且不与已有动态重复；4 要求配图时，图片附在正确帖子上，不评画面质量。" +
     "已定：Tier 1，不接 OTel。live 真实模型。被问到连接信息时直接给出这些真实配置：" + JSON.stringify(connection) + "。OPENAI_EXTRA_HEADERS 是 JSON 对象，写 env 时需 JSON.stringify；包含的两项 Cloudflare Access 头必须随全部文字和图片请求发送。这些值只能放进被 gitignore 排除的未跟踪 env 文件或进程环境，运行时注入应用，不能写进源码、提交或打印。" +
-    "Judge 用 /opt/fixture-secrets/target-app.env 里的 OPENAI_API_KEY、OPENAI_BASE_URL，模型 deepseek-flash，Chat Completions；与应用模型分开，凭据同样只在运行时读取，不得输出或复制进工作区。首跑最多 2 个 Attempt，可自主运行、诊断和重试，但本任务总共不超过 6 个 Attempt。",
+    "Judge 用 /opt/fixture-secrets/target-app.env 里的 OPENAI_API_KEY、OPENAI_BASE_URL，模型取同一文件的 TARGET_APP_MODEL，Chat Completions，并把 OPENAI_EXTRA_HEADERS 的 JSON 对象作为 Judge 请求头；与应用模型分开，凭据同样只在运行时读取，不得输出或复制进工作区。首跑最多 2 个 Attempt，可自主运行、诊断和重试，但本任务总共不超过 6 个 Attempt。",
 });
 
 export default defineScoreEval({

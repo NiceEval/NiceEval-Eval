@@ -1,6 +1,6 @@
 /** 目标应用直接连接 LLM 出口；凭据写入每个 Attempt 的独立 Sandbox。 */
 import type { SandboxCommandContext, SandboxCommandTarget } from "niceeval/sandbox";
-import { ENV_FILE, loadRepoEnv } from "./env.ts";
+import { cloudflareAccessHeaders, ENV_FILE, loadRepoEnv } from "./env.ts";
 import { shellQuote } from "./shell.ts";
 
 const REQUIRED_HOST_VARS = [
@@ -35,6 +35,7 @@ export async function provisionTargetAppEnv(
       `OPENAI_API_KEY=${shellQuote(process.env.TARGET_APP_OPENAI_API_KEY!)}`,
       `OPENAI_BASE_URL=${shellQuote(process.env.TARGET_APP_OPENAI_BASE_URL!)}`,
       `TARGET_APP_MODEL=${shellQuote(process.env.TARGET_APP_MODEL!)}`,
+      `OPENAI_EXTRA_HEADERS=${shellQuote(JSON.stringify(cloudflareAccessHeaders()))}`,
       "",
     ].join("\n"),
   );

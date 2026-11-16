@@ -13,7 +13,7 @@ const reviewer = defineAgentJudge({
 const owner = defineSimulatedUser({
   instructions: "你是 Concord 仓库维护者，刚让 agent 安装 NiceEval。只回答被问到的事，未决定的让它依据仓库与随包文档判断。已决定：" +
     "评估 Concord 随包 docs/skill：装了 Concord 并按指引工作的 Codex，是否比没有指引的 Codex 更能按 Concord 流程开发。Concord 没有 AI 入口，不需要也不应该为 Concord 写 Adapter。" +
-    "被测 Codex 使用 NiceEval 内置 Codex Sandbox Agent。模型和凭据来自 /opt/fixture-secrets/target-app.env 中的 OPENAI_API_KEY、OPENAI_BASE_URL、TARGET_APP_MODEL，只能运行时注入 Sandbox，不能输出、复制进工作区或提交。" +
+    "被测 Codex 使用 NiceEval 内置 Codex Sandbox Agent。模型和凭据来自 /opt/fixture-secrets/target-app.env 中的 OPENAI_API_KEY、OPENAI_BASE_URL、TARGET_APP_MODEL，只能运行时注入 Sandbox，不能输出、复制进工作区或提交。同一凭据文件的 OPENAI_EXTRA_HEADERS 是 JSON 对象，包含 Cloudflare Access 请求头，必须运行时读取并随每次 LLM 请求发送，不能打印或提交。" +
     "机器有 Docker，可以联网拉镜像、按 Concord 官方方式安装或从源码构建。最关心先改 Spec 再实现、测试和代码关联 Use Case、交付前跑通 concord check。" +
     "选 Tier 1，首跑不接 OTel/OTLP，没有可用 Judge key。可以自主运行、诊断、修复和重试，不限制格数、Attempt 数和轮次，无需再申请授权，实际成本计入评估。",
 });

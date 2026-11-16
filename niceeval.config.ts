@@ -1,6 +1,6 @@
 import { defineConfig } from "niceeval";
 import { OpenAIProvider } from "niceeval/judge";
-import { loadRepoEnv } from "./lib/env.ts";
+import { cloudflareAccessHeaders, loadRepoEnv } from "./lib/env.ts";
 
 /**
  * 本仓库是 niceeval 的「文档效果评估仓库」：被测对象是正在使用 niceeval 的 coding agent，
@@ -27,6 +27,7 @@ export default defineConfig({
     // 省略 baseUrl 会拿网关 key 打官方端点并在 precheck 401。
     baseUrl: process.env.CODEX_BASE_URL,
     apiKeyEnv: "CODEX_API_KEY",
+    headers: cloudflareAccessHeaders(),
   }),
 
   // 常规上限；安装与迁移题会在各自 eval 上声明更长的 timeoutMs。
