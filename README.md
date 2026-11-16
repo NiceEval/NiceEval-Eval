@@ -139,17 +139,19 @@ agent 写出的产物用 `niceeval show @<locator> diff` 查看。
 
 ## 沙箱
 
-Install 与 Harness 都使用 Instabox `universal` 模板（自带 pnpm、Docker、Compose 与 Python），每个 Attempt 独立创建
+Install 与 Harness 都使用 Instabox `minimal` 模板，每个 Attempt 独立创建
 `instabox-medium` 实例，TTL 90 分钟。准备步骤是 [`lib/sandbox.ts`](lib/sandbox.ts) 里的一组 `.before()` action，
 每个 Experiment 文件按顺序把它们接成链：
 
-1. 两族都先补上 Node 24（niceeval 要求，模板自带 Node 22）；
+1. 两族都先安装 Docker/Compose、Python venv 与 uv，升级到 Node 24，安装 pnpm 12.20.0 与锁定的 Codex CLI；Docker 数据目录放在 `/data/docker`，避免占满 8 GiB root 盘；
 2. Harness 上传项目 seed，`pnpm add` 候选版本，运行 `niceeval init`，删掉 init 生成的示例源码；
-3. 用到 inner Docker 镜像的题在自己的 layer 里预拉固定 digest 的镜像，再上传 fixture；
+3. 用到 inner Docker 镜像的题在自己的 layer 里预拉固定 digest 的镜像，再上传 fixture；Concord 在自己的 layer 安装 bun 1.4.4；
 4. 每个 Attempt 真实执行：检查被测 Codex 的模型网关；安装题另写目标应用凭据。
 
 1–3 都是声明式步骤，由 Instabox 远端快照按 BeforeCache 复用，改哪一步只重做这一步及之后。
-被测 Codex CLI 由 `codexAgent` 自己安装，不在准备里预装。本地默认失败挂起以便排查，`CI=true` 时禁用；
+minimal 实测基线（2026-11-16）：Debian 13、Node 22/npm/corepack、Python 3.13/pip/venv、git/curl、unzip 与 C 编译工具，
+没有 pnpm、Docker/Compose、uv 或 bun。系统准备脚本在 [`fixtures/sandbox/prepare-system.sh`](fixtures/sandbox/prepare-system.sh)。
+被测 Codex CLI 预装进快照；`codexAgent` 仍负责探测，锁定版本变化后由它补装。本地默认失败挂起以便排查，`CI=true` 时禁用；
 挂起或保留的实例需要另行回收。
 
 被测 Codex 优先使用 `CODEX_BASE_URL`，其次 `NICEEVAL_INSTABOX_CODEX_BASE_URL`，默认 `https://s2a.niceeval.com/v1`。

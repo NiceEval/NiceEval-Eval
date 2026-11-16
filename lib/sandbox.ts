@@ -1,7 +1,7 @@
 /**
  * Instabox 沙箱的准备步骤。每一步是一个 `.before()` action，按书写顺序执行，内容变了只重做这一步及之后；
- * 可缓存的步骤由 Instabox 远端快照复用。universal 模板已带 pnpm、Docker 与 Python；被测 Codex CLI 由
- * codexAgent 自己安装。Experiment 文件把这些值按顺序接成链，读一个 Experiment 文件就能看到完整的准备顺序。
+ * 可缓存的步骤由 Instabox 远端快照复用。minimal 模板提供 Node 22、Python 3、git 与 curl；这里补齐
+ * Docker/Compose、Python 工具、Node 24、pnpm 与锁定的 Codex CLI。Experiment 文件继续追加各族的准备步骤。
  */
 
 import { codexAgent } from "niceeval/adapter";
@@ -19,18 +19,28 @@ export function sandboxCodexAgent() {
 }
 
 /**
- * 每个 Attempt 一台 Instabox universal 实例，补上 niceeval 要求的 Node 24（模板自带的是 Node 22）。
+ * 每个 Attempt 一台 Instabox minimal 实例，稳定工具链排在候选与运行时凭据之前，供远端快照复用。
  * 先删掉模板自带的 npm 10 与 corepack：直接解压覆盖会混出跑不起来的 npm，内置 Codex 安装器靠 npm 安装锁定版本。
  */
 export const instabox = instaboxSandbox({
-  templateId: "universal",
+  templateId: "minimal",
   lifetimeMs: 90 * 60 * 1000,
   spec: "instabox-medium",
 }).before(shell({
+  id: "minimal-system-tools",
+  user: "root",
+  changeFrequency: changeFrequency.rare,
+  script: new URL("../fixtures/sandbox/prepare-system.sh", import.meta.url),
+})).before(shell({
   id: "node-24",
   user: "root",
   changeFrequency: changeFrequency.rare,
   command: "rm -rf /usr/local/lib/node_modules/npm /usr/local/lib/node_modules/corepack && curl -fsSL https://nodejs.org/dist/v24.22.2/node-v24.22.2-linux-x64.tar.xz | tar -xJf - -C /usr/local --strip-components=1",
+})).before(shell({
+  id: "pnpm-12-20-0",
+  user: "root",
+  changeFrequency: changeFrequency.rare,
+  command: "npm install --global pnpm@12.20.0 && pnpm --version",
 })).before(shell({
   // 预装内置 Codex Agent 锁定的 CLI，让 agent.install 的探测直接命中；装在 before 里才进 snapshot，被所有 Attempt 共享。
   // 不预装时每个 Attempt 都要从宿主上传约 320 MB 的原生二进制（约 10 分钟）。NiceEval 改了锁定版本时探测未命中，回退到它自己的安装，只是变慢。
