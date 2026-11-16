@@ -154,6 +154,50 @@ minimal 实测基线（2026-11-16）：Debian 13、Node 22/npm/corepack、Python
 被测 Codex CLI 预装进快照；`codexAgent` 仍负责探测，锁定版本变化后由它补装。本地默认失败挂起以便排查，`CI=true` 时禁用；
 挂起或保留的实例需要另行回收。
 
+### 逐题 Node 版本依据（2026-11-16）
+
+当前候选 `0.19.0`、`0.20.0`、`0.21.0` 和当天按 semver 最大值解析的 canary
+`0.21.1-canary.124`，npm 发布包的 `engines.node` **均为 `>=24.15.0`**。
+因此下表 NiceEval 列统一写作 `>=24.15.0`；默认 Node 固定为 `24.22.2`。
+Codex CLI `0.167.2` 的 npm 包声明 `>=16`，目前预装的是独立原生二进制，运行不依赖默认 Node。
+
+| 题目 | 沙箱内实际宿主及版本声明 | NiceEval 要求 | 当前应提供的版本 |
+| --- | --- | --- | --- |
+| `install/db-gpt` | DB-GPT `177bfc84f77e7f7760c055a748b0e4bb82d9fa47`，Python 后端 + 可选 `web/`；`web/package.json` 无 engines/volta/packageManager，Next `13.4.7` 声明 Node `>=16.8.0`；Web CI 使用 Node 18 + yarn | `>=24.15.0` | 默认 Node `24.22.2`；若要复现上游 Web CI，另用 Node 18 |
+| `install/gpt-researcher` | GPT Researcher `5d84d2f5553e70a2765a8ff3a0d2672d60437ce8`，Python 后端 + 根目录 tooling fixture（CommonJS、`pnpm@12.20.0`，pnpm 要求 Node `>=18`）；可选 `frontend/nextjs/` 无 engines/volta/packageManager，Next `^14.2.28` 的下限版本要求 `>=18.17.0`；前端 Dockerfile 固定 Node `18.17.0`，fullstack Dockerfile 用 `node:slim` 构建、Node 20 运行 | `>=24.15.0` | 默认 Node `24.22.2`；上游前端 Docker 保留自己的 Node，不继承沙箱默认版本 |
+| `install/concord` | Concord `17a161f27e072d6f01270d01acac890135b61bec`；packageManager 和 `.bun-version` 固定 Bun `1.4.4`，CI 使用该文件；无 Node engines/volta 声明，宿主脚本显式用 Bun 执行 | `>=24.15.0` | Node `24.22.2` + 题内已安装的 Bun `1.4.4` |
+| `install/llm-x` | 本仓库 `fixtures/install/llm-x`；无 engines/volta 声明；`pnpm@11.18.0` 要求 Node `>=22.13`，Next `16.4.3` 要求 `>=20.9.0`；`@types/node` 是类型依赖，不是运行时版本约束 | `>=24.15.0` | Node `24.22.2`；包管理器版本由宿主 packageManager 声明选择 |
+| `install/comfyui` | 占位题，直接 skip；没有 checkout 或上传 ComfyUI 宿主 | `>=24.15.0`（公共环境） | Node `24.22.2`，没有题内版本需求 |
+| `harness/errored-triage` | harness-project seed + 同名本地 fixture；无额外 Node 版本声明 | `>=24.15.0` | Node `24.22.2` |
+| `harness/flaky-check` | harness-project seed + 同名本地 fixture；无额外 Node 版本声明 | `>=24.15.0` | Node `24.22.2` |
+| `harness/multiturn-authoring` | harness-project seed + 同名本地 fixture；无额外 Node 版本声明 | `>=24.15.0` | Node `24.22.2` |
+| `harness/regression-triage` | harness-project seed + 同名本地 fixture；无额外 Node 版本声明 | `>=24.15.0` | Node `24.22.2` |
+| `harness/rerun-scope` | harness-project seed + 同名本地 fixture；无额外 Node 版本声明 | `>=24.15.0` | Node `24.22.2` |
+| `harness/tool-guard` | harness-project seed + 同名本地 fixture；无额外 Node 版本声明 | `>=24.15.0` | Node `24.22.2` |
+| `harness/terminal-bench/classifier-pressure` | harness-project seed + log-summary fixture；inner runtime 为固定 digest 的 Node 24 镜像 | `>=24.15.0` | 外层 Node `24.22.2`；inner 版本由镜像固定 |
+| `harness/terminal-bench/log-summary` | harness-project seed + 同名本地 fixture；inner runtime 为固定 digest 的 Node 24 镜像 | `>=24.15.0` | 外层 Node `24.22.2`；inner 版本由镜像固定 |
+| `harness/terminal-bench/log-summary-repair` | harness-project seed + log-summary fixture；inner runtime 为固定 digest 的 Node 24 镜像 | `>=24.15.0` | 外层 Node `24.22.2`；inner 版本由镜像固定 |
+| `harness/terminal-bench/regex-log` | harness-project seed + 同名本地 fixture；inner runtime 为固定 digest 的 Node 24 镜像 | `>=24.15.0` | 外层 Node `24.22.2`；inner 版本由镜像固定 |
+| `harness/terminal-bench/regex-log-authorized` | harness-project seed + regex-log fixture；inner runtime 为固定 digest 的 Node 24 镜像 | `>=24.15.0` | 外层 Node `24.22.2`；inner 版本由镜像固定 |
+| `harness/terminal-bench/cancel-async-authoring` | harness-project seed + 同名本地 fixture；Python `3.11.9` 镜像从固定 Node 24 镜像复制 node 二进制 | `>=24.15.0` | 外层 Node `24.22.2`；inner 版本由 Dockerfile 固定 |
+
+盘点读取固定 commit 的全部 package.json、`.nvmrc`、`.node-version`、Dockerfile 与 GitHub Actions；
+三个上游均未发现 `.nvmrc` / `.node-version`，本地 fixture 和 seed 也没有这些声明。
+DB-GPT 的 `docs/` 被 sparse checkout 排除；其中 `engines.node >=18.0`、Docker 的 `node:lts`
+不属于本题实际宿主。Harness 的 inner 镜像依据见 [fixture 说明](fixtures/harness/README.md#inner-runtime-镜像)。
+
+依据为固定源码中的 [DB-GPT Web CI](https://github.com/eosphoros-ai/DB-GPT/blob/177bfc84f77e7f7760c055a748b0e4bb82d9fa47/.github/workflows/build-web.yml)、
+[GPT Researcher 前端 Dockerfile](https://github.com/assafelovic/gpt-researcher/blob/5d84d2f5553e70a2765a8ff3a0d2672d60437ce8/frontend/nextjs/Dockerfile)、
+[fullstack Dockerfile](https://github.com/assafelovic/gpt-researcher/blob/5d84d2f5553e70a2765a8ff3a0d2672d60437ce8/Dockerfile.fullstack)、
+[Concord package.json](https://github.com/CorrectRoadH/Concord/blob/17a161f27e072d6f01270d01acac890135b61bec/package.json)
+以及对应 npm 精确版本的发布元数据。
+
+目前没有发现与默认 Node 24 冲突的宿主 engines 或版本文件，因此保留现有准备链，未引入版本管理器。
+CI/Docker 使用旧 Node 是上游复现依据，不能视为宿主只支持该版本；同样，没有上限声明也不证明
+旧前端在 Node 24 上完整构建通过。本次仅验证声明与 dry plan，未运行宿主完整安装、构建或付费 Attempt。
+若后续证据要求旧 Node，应在对应题的缓存准备步骤中提供独立运行时，并保留 Node `>=24.15.0` 给 NiceEval；
+不得直接把运行 NiceEval 的全局默认版本降到 18/20/22，也不要让准备步骤的版本文件进入 agent 归因 diff。
+
 被测 Codex 优先使用 `CODEX_BASE_URL`，其次 `NICEEVAL_INSTABOX_CODEX_BASE_URL`，默认 `https://s2a.niceeval.com/v1`。
 安装题的目标应用直连 HTTPS LLM 出口：宿主的 `TARGET_APP_OPENAI_API_KEY`、`TARGET_APP_OPENAI_BASE_URL` 和
 `TARGET_APP_MODEL` 在缓存准备之后写入各 Attempt 的 `/opt/fixture-secrets/target-app.env`，随实例回收。
