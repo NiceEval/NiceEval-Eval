@@ -70,3 +70,18 @@ LLM X v0.19.0 与 v0.20.0 都完成了判分，各为 20/59。公开断言 `实�
 ## 后续与资源
 
 代码修复和类型检查已完成；安装矩阵的有效完整验收仍被网关长会话稳定性阻塞。未发布 NiceEval，也未操作生产环境。公开 `invocation list --json` 返回空 sessions/expired；Instabox 按本轮三个 Run ID 筛选无残留实例。没有创建 Herdr worker、pane、tab 或额外 worktree；本轮 terminal/pane/tab/worktree 残留：无。
+
+## 补跑：网关源站间歇不可用（同日）
+
+用户确认 deepseek、CF 等配置就绪后，按默认规则补跑（不加 `--rerun`；errored 与 skipped 重跑，两个 LLM X failed 沿用）。
+
+| 轮次 | Invocation | 并发 | 时长 | 结果 | 估算费用 |
+| --- | --- | --- | --- | --- | --- |
+| 补跑 1 | `s_3158fbbc-ad6e-4b2d-94e5-e0ab779b7839` | 10 | 约 2 分钟 | 11 errored、2 skipped | 未计 |
+| 补跑 2 | `s_73c74aed-b7b1-43cc-82d8-0ed2d4af2232` | 3（`--max-concurrency 3`） | 约 46 分钟 | 11 errored、2 skipped | $2.06 |
+
+补跑 1 全部在第一个 turn 收到 Cloudflare 502。排查时：本机与临时 Instabox box 内单发 `/responses`、流式请求与 10 路小请求并发均为 200；但 10 路约 100 KB instructions 的大请求并发时，首字节延迟 50–150 秒，5/10 超过 Cloudflare 100 秒上限返回 524。据此判断源站在并发长上下文下吞吐不足，补跑 2 降到 3 路并发。
+
+补跑 2 仍全部 errored，错误换成源站不可达：五格准备阶段探测拿到 HTTP 530（Cloudflare 连不上源站）或连接超时（curl exit 28），三格 Codex turn 收到 530，两格流在完成前断开（`error decoding response body`）。故障期间网关时好时坏，事后 `/models` 立即恢复 401。这已不是并发问题，而是网关源站或其 Cloudflare 隧道间歇掉线；评估代码、CF 凭据与目标模型配置均未发现问题。
+
+在网关源站稳定前不再补跑。恢复后重新执行同一命令（建议保留 `--max-concurrency 3`），errored 格会自动重跑。临时探测 box `ne-gw-probe` 已删除；无 terminal/pane/tab/worktree 残留。
