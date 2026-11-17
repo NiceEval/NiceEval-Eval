@@ -120,3 +120,9 @@ LLM X v0.19.0 与 v0.20.0 都完成了判分，各为 20/59。公开断言 `实�
 - 冷准备 20 分钟以上：Instabox driver 关闭了契约要求的 staging 连续推进（本轮 26 个快照来自 26 台源 Machine）、每个 action 都发布快照、全局派发前屏障，且 `--json` / `invocation show` 准备期间只显示 `queued`。契约 `f39602c79`，实现进行中。
 
 以上 NiceEval 修复尚未发布；本轮结果全部由修复前的本地 `dist` 产生。
+
+## Harness 全矩阵重跑（UTC 2026-11-17）
+
+minimal 模板切换后 Harness 36 格全部重跑。Invocation `s_cae59c02-8cb1-4fb1-bcc3-9d3fd19e022a`（Run `4519d4f7`、`6ff2c107`、`90585990`），before 缓存前几层与 install 共用，约 6.5 分钟后开始派发，全部结束约 31 分钟。
+
+结果 **35 passed、1 failed**，无 errored，未补跑。唯一失败是 `harness/terminal-bench/log-summary-repair` v0.19.0 `@1RRPHEYTYX0EY`：gate `题面、官方 test.py、被测 Agent 与另两条 Eval 保持不变` 判定被测 agent 改动了受保护路径，属于产品结论。其余 11 题在三个版本上均 passed。本轮结果同样由 NiceEval 修复前的本地 `dist` 产生。
