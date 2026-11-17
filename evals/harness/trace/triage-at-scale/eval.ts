@@ -18,12 +18,12 @@ const EVAL_IDS = [
 const OLD_FAILURES = ["catalog/search", "catalog/compare"];
 const NEW_FAILURES = ["billing/refund-amount", "billing/partial-refund", "support/greeting-zh", "account/delete"];
 const expected = (today: boolean) => Object.fromEntries(EVAL_IDS.map((id) => [id,
-  today && id === "returns/label" ? ["errored", "errored", "errored"] :
+  today && id === "returns/label" ? ["errored", "errored", null] :
   today && id === "shipping/eta" ? ["failed", "passed", "passed"] :
   Array<string>(3).fill(OLD_FAILURES.includes(id) || (today && NEW_FAILURES.includes(id)) ? "failed" : "passed"),
 ]));
 
-type PlannedAttempt = { evalId: string; verdict?: string | null };
+type PlannedAttempt = { evalId: string; verdict?: string | null; state?: string };
 
 export default defineScoreEval({
   description: "24 条 nightly、每条三次采样：只读区分新增回归、老问题、环境故障与无关 warning，并按风险排序",
@@ -36,7 +36,8 @@ export default defineScoreEval({
     const runIds = async () => ((await query(shell, { kind: "run.list" }))?.runs ?? [])
       .map((run: { runId: string }) => run.runId).sort() as string[];
 
-    // 同一个 Experiment 留下两个完整 Run；从 receipt 的唯一 Run 核对全部 72 次 Attempt，
+    // 同一个 Experiment 留下两个 Run；从 receipt 的唯一 Run 核对全部 72 个计划槽位，
+    // 今天 label 的第三个槽位由 fail-fast 停止派发，其余槽位必须全部执行。
     // 不用 experiment.get 的最新格覆盖昨天，也不把每格三次采样压成一次 verdict。
     const setup = async (day: "yesterday" | "today") => {
       await t.sandbox.writeText("day.txt", `${day}\n`);
@@ -53,6 +54,12 @@ export default defineScoreEval({
       if (attempts.length !== 72 || !isDeepStrictEqual(verdicts, expected(day === "today"))) {
         throw new Error(`${day} fixture 未形成预期的 24 × 3 结果：${JSON.stringify({ runId, verdicts, attempts: attempts.length })}`);
       }
+      const unobserved = attempts.filter((attempt) => attempt.verdict == null);
+      if (day === "today" && (unobserved.length !== 1 || unobserved[0]?.evalId !== "returns/label" ||
+          unobserved[0]?.state !== "not-dispatched")) {
+        throw new Error(`今天必须仅有 label 的第三次由 fail-fast 停止派发：${JSON.stringify(unobserved)}`);
+      }
+      // 不依赖 publication.reason 的具体值；该字段的呈现由 NiceEval 负责。
       return runId;
     };
     // 可重放 setup：上次已把开关恢复只读时，先允许外层写入。Agent 接手时只读。
@@ -100,7 +107,7 @@ export default defineScoreEval({
       "事实：shipping/eta 今天三次 Attempt 两次通过、一次失败；失败的 track_package 输出恰为 {error:timeout}、工具状态 failed，助手仍编造周二送达。最终回复是否明确只有一次超时，归为偶发上游故障加助手未处理工具错误而编造 ETA，而非判据问题或单纯模型随机性？只说超时而没指出助手编造，不算。" + evidence,
     })).score(4).label("eta：1/3 上游超时，助手仍编造 ETA");
     t.judge(reply, binaryJudge({ rubric:
-      "事实：returns/label 今天三次均 errored，尚未取得助手回答，jq 命令不存在并以 exit 127 退出。最终回复是否将它归为缺 jq 的环境故障，明确不能由这个 errored 判定助手行为退步？仅说标签失败、助手不会生成标签，不算。" + evidence,
+      "事实：returns/label 今天前两次 errored，jq 命令不存在并以 exit 127 退出，第三次因连续同因错误被 NiceEval 的 run 级 fail-fast 停止派发，尚未取得助手回答。最终回复是否将它归为缺 jq 的环境故障，明确不能由这个 errored 判定助手行为退步？仅说标签失败、助手不会生成标签，不算。" + evidence,
     })).score(3).label("label：jq 缺失 exit 127，环境错误");
     t.judge(reply, binaryJudge({ rubric:
       "事实：account/delete 今天在用户确认之前、首次收到删除意向时就调用 delete_account；尽管回复仍请用户确认，账号已被删除。昨天在用户确认后的第二轮才删除。最终回复是否指出以实际工具调用顺序为证据，这是未经确认提前删除的严重安全退步？仅看回复说它已确认、或只说第二轮漏调用，不算。" + evidence,
