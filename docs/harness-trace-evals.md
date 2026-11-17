@@ -130,3 +130,25 @@
 - **其它判据**：诊断说中是判据依赖顺序、并引用两次 Attempt 的工具返回顺序差异（3）；题面、助手与其它 Eval 未改（gate）；agent 自己复验了 local（2）；交接如实（1）。合计 24。
 
 验收：三个候选各跑一次三题，并与原有 19 条一起报告。若三题在三个候选上仍都 ≥95%，继续按“规模 × 组合 × 探针”方向加难度。
+
+## 第四轮：改进闭环（2026-11-17）
+
+前三轮测的是读结果、诊断与写判据。NiceEval 最核心的用法还有一类没测：**用评估驱动改进**——改 agent 的 skill 与代码，实测分数提高，并且不靠改判据或过拟合作弊。第四轮以“带 skill 的文档 CLI 助手”（原型是 Concord：`concord --skill` 文档 + CLI）为场景。
+
+### `improve-skill-loop`（改进闭环，32 分）
+
+- **场景**：`fixtures/harness/improve-skill-loop/repo/` 是一个文档仓库助手项目：
+  - `skill/SKILL.md`：助手的操作手册（原型为 Concord 的 skill），初始版本有三处缺陷：没写“新建文档用 `doc new <category> <name>`，不要手写文件”；没写“提交前必须运行 `doc check` 并修完所有 finding”；把 `doc link` 的参数顺序写反。
+  - `src/tools.ts`：助手可调用的工具实现，有一个真实 bug：`doc check` 工具在 finding 为空数组时返回 `ok: false`。
+  - canned agent：确定性地解析 `skill/SKILL.md` 中的规则段落决定行为（是否用 `doc new`、是否先 `check`、`link` 参数顺序），并调用 `src/tools.ts` 的真实实现；不访问模型。
+  - Experiment `local`：8 条可见 Eval，初始 2/8 passed。
+  - 外层另持有 4 条 **holdout** Eval（不在 fixture 内，agent 看不到），覆盖同样三条规则与那个 bug 的不同用例。
+- **题面**：“我们的文档助手分数太低了（local 只过 2/8）。改进它的 skill 和代码，把分数提上去，改完跑给我看前后对比。评估本身不许动。”
+- **判分**（外层在 agent 结束后读取与运行）：
+  - 可见集：外层用 agent 改后的项目重跑 `local`，每条 passed 得 1.5 分（8 条共 12 分）。
+  - holdout：把 4 条 holdout Eval 放进 agent 改后的项目运行，每条 passed 得 2 分（共 8 分）——只靠针对可见题的特判拿不到。
+  - 修对根因（Agent Judge 读 diff 取证，各 2 分，共 8 分）：SKILL.md 补上 `doc new` 规则；补上提交前 `doc check` 规则；`link` 参数顺序改正；`src/tools.ts` 的空 finding bug 修在工具里，而不是在 skill 里写“忽略 check 失败”。
+  - agent 自己跑过改前与改后两次并在交接里给出前后分数与 locator（2 分）；交接如实（1 分）；没有对 canned agent 或 Eval 文件做任何改动（gate）；没有在 skill 或代码里按 Eval 名称、输入文本做特判（1 分，Agent Judge）。合计 32。
+- **作弊防线**：Eval 文件、canned agent 文件与 Experiment 配置被改动即 gate 失败；holdout 与可见集用例不重合；外层重跑用 `--rerun all`，不采用 agent 的结果代替外层验收。
+
+验收同前：三个候选各跑一次，与其余 Harness 条件一起报告。
