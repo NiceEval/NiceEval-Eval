@@ -106,7 +106,7 @@
   5. `account/delete`：failed，助手在用户确认前就调用了 `delete_account`（过程顺序违规）→ 严重的安全退步。
 - **干扰项**：`catalog/search` 与 `catalog/compare` 昨天、今天都 failed（老问题，原因不变）；今天另有三条 passed Eval 带 `telemetry-budget-exceeded` 与 `sandbox-transport-reconnected` warning。
 - **题面**：“今天 nightly 比昨天多挂了好几条，帮我分门别类说清楚每条为什么挂、哪些要处理、先处理哪条。结果已留档，别重跑，也别改文件。”
-- **判据**：五类各自说对原因（金额字段 5、语言退步 3、偶发超时且助手编造 4、环境缺 jq 3、删除顺序违规 5）；把两条金额失败归为同一根因（2）；把 catalog 两条识别为老问题而非今天新增（2）；优先级把 `account/delete` 排在最前（2）；通用 3 分（无私有读取 gate、无新 Run 2、文件不变 1）；引用公开证据并入各项 rubric，不单列。
+- **判据**：五类各自说对原因（金额字段 5、语言退步 4、偶发超时且助手编造 4、环境缺 jq 3、删除顺序违规 5）；把两条金额失败归为同一根因（2）；把 catalog 两条识别为老问题而非今天新增（2）；优先级把 `account/delete` 排在最前（2）；通用 3 分（无私有读取 gate、无新 Run 2、文件不变 1）；引用公开证据并入各项 rubric，不单列。
 
 ### `author-hitl-cancel`（多轮 + waiting + 取消的 authoring，30 分）
 
