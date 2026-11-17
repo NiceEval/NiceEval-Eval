@@ -84,3 +84,49 @@
 - **判据**：定位到断言阶段而不是 agent、Sandbox 或 Judge（4）；指出是“引用链接都可访问”这一条检查（4）；指出逐个串行、每个约 5 秒、20 个约 100 秒（2）；没有把长工具输出当作原因（1）；引用公开证据（2）；通用 3 分。
 
 验收同第一轮：三个候选各跑一次三题；若仍都 ≥95%，继续加难度。
+
+## 第三轮：真正难的题（2026-11-17）
+
+前两轮七题在 gpt-6.1-sol 上都接近满分：单一原因的诊断，不论线索藏多深，它都能找到。被测 agent 固定 gpt-6.1-sol medium，不降模型或推理档位（见根 README）。第三轮改变难度来源：
+
+- **规模与组合**：一次要同时分清多种不同原因，漏一条就丢分；
+- **带探针验收的 authoring**：agent 写或改 Eval，外层把 canned agent 换成一组已知行为的探针，检验它写的判据既不放水也不过紧——这类题此前是唯一稳定丢分的类型；
+- **依赖本版本 API 的正确用法**：多轮、waiting、取消与过程断言必须照装好的这个版本写，三个候选的 API 与文档差异会直接体现在探针结果上。
+
+三题沿用共同骨架（起点核对、HITL 续答、私有 Record gate、证据判据）；authoring 题的探针机制照抄 `log-summary-repair`（外层临时替换 canned agent、用同一 local 配置运行 agent 改后的 Eval、finally 恢复）。
+
+### `triage-at-scale`（大规模分诊，30 分）
+
+- **场景**：电商客服助手，Experiment `nightly`，24 条 Eval，`attempts: 3`、`earlyExit: false`。外层先用“昨天”的 agent 行为跑一次，再切到“今天”的行为跑一次（同一 Experiment 两个 Run；canned agent 按 fixture 内的开关文件选择行为，外层在两次运行之间改写开关文件后恢复只读）。
+- **今天比昨天新增的问题（隐藏事实，6 条）**：
+  1. `billing/refund-amount` 与 `billing/partial-refund`：工具 `get_order` 的输出字段由 `amount` 改成 `amount_cents`，助手把 4999 当成 4999 元报给用户 → 同一个根因（工具契约变了），两条都 failed。
+  2. `support/greeting-zh`：助手对中文用户改用英文回复 → 真实模型行为退步。
+  3. `shipping/eta`：3 次 Attempt 中 1 次 failed，失败那次 `track_package` 返回 `{"error":"timeout"}`，助手照常编了 ETA → 偶发上游超时 + 助手不处理工具错误；不是判据问题。
+  4. `returns/label`：errored，命令 `jq` 不存在（exit 127）→ 环境问题，与助手无关。
+  5. `account/delete`：failed，助手在用户确认前就调用了 `delete_account`（过程顺序违规）→ 严重的安全退步。
+- **干扰项**：`catalog/search` 与 `catalog/compare` 昨天、今天都 failed（老问题，原因不变）；今天另有三条 passed Eval 带 `telemetry-budget-exceeded` 与 `sandbox-transport-reconnected` warning。
+- **题面**：“今天 nightly 比昨天多挂了好几条，帮我分门别类说清楚每条为什么挂、哪些要处理、先处理哪条。结果已留档，别重跑，也别改文件。”
+- **判据**：五类各自说对原因（金额字段 5、语言退步 3、偶发超时且助手编造 4、环境缺 jq 3、删除顺序违规 5）；把两条金额失败归为同一根因（2）；把 catalog 两条识别为老问题而非今天新增（2）；优先级把 `account/delete` 排在最前（2）；通用 3 分（无私有读取 gate、无新 Run 2、文件不变 1）；引用公开证据并入各项 rubric，不单列。
+
+### `author-hitl-cancel`（多轮 + waiting + 取消的 authoring，30 分）
+
+- **场景**：机票助手项目，已有 adapter 与 canned agent、Experiment `local`，没有这条场景的 Eval。
+- **题面**：“帮我加一条评估：用户说‘帮我订下周去大阪的机票’，助手应该先问清出发日期，用户回答‘周二’后，它要按周二去查航班；接着用户说‘算了不订了’，它必须停下、绝不能扣款。写好后跑一下，告诉我结果。”
+- **外层探针**（agent 写的 Eval 在每个探针上运行一次；期望结果括号内）：
+  1. 正确助手：先问日期 → 用周二查 → 收到取消后不扣款（passed，6 分）；
+  2. 从不提问，直接按周一查（failed，4）；
+  3. 问了日期但查航班用的是周一（failed，4）；
+  4. 收到取消后仍调用 `charge_card`（failed，5）；
+  5. 问的是“几位乘客”而不是日期（failed，3）；
+  6. 第一轮就崩溃（errored，不得判 passed，2）。
+- **其它判据**：agent 自己的 local 运行结果存在且为正确助手 passed（2）；原有 adapter、canned agent 与其它 Eval 未改（gate）；交接如实（1）；Judge 评判据可读、过程断言用的是工具调用证据而不是回复文本（3）。合计 30。
+
+### `fix-flaky-eval`（Eval 自身不稳定：trace + authoring，24 分）
+
+- **场景**：研究助手项目，Experiment `local` `attempts: 4`。Eval `research/sources` 4 次里 2 次 failed。
+- **隐藏事实**：助手并发调用 `search_web` 与 `search_papers`，两者返回顺序随 attempt 交替；助手回复里来源的列举顺序随之变化，但内容始终正确。Eval 的断言要求来源按固定顺序出现 → 是**判据**不稳定，不是助手。
+- **题面**：“research/sources 时过时不过，查清楚是助手的问题还是测试的问题，是测试的问题就改好并复验。”
+- **外层探针**：顺序 A、顺序 B 的正确回答（都应 passed，各 4 分）；漏掉一个来源（failed，4）；编造一个不存在的来源（failed，4）；来源全对但重复列两次（failed，2）。
+- **其它判据**：诊断说中是判据依赖顺序、并引用两次 Attempt 的工具返回顺序差异（3）；题面、助手与其它 Eval 未改（gate）；agent 自己复验了 local（2）；交接如实（1）。合计 24。
+
+验收：三个候选各跑一次三题，并与原有 19 条一起报告。若三题在三个候选上仍都 ≥95%，继续按“规模 × 组合 × 探针”方向加难度。
