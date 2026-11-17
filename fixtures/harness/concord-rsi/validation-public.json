@@ -1,0 +1,831 @@
+[
+  {
+    "stage": 0,
+    "runs": [
+      {
+        "runId": "e19d23de-af59-4b5c-94f8-9f483fdc9a1f",
+        "startedAt": "2026-11-17T11:30:17.266Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1NGTXK36F4Y21",
+            "requests": 16
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1X1F6GH244VN1",
+            "requests": 13
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1N0C6J0TCZXZ9",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1W0JB6GEFM4RY",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1X88CTBK3M0PA",
+            "requests": 11
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@11TP25GJ2WKS6",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1RNWTGXFWD8BN",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1ZFV9NH11HGF4",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1F3X5PEC10CWF",
+            "requests": 12
+          },
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@187JW6V7NG12K",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1T8HB6KYGZ6N5",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1Y5J5QQ9VW1QH",
+            "requests": 10
+          },
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1F8152MEB9X3N",
+            "requests": 3
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1QW8Y0CKC89TW",
+            "requests": 7
+          },
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1DXTYP9Z5YCTD",
+            "requests": 3
+          },
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@139JD713TWGS2",
+            "requests": 4
+          }
+        ]
+      },
+      {
+        "runId": "1b386e3d-0db9-4d38-889f-dada3fddf599",
+        "startedAt": "2026-11-17T11:39:58.208Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@124GS3CK3JJXD",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1F0JY30F81A64",
+            "requests": 16
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1YRVTS0RN6RR6",
+            "requests": 15
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1X572PGTRCEGC",
+            "requests": 4
+          }
+        ]
+      }
+    ],
+    "measuredRequests": 154,
+    "currentPassed": 5,
+    "currentTotal": 16,
+    "unknownRequestAttempts": 0
+  },
+  {
+    "stage": 1,
+    "runs": [
+      {
+        "runId": "946badb3-df64-4f92-b373-699a9160228f",
+        "startedAt": "2026-11-17T11:30:17.242Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1JJAPFYHJ5KZY",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1NBVQ03Y9X5A8",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1SB925XM77BZ3",
+            "requests": 11
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1BE5AV8J9HQDW",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1R7Q8Q2X9JSAD",
+            "requests": 3
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1FKS3J73NXSZ8",
+            "requests": 15
+          },
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1PHZSF54AV928",
+            "requests": 3
+          },
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1TH34ZE7YRS29",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1V1748ZRZ4W9X",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1XB1TC114T1AB",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1SK3F8CQG1MV7",
+            "requests": 15
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1QM0MFVTXRERD",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1XXFV82S231FF",
+            "requests": 5
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1JT1X141V31E0",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1NFZ08ZNKEC23",
+            "requests": 3
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1BJ93V3QFDEEC",
+            "requests": 10
+          }
+        ]
+      },
+      {
+        "runId": "8010d106-8dfe-4294-8134-c00a4499f085",
+        "startedAt": "2026-11-17T11:39:58.197Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@18796XQ8JD04F",
+            "requests": 11
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@16NPYP9WGZAN4",
+            "requests": 16
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@16QZQMQ6SG4MV",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@14KVH9HE896H8",
+            "requests": 5
+          }
+        ]
+      }
+    ],
+    "measuredRequests": 143,
+    "currentPassed": 12,
+    "currentTotal": 16,
+    "unknownRequestAttempts": 0
+  },
+  {
+    "stage": 2,
+    "runs": [
+      {
+        "runId": "486695ee-a441-44c4-984a-94510f631cb7",
+        "startedAt": "2026-11-17T11:30:17.237Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1QPMD38QGTPE0",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@15TPXGNQQXMBC",
+            "requests": 9
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1ANTNDT7QTJB4",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1S4NGQEXSXC69",
+            "requests": 3
+          },
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1JXATNCBQ90NV",
+            "requests": 3
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@174Q8WKFHQ0WQ",
+            "requests": 10
+          },
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@11V26T7KVQ9G0",
+            "requests": 3
+          },
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1PMWK8H8FKJ0C",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1MSY3NG6HHWE2",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1DCT3YFQNPFQ7",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@13WT212DC1R69",
+            "requests": 7
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1B7GR8PJG0KM6",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@19ZS38SD2Z1BC",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1DHQRKC3MBSGM",
+            "requests": 5
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@10BX0XXTRYM84",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@14MGWNXXESRNT",
+            "requests": 8
+          }
+        ]
+      },
+      {
+        "runId": "420680f4-00bc-4e26-8c44-c85839c7e44b",
+        "startedAt": "2026-11-17T11:40:32.462Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1X35B0DYETJDY",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1X1JJ24PFT54V",
+            "requests": 10
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1PGC0532XD7EF",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1EAJ2WCRM32WZ",
+            "requests": 6
+          }
+        ]
+      }
+    ],
+    "measuredRequests": 118,
+    "currentPassed": 13,
+    "currentTotal": 16,
+    "unknownRequestAttempts": 0
+  },
+  {
+    "stage": 3,
+    "runs": [
+      {
+        "runId": "c3d8bad7-adc8-48aa-955a-8641dc25eca1",
+        "startedAt": "2026-11-17T11:30:17.203Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1ZT9GMY6PZJQ8",
+            "requests": 9
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@10ECPNBR2C1NF",
+            "requests": 5
+          },
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@18YXPGPG98SNX",
+            "requests": 5
+          },
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1GP9TYVNVTY55",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 0,
+            "verdict": "failed",
+            "locator": "@1APPMMFGCZBZJ",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1D3RXXCSGM45P",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1EGAVZ765G7NX",
+            "requests": 7
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1R0VQGRYFQ9T0",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@13GVC1HJ7P0KY",
+            "requests": 9
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@160EDBD5QZT19",
+            "requests": 11
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1VPESNWDBV389",
+            "requests": 15
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "failed",
+            "locator": "@1BRT7TB5Q6Q29",
+            "requests": 10
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1X5YP49HQJWSA",
+            "requests": 6
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@13TWRGK8ZXDBZ",
+            "requests": 9
+          },
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1QMYTKP94J7RK",
+            "requests": 5
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@12Y81Z1KJMT64",
+            "requests": 8
+          }
+        ]
+      },
+      {
+        "runId": "56e66d50-279d-42a9-99e5-97c3f3713983",
+        "startedAt": "2026-11-17T11:40:32.493Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1QEBFA2DVSY1A",
+            "requests": 9
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@15MEPEMRK6WX4",
+            "requests": 11
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1HN6MFN2FGSZ7",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1HW156V01BNM7",
+            "requests": 8
+          }
+        ]
+      }
+    ],
+    "measuredRequests": 159,
+    "currentPassed": 14,
+    "currentTotal": 16,
+    "unknownRequestAttempts": 0
+  },
+  {
+    "stage": 4,
+    "runs": [
+      {
+        "runId": "f563ad35-3cd7-474c-b36e-53ada5060889",
+        "startedAt": "2026-11-17T11:30:17.242Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1DHC08PBC2VVP",
+            "requests": 5
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1ED9KZZ3WM3SX",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1FRHBB0ZFFEF9",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1E5BMPSDBA8G9",
+            "requests": 11
+          },
+          {
+            "evalId": "docs/create-feature",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1HR9K3ASKZTT1",
+            "requests": 9
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1T2SVQREA3WM8",
+            "requests": 9
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1MS0GX4B7XWBX",
+            "requests": 10
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 0,
+            "verdict": "errored",
+            "locator": "@1278G8X8A5848",
+            "requests": null
+          },
+          {
+            "evalId": "docs/update-copy",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1TG64BJ89NVMS",
+            "requests": 4
+          },
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1QJQK7B2ZSJ35",
+            "requests": 5
+          },
+          {
+            "evalId": "docs/add-link",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1MRJGCJ61DWED",
+            "requests": 5
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1R0KP2GV418WQ",
+            "requests": 12
+          },
+          {
+            "evalId": "docs/move-page",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1ZVGVMTM6YYX9",
+            "requests": 11
+          },
+          {
+            "evalId": "docs/move-use-case",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1ZX0C407BHP6P",
+            "requests": 9
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1BV52Q99S46G8",
+            "requests": 14
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@18MTAV0H1V7Y8",
+            "requests": 8
+          }
+        ]
+      },
+      {
+        "runId": "28402c6f-a33f-4b6b-9d01-f59442444bf0",
+        "startedAt": "2026-11-17T11:40:32.613Z",
+        "state": "completed",
+        "members": [
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1CFRT6KVFFDSW",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1AB5X9QGWCNH2",
+            "requests": 8
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 0,
+            "verdict": "passed",
+            "locator": "@1A6F11GE8PHRV",
+            "requests": 9
+          },
+          {
+            "evalId": "docs/create-design",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1XX2Q2EH1JH36",
+            "requests": 10
+          },
+          {
+            "evalId": "docs/maintenance-note",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1DNYCXSRBP7VG",
+            "requests": 10
+          },
+          {
+            "evalId": "docs/repair-findings",
+            "ordinal": 1,
+            "verdict": "passed",
+            "locator": "@1DKD7KW0XEZH8",
+            "requests": 8
+          }
+        ]
+      }
+    ],
+    "measuredRequests": 181,
+    "currentPassed": 16,
+    "currentTotal": 16,
+    "unknownRequestAttempts": 1
+  }
+]

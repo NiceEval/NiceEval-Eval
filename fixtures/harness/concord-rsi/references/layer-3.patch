@@ -1,0 +1,7 @@
+--- a/assistant/SKILL.md
++++ b/assistant/SKILL.md
+@@ -15,3 +15,3 @@
+ - read_file / write_file 读写项目内相对路径，list_files 发现项目文件。
+-- 用户明确要求检查时运行 concord check；没有其它要求时完成正文编辑即可。
++- 完成任何写改任务前必须运行 concord check --fresh --json。逐项修复 finding 并重跑到通过，再结束；检查到的断链属于本任务的关联维护范围，不得删掉链接来掩盖错误。
+ - 重命名时用 move_file 直接移动文件，再按用户要求调整正文。

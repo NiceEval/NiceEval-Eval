@@ -1,0 +1,11 @@
+--- a/assistant/tools.ts
++++ b/assistant/tools.ts
+@@ -53,7 +53,7 @@
+     if (args.some((arg) => arg === "--root" || arg.startsWith("--root="))) throw new Error("工具固定在当前项目运行");
+     const result = await concord(root, args, signal);
+     // CLI 调用已结束；向调用者返回输出。
+-    return { ok: true, stdout: result.exitCode === 0 ? result.stdout : "" };
++    return { ok: result.exitCode === 0, exitCode: result.exitCode, stdout: result.stdout, stderr: result.stderr };
+   }
+   if (name === "read_file") return { content: await readFile(await pathWithin(root, String(input.path)), "utf8") };
+   if (name === "write_file") {

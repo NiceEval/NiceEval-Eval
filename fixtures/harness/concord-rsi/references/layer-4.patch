@@ -1,0 +1,8 @@
+--- a/assistant/SKILL.md
++++ b/assistant/SKILL.md
+@@ -16,4 +16,4 @@
+ - 完成任何写改任务前必须运行 concord check --fresh --json。逐项修复 finding 并重跑到通过，再结束；检查到的断链属于本任务的关联维护范围，不得删掉链接来掩盖错误。
+-- 重命名时用 move_file 直接移动文件，再按用户要求调整正文。
++- 重命名或移动 Spec 用 concord move <source> <target>，由 Concord 同步更新受管引用；不要直接 move_file。用 --help 核对参数，之后运行 check 验证。
+
+ Spec（Feature、Engineering、Roadmap、Design、Use Case）不得带 YAML frontmatter；路径拥有身份、唯一一级标题拥有名称。旧示例中的 title/status 等元数据不能复制到 Spec。

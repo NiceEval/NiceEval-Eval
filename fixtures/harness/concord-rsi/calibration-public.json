@@ -1,0 +1,83 @@
+[
+  {
+    "name": "stage-0",
+    "runs": [
+      "585bb7de-eecc-4518-be91-f894a65d9ff8"
+    ],
+    "calls": 96,
+    "unknown": 2,
+    "completed": 14
+  },
+  {
+    "name": "stage-1",
+    "runs": [
+      "d10c38b3-395d-4e68-a0d5-5c73451c0bea"
+    ],
+    "calls": 75,
+    "unknown": 2,
+    "completed": 14
+  },
+  {
+    "name": "stage-v2-0",
+    "runs": [
+      "a6191f3a-9836-4aeb-b020-aab0c30d353b"
+    ],
+    "calls": 130,
+    "unknown": 0,
+    "completed": 16
+  },
+  {
+    "name": "stage-v2-1",
+    "runs": [
+      "a1b92c10-85ea-4cb3-8b57-2d0c02a090e1"
+    ],
+    "calls": 140,
+    "unknown": 0,
+    "completed": 16
+  },
+  {
+    "name": "stage-v3-0",
+    "runs": [
+      "39907a22-ed32-4991-bdee-db03411f1943"
+    ],
+    "calls": 124,
+    "unknown": 0,
+    "completed": 16
+  },
+  {
+    "name": "stage-v3-1",
+    "runs": [
+      "4165c80a-2331-4fc2-a28e-05c228f4e475"
+    ],
+    "calls": 121,
+    "unknown": 0,
+    "completed": 16
+  },
+  {
+    "name": "stage-v3-2",
+    "runs": [
+      "7bd12553-84f5-482c-b7e4-6404a5c84536"
+    ],
+    "calls": 108,
+    "unknown": 0,
+    "completed": 16
+  },
+  {
+    "name": "stage-v3-3",
+    "runs": [
+      "a2e1eae6-1b06-4305-b2a3-07e97c608bb4"
+    ],
+    "calls": 121,
+    "unknown": 0,
+    "completed": 16
+  },
+  {
+    "name": "stage-v3-4",
+    "runs": [
+      "55126afa-e082-479d-8ad2-82a1e19bba19"
+    ],
+    "calls": 136,
+    "unknown": 0,
+    "completed": 16
+  }
+]

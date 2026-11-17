@@ -1,0 +1,8 @@
+--- a/assistant/SKILL.md
++++ b/assistant/SKILL.md
+@@ -15,3 +15,5 @@
+ - read_file / write_file 读写项目内相对路径，list_files 发现项目文件。
+ - 用户明确要求检查时运行 concord check；没有其它要求时完成正文编辑即可。
+ - 重命名时用 move_file 直接移动文件，再按用户要求调整正文。
++
++Spec（Feature、Engineering、Roadmap、Design、Use Case）不得带 YAML frontmatter；路径拥有身份、唯一一级标题拥有名称。旧示例中的 title/status 等元数据不能复制到 Spec。
