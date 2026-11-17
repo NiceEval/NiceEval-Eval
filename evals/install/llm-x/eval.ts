@@ -63,14 +63,21 @@ export default defineScoreEval({
     const user = t.simulatedUser(owner);
     let handoff = first;
     let answered = 0;
+    // 真实用户也会回应纯文本里的提问：agent 结束本轮仍缺信息时，模拟用户回复一次；只有原生提问计入 HITL 判据。
+    let plainReplies = 0;
     const clarification: { requests: unknown; answer: string }[] = [];
-    while (handoff.status === "waiting" && answered < 6) {
-      const requests = handoff.inputRequests;
-      handoff = await user.reply(handoff);
-      clarification.push({ requests, answer: redactConnection(handoff.input) });
-      answered += 1;
+    while (answered + plainReplies < 7) {
+      if (handoff.status === "waiting" && answered < 6) {
+        const requests = handoff.inputRequests;
+        handoff = await user.reply(handoff);
+        clarification.push({ requests, answer: redactConnection(handoff.input) });
+        answered += 1;
+      } else if (handoff.status !== "waiting" && plainReplies === 0) {
+        handoff = await user.reply(handoff);
+        plainReplies += 1;
+      } else break;
     }
-    t.note("HITL 回答次数", answered);
+    t.note("HITL 回答次数", { answered, plainReplies });
     await t.group("澄清（原生 HITL）", async () => {
       t.check(answered, greaterThan(0)).score(2).label("进入 HITL");
       // 空材料代表已知没有原生提问，明确计零，不让 Judge 猜普通文本中的问题。
