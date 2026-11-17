@@ -85,3 +85,38 @@ LLM X v0.19.0 与 v0.20.0 都完成了判分，各为 20/59。公开断言 `实�
 补跑 2 仍全部 errored，错误换成源站不可达：五格准备阶段探测拿到 HTTP 530（Cloudflare 连不上源站）或连接超时（curl exit 28），三格 Codex turn 收到 530，两格流在完成前断开（`error decoding response body`）。故障期间网关时好时坏，事后 `/models` 立即恢复 401。这已不是并发问题，而是网关源站或其 Cloudflare 隧道间歇掉线；评估代码、CF 凭据与目标模型配置均未发现问题。
 
 在网关源站稳定前不再补跑。恢复后重新执行同一命令（建议保留 `--max-concurrency 3`），errored 格会自动重跑。临时探测 box `ne-gw-probe` 已删除；无 terminal/pane/tab/worktree 残留。
+
+## 网关迁移与模板切换后的全矩阵重跑（UTC 2026-11-17）
+
+### 网关迁移
+
+`ai.778917.xyz` 改由 Cloudflare tunnel `ai-oracle` 承载，两个 cloudflared 副本跑在 Oracle 两台 cloud 节点上（`--protocol http2`，Oracle 的 QUIC 出站会超时），集群内直连 sub2api，不再经过家庭网络与跨区 Tailscale。迁移前 10 路并发 100 KB 流式请求要 50–150 秒且约半数 502/524；迁移后 10 路 10/10 约 4 秒、15 路 15/15 最慢 10 秒。it-infra 提交 `234f620e`、`245d6320` 已 push（`a9f805b9`），Terraform CI 只原地更新 studio tunnel 配置（0 add / 1 change / 0 destroy），ArgoCD `sub2api` Synced/Healthy 接管 connector。本轮 install 全矩阵运行期间外层 agent 与 Judge 未再出现网关 502/524/530。
+
+### 模板切换与 pnpm 修复
+
+`bc8b685` 把沙箱换成 Instabox `minimal` 模板，此前全部结果作废。第一次全矩阵（`s_13a8b4ea-3ffc-4742-a454-5daa5369a000`）暴露 minimal 模板的 npmrc 把全局前缀设为 `/opt/npm`，该目录只经登录 shell 的 profile.d 进入 PATH；NiceEval 的 `command()` / `runCommand()` 直接 spawn，因此 GPT Researcher 三格准备失败（`spawn pnpm ENOENT`），LLM X 的“根目录本地 CLI 可执行”gate 也随之失败。确认后主动中断，`73f2e4e` 把 pnpm 装进 `/usr/local/bin`，再以 `--rerun all` 重跑。
+
+### 结果
+
+| 题目 | v0.19.0 | v0.20.0 | v0.21.0 |
+| --- | --- | --- | --- |
+| DB-GPT | passed `@1EXDA6CP0BYC7` | passed `@1JX4PS686TWPX` | errored `@17DRWTYPDQGNS` |
+| GPT Researcher | failed `@163GKKMP4ZW8K` | failed `@165210H8E92JN` | passed `@1K1DFFP25N8WE` |
+| Concord | failed `@19XG2504VZB97` | failed `@129GDEPK2AHRM` | failed `@1EJT62857XQCY` |
+| LLM X | failed 20/59 `@1DN30H95R0XDJ` | failed 20/59 `@12N864WE1GJH9` | failed 20/59 `@1Z33RW9P6FPZB` |
+| ComfyUI | skipped | skipped | skipped |
+
+合计 3 passed、8 failed、1 errored、3 skipped。全量重跑 Invocation `s_fcf64145-dad4-4ad0-b0c7-324223d6ef77`（Run `3a615ba9`、`1f5fe55a`、`9406968c`）约 85 分钟；fix-forward 补跑 `s_84be35a9-2eb4-48b4-bc88-778d377b31b8`（Run `553c99d2`、`fecefd9a`、`27427711`）约 18 分钟，只含 ComfyUI ×3、Concord v0.21.0 与 DB-GPT v0.21.0。
+
+- LLM X 三个版本一致：作者实验固定 `PROVIDER_MODE=fixture`，没有 live 模型响应，`实际运行取得 live 应用真实响应` gate 失败。与此前两轮相同，属于产品结论。
+- GPT Researcher v0.19.0 / v0.20.0：未在根工具项目声明精确候选开发依赖，并改动了子目录 Node 项目或锁文件。
+- Concord：v0.19.0 `公开 execution 取证成功` 失败；v0.20.0 另建子目录 Node 项目并同样取证失败；v0.21.0 只配置出 1 个 Experiment。
+- DB-GPT v0.21.0 两次（全量一次、补跑一次）都在判分阶段约 1010 秒处，Instabox 长连接 SSH 被对端关闭、重连鉴权失败，Machine 被回收，19 条 Agent Judge 断言 unavailable。断连前沙箱内只有普通读取与 `uv` 命令，现场已回收，根因未确认（怀疑并发 Agent Judge 在 8 GB box 上内存紧张，未验证）。同一格补跑已达一次上限，保留 errored。
+
+### 本轮发现并已在 NiceEval 修复或立项的问题
+
+- 全量运行结束时 Concord v0.21.0 的 Attempt 因 `niceeval.agent-turns` 超出 Record 编码预算发布失败，`exp` 以 `runner-record-attempt-publication-failed` 中止、没有 receipt，三个 Run 停在 `active / owner stopped`，已用 `run recover --orphaned` 收口。契约 `f1643571f`，修复 `3947a137c`、`d8cbb53e9`、`b291d1fef`。
+- 失败的 `commandSucceeded()` 只显示 `condition not met`，看不到 `spawn pnpm ENOENT`。契约 `f39602c79`，修复 `61fd0ee34`。
+- 冷准备 20 分钟以上：Instabox driver 关闭了契约要求的 staging 连续推进（本轮 26 个快照来自 26 台源 Machine）、每个 action 都发布快照、全局派发前屏障，且 `--json` / `invocation show` 准备期间只显示 `queued`。契约 `f39602c79`，实现进行中。
+
+以上 NiceEval 修复尚未发布；本轮结果全部由修复前的本地 `dist` 产生。
