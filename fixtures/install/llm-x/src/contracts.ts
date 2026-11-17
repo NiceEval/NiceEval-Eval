@@ -3,7 +3,6 @@ import { z } from "zod";
 export const imageSchema = z.object({
   url: z.string().min(1),
   alt: z.string().min(1).max(180),
-  source: z.enum(["live", "fixture"]),
 }).strict();
 
 export const profileSchema = z.object({
@@ -40,7 +39,6 @@ export const worldSchema = z.object({
   profiles: z.record(z.string(), profileSchema),
   posts: z.array(postSchema),
   revision: z.number().int().nonnegative(),
-  providerMode: z.enum(["live", "fixture"]),
 }).strict();
 
 export type GeneratedImage = z.infer<typeof imageSchema>;

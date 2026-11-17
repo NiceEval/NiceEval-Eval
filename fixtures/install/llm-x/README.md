@@ -23,16 +23,15 @@ pnpm typecheck
 pnpm smoke
 ```
 
-`smoke` 使用确定性内容检查创建、持久化、恢复、发帖、回复、刷新和失败原子性；它不会调用外部服务。
+`smoke` 使用测试内的确定性 provider，不调用外部服务，检查创建、持久化、恢复、发帖、回复、刷新和失败原子性。
 
-## Live provider
+## Provider
 
-Live 模式通过服务端原生 `fetch` 调用 OpenAI-compatible API。文字使用 `POST /responses` 和严格 JSON Schema 输出；图片使用真正的 `POST /images/generations` 接口。协议选择对应官方 OpenAI 文档的 [Responses API](https://developers.openai.com/api/reference/cli/resources/responses/methods/create) 与 [GPT Image 模型支持的 Image generation endpoint](https://developers.openai.com/api/docs/models/gpt-image-2)。
+应用通过服务端原生 `fetch` 调用 OpenAI-compatible API。文字使用 `POST /responses` 和严格 JSON Schema 输出；图片使用真正的 `POST /images/generations` 接口。协议选择对应官方 OpenAI 文档的 [Responses API](https://developers.openai.com/api/reference/cli/resources/responses/methods/create) 与 [GPT Image 模型支持的 Image generation endpoint](https://developers.openai.com/api/docs/models/gpt-image-2)。
 
-在本目录 `.env` 中配置：
+运行应用前，在本目录 `.env` 中配置；缺少 API key 或模型配置时会明确报错：
 
 ```dotenv
-PROVIDER_MODE=live
 OPENAI_API_KEY=...
 OPENAI_BASE_URL=https://api.openai.com/v1
 OPENAI_MODEL=<支持 Responses Structured Outputs 的模型>
@@ -53,7 +52,7 @@ OPENAI_IMAGE_MODEL=<支持 images/generations 的图像模型>
 
 ```ts
 import {
-  FixtureProvider,
+  OpenAICompatibleProvider,
   createWorld,
   generateImage,
   publishPost,
@@ -62,10 +61,17 @@ import {
   viewProfile,
 } from "./src/index.js";
 
+// 先加载环境配置；例如 Node.js 24 可使用 --env-file=.env 运行脚本。
+const provider = new OpenAICompatibleProvider({
+  apiKey: process.env.OPENAI_API_KEY ?? "",
+  apiBase: process.env.OPENAI_BASE_URL ?? "https://api.openai.com/v1",
+  textModel: process.env.OPENAI_MODEL ?? "",
+  imageModel: process.env.OPENAI_IMAGE_MODEL ?? "",
+});
 const controller = new AbortController();
 const game = await createWorld(
   { playerName: "小周", topic: "AI 时代的城市生活" },
-  { provider: new FixtureProvider() },
+  { provider },
   controller.signal,
 );
 

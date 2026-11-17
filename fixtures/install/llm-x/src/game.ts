@@ -154,7 +154,6 @@ export class XGame {
       profiles,
       posts,
       revision: 0,
-      providerMode: dependencies.provider.mode,
     };
     return new XGame(world, dependencies.provider, dependencies.now ?? (() => new Date()), posts.length + 1);
   }
