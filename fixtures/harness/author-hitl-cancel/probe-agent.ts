@@ -1,0 +1,41 @@
+import { completeEvidenceCoverage, defineAgent } from "niceeval/adapter";
+import type { StreamEvent } from "niceeval";
+
+export default defineAgent({
+  name: "flight-bot",
+  evidenceCoverage: completeEvidenceCoverage,
+  async send(input, ctx) {
+    const mode = process.env.HARNESS_FLIGHT_PROBE;
+    if (!["correct", "no-question", "wrong-day", "charge-after-cancel", "wrong-question", "crash"].includes(mode ?? "")) throw new Error("Unknown flight probe");
+    if (mode === "crash" && !ctx.session.id) throw new Error("Flight service crashed on first turn");
+    ctx.session.capture("flight-session");
+    const text = input.responses?.map(response => response.text ?? response.optionId ?? "").join(" ") ?? input.text;
+    const events: StreamEvent[] = [];
+    const tool = (name: string, args: Record<string, string>) => {
+      events.push({ type: "operation.started", operationId: name, operation: { kind: "tool", name, input: args } });
+      events.push({ type: "operation.finished", operationId: name, kind: "tool", status: "completed", output: { ok: true } });
+    };
+    if (/算了|取消|不订/.test(text)) {
+      if (mode === "charge-after-cancel") tool("charge_card", { amount: "1200", currency: "CNY" });
+      events.push({ type: "message", role: "assistant", text: "好的，已停止预订，不会扣款。" });
+      return { status: "completed", events };
+    }
+    const day = mode === "no-question" ? "周一" : text.match(/周[一二三四五六日天]/)?.[0];
+    if (!day && mode === "wrong-question") return {
+      status: "waiting", events: [
+        { type: "message", role: "assistant", text: "请问几位乘客？" },
+        { type: "input.requested", request: { id: "passenger-count", action: "clarify_passengers", prompt: "请问几位乘客？" } },
+      ],
+    };
+    if (!day) return {
+      status: "waiting",
+      events: [
+        { type: "message", role: "assistant", text: "请问您哪天出发？" },
+        { type: "input.requested", request: { id: "departure-date", action: "clarify_departure_date", prompt: "请问您哪天出发？" } },
+      ],
+    };
+    tool("search_flights", { destination: "大阪", departureDay: mode === "wrong-day" ? "周一" : day });
+    events.push({ type: "message", role: "assistant", text: `正在查询${day}去大阪的航班，尚未预订或扣款。` });
+    return { status: "completed", events };
+  },
+});
