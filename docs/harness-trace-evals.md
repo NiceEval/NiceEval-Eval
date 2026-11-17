@@ -54,3 +54,33 @@
 - `evals/harness/README.md` 的条件表与满分合计、根 `README.md` 的 Harness 题数同步更新。
 - 实现者验证：每题的 canned agent 与起点在本地跑一次 `exp`，核对起始 verdict；外层 eval 用 `niceeval exp harness/v0.21.0 harness/trace/<题名> --dry` 检查可加载。真实付费运行由父 agent 统一跑。
 - 验收：三个候选各跑一次四题。期望它们不再全满分；若四题在三个候选上仍都 ≥95%，记为饱和并继续加难度。
+
+## 第二轮：更难的追踪题（2026-11-17）
+
+第一轮四题跑完：三个候选 60/65、60/65、58/65，丢分位置几乎相同，仍接近饱和。原因是每题的答案都在一个 Attempt 的一处 trace 里，找到就能答。第二轮三题要求**跨 Attempt 比对**，并放入**看起来可疑但无关的干扰项**；其中一题的证据只在较细的 timing 呈现里，用来拉开版本差异。共同骨架与判分写法沿用上文，满分各 16，三题合计 48。
+
+### `trace-order-swap`（跨实验比对工具顺序，16 分）
+
+- **场景**：退款助手，Experiment `baseline` 与 `candidate`，各 4 条 Eval。candidate 的 `support/refund-request` failed，其余与 baseline 相同。
+- **隐藏事实**：两个实验在 refund-request 上的最终回复一字不差，调用的工具集合也相同（`verify_identity`、`refund_payment`），但 candidate 先调用 `refund_payment` 再调用 `verify_identity`。断言要求先核验身份再退款，所以 failed。这是确定性的行为差异，不是 flaky。
+- **干扰项**：candidate 的另一条 passed Eval `support/order-status` 带一条 `telemetry-budget-exceeded` warning；与失败无关。
+- **题面**：“candidate 里 refund-request 挂了，可回复跟 baseline 一字不差，是不是 flaky？结果已留档，别重跑，也别改文件。”
+- **判据**：结论是确定性行为差异、不是 flaky（3）；指出工具调用顺序反了：先退款后核验（5）；说明回复文本相同、只比回复看不出（2）；没有把 order-status 的 warning 当作原因（1）；引用公开证据（2）；通用 3 分。
+
+### `trace-flaky-cause`（同一 Run 多次 Attempt 比对，16 分）
+
+- **场景**：天气助手，Experiment `local` 设 `attempts: 4`、`earlyExit: false`，Eval `weather/umbrella` 2 passed、2 failed；另两条 Eval 全部 passed。
+- **隐藏事实**：canned agent 按 attempt 序号决定 `get_forecast` 的输出：第 2、4 次返回 `{"cached":true,"ageSeconds":7200,"rainChance":0.1}`（两小时前的缓存），第 1、3 次返回 `{"cached":false,"rainChance":0.8}`。助手据此回答“不用带伞”或“记得带伞”；断言要求“带伞”。失败与缓存的旧数据严格对应，不是模型随机。
+- **干扰项**：失败的两次耗时略长（多 sleep 1–2 秒），看起来像超时相关，实际无关。
+- **题面**：“weather/umbrella 有时过有时不过，是模型随机性还是有确定原因？要不要加重试？结果已留档，别重跑。”
+- **判据**：结论是确定原因而不是随机（3）；指出失败的两次 `get_forecast` 拿到了两小时前的缓存数据（5）；指出 passed 与 failed 的差别在工具输出、不在回复风格或耗时（2）；建议修数据源或缓存而不是加重试（1）；引用公开证据（2）；通用 3 分。
+
+### `trace-slow-assertion`（耗时在判分而不在 agent，16 分）
+
+- **场景**：文档助手，Experiment `local`，3 条 Eval 全部 passed。`docs/citations` 每次约 100 秒，其余约 1 秒。
+- **隐藏事实**：agent 的 Turn 不到 2 秒。时间花在断言阶段：这条 Eval 有一条自定义检查“引用链接都可访问”，对 20 个链接逐个串行检查、每个等待约 5 秒（fixture 内实现为可控的 sleep，不访问外网）。其余断言都是毫秒级。
+- **干扰项**：agent 的 Turn 里有一次 `search_docs` 工具调用输出很长；与耗时无关。
+- **题面**：“docs/citations 每次要一分多钟，agent 两秒就答完了，时间去哪了？结果已留档，别重跑。”
+- **判据**：定位到断言阶段而不是 agent、Sandbox 或 Judge（4）；指出是“引用链接都可访问”这一条检查（4）；指出逐个串行、每个约 5 秒、20 个约 100 秒（2）；没有把长工具输出当作原因（1）；引用公开证据（2）；通用 3 分。
+
+验收同第一轮：三个候选各跑一次三题；若仍都 ≥95%，继续加难度。
