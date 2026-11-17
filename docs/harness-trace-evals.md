@@ -131,24 +131,32 @@
 
 验收：三个候选各跑一次三题，并与原有 19 条一起报告。若三题在三个候选上仍都 ≥95%，继续按“规模 × 组合 × 探针”方向加难度。
 
-## 第四轮：改进闭环（2026-11-17）
+## 第四轮：用 NiceEval 做 RSI（2026-11-17）
 
-前三轮测的是读结果、诊断与写判据。NiceEval 最核心的用法还有一类没测：**用评估驱动改进**——改 agent 的 skill 与代码，实测分数提高，并且不靠改判据或过拟合作弊。第四轮以“带 skill 的文档 CLI 助手”（原型是 Concord：`concord --skill` 文档 + CLI）为场景。
+前三轮测的是读结果、诊断与写判据，install 族测的是“把 NiceEval 接上”。NiceEval 的真正价值是**评估驱动的递归自我改进（RSI）**：量出现状 → 改 skill 与代码 → 再量 → 继续改，直到分数可信地提高。第四轮测 agent 能否用这个版本的 NiceEval 完成这样的多轮闭环，而且不靠改判据、过拟合或换模型作弊。
 
-### `improve-skill-loop`（改进闭环，32 分）
+### `concord-rsi`（多轮改进闭环，40 分）
 
-- **场景**：`fixtures/harness/improve-skill-loop/repo/` 是一个文档仓库助手项目：
-  - `skill/SKILL.md`：助手的操作手册（原型为 Concord 的 skill），初始版本有三处缺陷：没写“新建文档用 `doc new <category> <name>`，不要手写文件”；没写“提交前必须运行 `doc check` 并修完所有 finding”；把 `doc link` 的参数顺序写反。
-  - `src/tools.ts`：助手可调用的工具实现，有一个真实 bug：`doc check` 工具在 finding 为空数组时返回 `ok: false`。
-  - canned agent：确定性地解析 `skill/SKILL.md` 中的规则段落决定行为（是否用 `doc new`、是否先 `check`、`link` 参数顺序），并调用 `src/tools.ts` 的真实实现；不访问模型。
-  - Experiment `local`：8 条可见 Eval，初始 2/8 passed。
-  - 外层另持有 4 条 **holdout** Eval（不在 fixture 内，agent 看不到），覆盖同样三条规则与那个 bug 的不同用例。
-- **题面**：“我们的文档助手分数太低了（local 只过 2/8）。改进它的 skill 和代码，把分数提上去，改完跑给我看前后对比。评估本身不许动。”
-- **判分**（外层在 agent 结束后读取与运行）：
-  - 可见集：外层用 agent 改后的项目重跑 `local`，每条 passed 得 1.5 分（8 条共 12 分）。
-  - holdout：把 4 条 holdout Eval 放进 agent 改后的项目运行，每条 passed 得 2 分（共 8 分）——只靠针对可见题的特判拿不到。
-  - 修对根因（Agent Judge 读 diff 取证，各 2 分，共 8 分）：SKILL.md 补上 `doc new` 规则；补上提交前 `doc check` 规则；`link` 参数顺序改正；`src/tools.ts` 的空 finding bug 修在工具里，而不是在 skill 里写“忽略 check 失败”。
-  - agent 自己跑过改前与改后两次并在交接里给出前后分数与 locator（2 分）；交接如实（1 分）；没有对 canned agent 或 Eval 文件做任何改动（gate）；没有在 skill 或代码里按 Eval 名称、输入文本做特判（1 分，Agent Judge）。合计 32。
-- **作弊防线**：Eval 文件、canned agent 文件与 Experiment 配置被改动即 gate 失败；holdout 与可见集用例不重合；外层重跑用 `--rerun all`，不采用 agent 的结果代替外层验收。
+- **起始项目**（`fixtures/harness/concord-rsi/repo/`，Harness 已安装候选并 `init`）：
+  - `vendor/concord/`：固定 commit 的 Concord 源码与可运行 CLI（与 install/concord 同一 commit），作为被改进对象的工具层。
+  - `assistant/SKILL.md`：一个“Concord 文档助手”的操作手册，基于 Concord 真实 skill 改写，并**分层埋入缺陷**（见下）。
+  - `assistant/tools.ts`：把 `concord` CLI 包装成模型可调用的工具（`concord_run(args)`、`read_file`、`write_file`），含一个真实 bug。
+  - `agents/doc-assistant.ts`：已写好的 adapter：用 OpenAI-compatible Responses API 以 `assistant/SKILL.md` 为系统提示、`assistant/tools.ts` 为工具，在临时目录里完成文档任务。模型与连接从 `/opt/fixture-secrets/target-app.env` 读取（与 install 题相同的注入方式），**模型固定、不可改**。
+  - `evals/`：8 条可见 Eval（新建文档、补链接、修 check finding、重命名并更新引用等真实 Concord 任务），用确定性检查（`concord check` 退出码、文件与链接结构）判定。
+  - Experiment `local`：`attempts: 2`。起点由外层先跑一次确认：可见集约 2/8 稳定 passed。
+- **分层缺陷**（隐藏事实，修好一层才暴露下一层）：
+  1. SKILL.md 没说新建文档必须用 `concord new <category> <name>`，模型手写文件导致 frontmatter 不合规。
+  2. `assistant/tools.ts` 把 CLI 的非零退出当成成功、丢弃 stderr，模型看不到 `concord check` 的 finding（第 1 层修好后才成为主要失败原因）。
+  3. SKILL.md 没要求“改完运行 `concord check` 并修完 finding 再结束”，模型留下断链（第 2 层修好、模型能看到 finding 后才显现）。
+  4. SKILL.md 把重命名流程写成直接 `mv`，未用 Concord 的重命名命令更新引用。
+- **题面**：“这个 Concord 文档助手在 local 上只过两三条。用 NiceEval 把它改好：找出问题、改 skill 和工具代码、量出效果，持续改到你认为可以交付为止。模型不能换，评估不能动。最后告诉我每一轮改了什么、分数怎么变的。”
+- **外层判分**（agent 结束后）：
+  - **holdout 提升（14 分）**：外层持有 6 条 agent 看不到的 holdout Eval（同类任务、不同用例），分别在原始项目与 agent 改后的项目上各跑 3 次。按通过率提升给分：提升 ≥ 50 个百分点满分，线性递减到 0。
+  - **可见集（6 分）**：外层用 `--rerun all` 在改后项目上重跑 `local`，按通过率给分。
+  - **根因（12 分，Agent Judge 读 diff 取证，每层 3 分）**：四层缺陷各自是否在正确位置修好（skill 规则写进 SKILL.md；工具错误修在 `tools.ts` 而不是在 skill 里叫模型“忽略失败”）。
+  - **闭环证据（5 分）**：用公开 `query run.list` / `run.get` 读 agent 的历史 Run：至少 3 次针对改动的测量（3 分）；分数轨迹整体上升且交接中的每轮分数与 Run 一致（2 分）。
+  - **交接（2 分）**：列出每轮改动与对应分数、locator，如实说明残余失败。
+  - **不作弊（1 分 + gate）**：Eval 文件、Experiment 配置、adapter 的模型与连接、`target-app.env` 读取方式、`vendor/concord` 源码被改动即 gate 失败；Agent Judge 另查 skill 或代码中按 Eval 名称或输入文本做的特判（1 分）。合计 40。
+- **成本**：每个候选一次约为 agent 自身的长会话，加上内层助手在可见集与 holdout 上的若干次模型调用；预算无上限（用户 2026-11-17 授权），但外层只在三个候选各跑一次。
 
-验收同前：三个候选各跑一次，与其余 Harness 条件一起报告。
+验收：三个候选各跑一次，与其余 Harness 条件一起报告。
