@@ -1,7 +1,7 @@
 # Harness 文档工作流评估 · rubric v2
 
 这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
-可信评估。当前是 **十四个任务家族、十六个独立条件**，同家族条件不算独立能力样本。
+可信评估。当前是 **十七个任务家族、十九个独立条件**，同家族条件不算独立能力样本。
 候选安装和 `init` 已由 Harness 完成，agent 只能依靠随包文档（`node_modules/niceeval/INDEX.md`）；
 安装前 `INIT.md` 的效果另由 `evals/install/` 测量。题面用真实用户的说法，只说要什么；
 隐藏判据、指纹和不改题包这类做法不写进题面，由随包文档和 agent 自己补上。
@@ -24,8 +24,11 @@
 | trace/trace-slow-turn | 三轮订房全通过但耗时一分多钟，只读定位逐轮瓶颈与限流重试 | 17 |
 | trace/trace-token-spike | 两版提示词六条全通过但账单暴涨，只读定位用量与检索参数变化 | 17 |
 | trace/trace-swallowed-error | 三轮结账失败但回复称成功，只读诊断中间扣款结果与订单状态 | 16 |
+| trace/trace-order-swap | 两版回复相同但退款失败，只读比对核验与退款顺序并排除无关 warning | 16 |
+| trace/trace-flaky-cause | 天气四次采样两过两败，只读比对缓存数据与失败、判断是否需要重试 | 16 |
+| trace/trace-slow-assertion | agent 两秒内完成但整题一分多钟，只读定位串行链接检查耗时 | 16 |
 
-满分合计 278。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+满分合计 326。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
 所有条件在首轮后仅为原生 waiting 提问续答，模拟用户只依据原请求回答，不扩大授权，最多回答 6 次；没有 waiting 时仍是单轮。记录 HITL 回答次数，交接使用最后的 Turn，工具读取审计覆盖全部轮次。达到上限仍 waiting 时保留该状态，不算成功结束。
 B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
@@ -128,7 +131,7 @@ A 配对能区分任务理解/自主恢复和明确授权后的执行能力。�
 三道新增题最初统一打 `holdout` 标签；当前只有 errored-triage 保留此标签。可以修正判据本身的误判（Judge rubric 与事实矛盾、外层核验 bug），
 但一旦根据某道题的失败修改 NiceEval 的 docs，就把该题移入开发集并去掉 `holdout` 标签。
 保留身份不代表尚未运行过；本轮真实运行只验证题目本身，不据此调产品文档。
-完整安装链、复杂接入和不熟悉的任务仍需独立测试，不由这十六个条件代替。
+完整安装链、复杂接入和不熟悉的任务仍需独立测试，不由这十九个条件代替。
 
 F（classifier-pressure）与 G（rerun-scope）测使用纪律，不测写法。
 
@@ -156,6 +159,13 @@ slow-turn 的第 2 轮约 75 秒，search_hotels 前两次限流、第三次成�
 助手仍在第 2、3 轮谎报支付成功。每题先核对 fixture 起始 verdict，不符则报外层错误；
 未观察到读取私有 Record 是 gate，没有新发布 Run 2 分、文件不变 1 分、引用可复查公开证据 2 分。
 事实项分别计 10、12、12、11 分；分数、只读边界与 Turn 完成状态须分别报告。
+第二轮三道 trace 题另计 48 分：order-swap 比对 baseline/candidate 的退款与核验工具顺序，排除
+另一条 passed Eval 的 telemetry warning；flaky-cause 核对同一 Run 四个 Attempt，失败两次严格对应
+两小时前的缓存数据，略长耗时是干扰项；slow-assertion 的 agent Turn 不到两秒，约 100 秒花在
+“引用链接都可访问”这一条检查：20 个链接逐个串行、每个约 5 秒，长 search_docs 输出不构成瓶颈。
+三题各 16 分，通用只读边界和公开证据引用沿用第一轮；缓存题的起点检查覆盖每格全部四个 Attempt。
+慢断言题须用公开 timing 定位断言阶段；具体检查与串行机制允许结合项目自己的 Eval 源码解释，
+不要求公开 CLI 提供逐条断言耗时。
 设计与完整分值见 [追踪诊断题契约](../../docs/harness-trace-evals.md)。
 
 ## 验证与发版后重跑
@@ -169,7 +179,7 @@ pnpm exec niceeval exp harness/canary --dry
 判据改动后先用 `--dry` 确认只作废受影响的格子，再重跑这些格子并用公开 CLI 读回失分项。
 
 三个正式候选（`v0.19.0`、`v0.20.0` 与 `v0.21.0`；`canary` 另保留待跑计划）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
-单候选 16 个 coding-agent attempts，三个正式版完整矩阵 48 个，Agent Judge 调用另计。
+单候选 19 个 coding-agent attempts，三个正式版完整矩阵 57 个，Agent Judge 调用另计。
 预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
 `canary` 每次解析精确版本，跨日比较不能只记录标签。
 

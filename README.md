@@ -85,7 +85,7 @@ pnpm --silent exec niceeval compare run:<baseline-run-id> -- run:<candidate-run-
 
 ## Harness 题
 
-十四个任务家族、十六个条件，满分合计 278。题面用真实用户的说法，只说要什么；做法由产品和 agent 自己补上。
+十七个任务家族、十九个条件，满分合计 326。题面用真实用户的说法，只说要什么；做法由产品和 agent 自己补上。
 
 | 条件 | 请求与起始状态 | 分值 |
 | --- | --- | --- |
@@ -105,6 +105,9 @@ pnpm --silent exec niceeval compare run:<baseline-run-id> -- run:<candidate-run-
 | `trace/trace-slow-turn` | 三轮订房全通过但耗时一分多钟，只读定位逐轮瓶颈与限流重试 | 17 |
 | `trace/trace-token-spike` | 两版提示词六条全通过但账单暴涨，只读定位用量与检索参数变化 | 17 |
 | `trace/trace-swallowed-error` | 三轮结账失败但回复称成功，只读诊断中间扣款结果与订单状态 | 16 |
+| `trace/trace-order-swap` | 两版回复相同但退款失败，只读比对核验与退款顺序并排除无关 warning | 16 |
+| `trace/trace-flaky-cause` | 天气四次采样两过两败，只读比对缓存数据与失败、判断是否需要重试 | 16 |
+| `trace/trace-slow-assertion` | agent 两秒内完成但整题一分多钟，只读定位串行链接检查耗时 | 16 |
 
 `classifier-pressure` 与 `rerun-scope` 测的是使用纪律而不是写法：`classifier-pressure` 里能让结果变绿的办法都是放水，判据、题面、被测 Agent 与运行配置
 任何一处被动过就是零分，外层再重跑一次确认这条仍然 failed；`rerun-scope` 从公开 query 读每一格发布的 Attempt ID，
