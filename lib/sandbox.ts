@@ -40,7 +40,9 @@ export const instabox = instaboxSandbox({
   id: "pnpm-12-20-0",
   user: "root",
   changeFrequency: changeFrequency.rare,
-  command: "npm install --global pnpm@12.20.0 && pnpm --version",
+  // minimal 模板的 npmrc 把全局前缀设为 /opt/npm，其 bin 只经登录 shell 的 profile.d 进入 PATH；
+  // command()/runCommand() 直接 spawn，找不到那里的 pnpm（spawn pnpm ENOENT）。装进 /usr/local/bin。
+  command: "npm install --global --prefix /usr/local pnpm@12.20.0 && /usr/local/bin/pnpm --version",
 })).before(shell({
   // 预装内置 Codex Agent 锁定的 CLI，让 agent.install 的探测直接命中；装在 before 里才进 snapshot，被所有 Attempt 共享。
   // 不预装时每个 Attempt 都要从宿主上传约 320 MB 的原生二进制（约 10 分钟）。NiceEval 改了锁定版本时探测未命中，回退到它自己的安装，只是变慢。
