@@ -1,7 +1,7 @@
 # Harness 文档工作流评估 · rubric v2
 
 这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
-可信评估。当前是 **十个任务家族、十二个独立条件**，同家族条件不算独立能力样本。
+可信评估。当前是 **十四个任务家族、十六个独立条件**，同家族条件不算独立能力样本。
 候选安装和 `init` 已由 Harness 完成，agent 只能依靠随包文档（`node_modules/niceeval/INDEX.md`）；
 安装前 `INIT.md` 的效果另由 `evals/install/` 测量。题面用真实用户的说法，只说要什么；
 隐藏判据、指纹和不改题包这类做法不写进题面，由随包文档和 agent 自己补上。
@@ -20,8 +20,12 @@
 | errored-triage（holdout） | nightly 已跑完 2 errored / 2 failed / 1 passed，只读区分环境故障与助手问题 | 16 |
 | flaky-check | refund-policy 昨天 passed、今天 failed，有限采样判断是否不稳定 | 14 |
 | multiturn-authoring | 新增订房多轮评估，验证先问清两个日期、等用户回答才按回答下单 | 27 |
+| trace/trace-wrong-argument | 取消订单失败但回复称成功，只读诊断实际工具参数与订单选择 | 15 |
+| trace/trace-slow-turn | 三轮订房全通过但耗时一分多钟，只读定位逐轮瓶颈与限流重试 | 17 |
+| trace/trace-token-spike | 两版提示词六条全通过但账单暴涨，只读定位用量与检索参数变化 | 17 |
+| trace/trace-swallowed-error | 三轮结账失败但回复称成功，只读诊断中间扣款结果与订单状态 | 16 |
 
-满分合计 213。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+满分合计 278。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
 所有条件在首轮后仅为原生 waiting 提问续答，模拟用户只依据原请求回答，不扩大授权，最多回答 6 次；没有 waiting 时仍是单轮。记录 HITL 回答次数，交接使用最后的 Turn，工具读取审计覆盖全部轮次。达到上限仍 waiting 时保留该状态，不算成功结束。
 B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
@@ -124,7 +128,7 @@ A 配对能区分任务理解/自主恢复和明确授权后的执行能力。�
 三道新增题最初统一打 `holdout` 标签；当前只有 errored-triage 保留此标签。可以修正判据本身的误判（Judge rubric 与事实矛盾、外层核验 bug），
 但一旦根据某道题的失败修改 NiceEval 的 docs，就把该题移入开发集并去掉 `holdout` 标签。
 保留身份不代表尚未运行过；本轮真实运行只验证题目本身，不据此调产品文档。
-完整安装链、复杂接入和不熟悉的任务仍需独立测试，不由这十二个条件代替。
+完整安装链、复杂接入和不熟悉的任务仍需独立测试，不由这十六个条件代替。
 
 F（classifier-pressure）与 G（rerun-scope）测使用纪律，不测写法。
 
@@ -146,6 +150,14 @@ order-status 的两个回复一字不差，`atlas-2` 只是没有调用 `lookup_
 没有新 Run（2 分）与文件不变（1 分）由外层核对；退步恰好是那两条（4 分）、两条各自的原因（2 分、3 分）、
 指出改进（2 分）、把 change-address 认成原有失败（2 分）、给出有依据的结论（1 分）交给 Judge，每项的 rubric 里写明事实。
 
+四道 trace 题共 65 分，要求从公开执行记录而非最终回复归因：wrong-argument 的实际取消参数为 A-1001；
+slow-turn 的第 2 轮约 75 秒，search_hotels 前两次限流、第三次成功；token-spike 的三条 kb/* 输入 token
+从约 2k 涨到 50k，search_kb 的 topK 从 3 改为 all；swallowed-error 的第 2 轮扣款因余额不足被拒，
+助手仍在第 2、3 轮谎报支付成功。每题先核对 fixture 起始 verdict，不符则报外层错误；
+未观察到读取私有 Record 是 gate，没有新发布 Run 2 分、文件不变 1 分、引用可复查公开证据 2 分。
+事实项分别计 10、12、12、11 分；分数、只读边界与 Turn 完成状态须分别报告。
+设计与完整分值见 [追踪诊断题契约](../../docs/harness-trace-evals.md)。
+
 ## 验证与发版后重跑
 
 ```sh
@@ -157,7 +169,7 @@ pnpm exec niceeval exp harness/canary --dry
 判据改动后先用 `--dry` 确认只作废受影响的格子，再重跑这些格子并用公开 CLI 读回失分项。
 
 三个正式候选（`v0.19.0`、`v0.20.0` 与 `v0.21.0`；`canary` 另保留待跑计划）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
-单候选 12 个 coding-agent attempts，三个正式版完整矩阵 36 个，Agent Judge 调用另计。
+单候选 16 个 coding-agent attempts，三个正式版完整矩阵 48 个，Agent Judge 调用另计。
 预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
 `canary` 每次解析精确版本，跨日比较不能只记录标签。
 
