@@ -20,26 +20,26 @@
 
 ## 四道题
 
-### `trace-wrong-argument`（工具参数，16 分）
+### `trace-wrong-argument`（工具参数，15 分）
 
 - **场景**：客服助手，Experiment `local`，3 条 Eval。`support/cancel-order` failed，另两条 passed。
 - **隐藏事实**：用户要取消 A-1002。助手先调用 `lookup_orders`，返回两个订单 `[A-1001（已送达，较早）, A-1002（待发货）]`；随后调用 `cancel_order`，参数却是 `{"orderId":"A-1001"}`。最终回复写的是“已为您取消订单 A-1002”。断言检查 `cancel_order` 的参数等于 A-1002，所以 failed。
 - **题面**：“cancel-order 这条挂了，可助手回复明明说取消了 A-1002，是不是判据写错了？结果已留档，别重跑，也别改文件。”
 - **判据**：结论是判据没错、助手真的取消错了（4）；指出实际取消的是 A-1001（3）；原因是 lookup 返回两个订单、助手取了第一个（3）；引用公开证据（2）；通用 3 分。
 
-### `trace-slow-turn`（逐轮耗时，15 分）
+### `trace-slow-turn`（逐轮耗时，17 分）
 
 - **场景**：订房助手，Experiment `local`，4 条 Eval 全部 passed。其中多轮 Eval `booking/three-step` 有 3 个 Turn，耗时约 80 秒；其它 Eval 约 1 秒。
 - **隐藏事实**：慢在第 2 个 Turn（约 75 秒）。这一轮里 `search_hotels` 被调用 3 次：前两次输出 `{"error":"rate_limited","retryAfterSeconds":30}`，第三次成功。canned agent 在这一轮真实 sleep 约 75 秒。第 1、3 轮与断言评估都很快。
 - **题面**：“booking/three-step 每次都要一分多钟，别的都是一秒，慢在哪？结果已留档，别重跑。”
-- **判据**：定位到第 2 轮（4）；指出是 `search_hotels` 被限流后重试了两次（4）；排除 Judge、Sandbox 与模型推理为主因（2）；给出大致量级（这一轮约占 75 / 80 秒）（2）；通用 3 分。
+- **判据**：定位到第 2 轮（4）；指出是 `search_hotels` 被限流后重试了两次（4）；排除 Judge、Sandbox 与模型推理为主因（2）；给出大致量级（这一轮约占 75 / 80 秒）（2）；引用公开证据（2）；通用 3 分。
 
-### `trace-token-spike`（逐轮用量，16 分）
+### `trace-token-spike`（逐轮用量，17 分）
 
 - **场景**：知识库助手，Experiment `baseline` 与 `candidate`，同样 6 条 Eval，两边 verdict 完全相同（全部 passed）。
 - **隐藏事实**：candidate 里 3 条 `kb/*` Eval 的 Turn 输入 token 从约 2,000 涨到约 50,000，其它 3 条不变。原因在工具调用：candidate 调用 `search_kb` 时参数是 `{"query":…,"topK":"all"}`，输出包含整个知识库（几十 KB 文本）；baseline 是 `topK: 3`。canned agent 用 `Turn.usage` 报告各轮 token。
 - **题面**：“换了新提示词以后结果都一样，但账单涨了好几倍，钱花在哪了？结果已留档，别重跑。”
-- **判据**：指出涨幅集中在 3 条 `kb/*`（4）；指出机制是 `search_kb` 的 `topK` 变成 `all`、把整个知识库塞进上下文（4）；给出量级（约 2k → 50k 输入 token）（3）；说明 verdict 没变（1）；引用公开证据（1）；通用 3 分。
+- **判据**：指出涨幅集中在 3 条 `kb/*`（4）；指出机制是 `search_kb` 的 `topK` 变成 `all`、把整个知识库塞进上下文（4）；给出量级（约 2k → 50k 输入 token）（3）；说明 verdict 没变（1）；引用公开证据（2）；通用 3 分。
 
 ### `trace-swallowed-error`（多轮中间的工具结果，16 分）
 
