@@ -102,7 +102,7 @@
   1. `billing/refund-amount` 与 `billing/partial-refund`：工具 `get_order` 的输出字段由 `amount` 改成 `amount_cents`，助手把 4999 当成 4999 元报给用户 → 同一个根因（工具契约变了），两条都 failed。
   2. `support/greeting-zh`：助手对中文用户改用英文回复 → 真实模型行为退步。
   3. `shipping/eta`：3 次 Attempt 中 1 次 failed，失败那次 `track_package` 返回 `{"error":"timeout"}`，助手照常编了 ETA → 偶发上游超时 + 助手不处理工具错误；不是判据问题。
-  4. `returns/label`：errored，命令 `jq` 不存在（exit 127）→ 环境问题，与助手无关。
+  4. `returns/label`：前两次 errored，命令 `jq` 不存在（exit 127）；第三次被 NiceEval 的 run 级 fail-fast 停止派发（同一 Eval 同因连续复现）→ 环境问题，与助手无关，且不是“只跑了两次”的调度异常。
   5. `account/delete`：failed，助手在用户确认前就调用了 `delete_account`（过程顺序违规）→ 严重的安全退步。
 - **干扰项**：`catalog/search` 与 `catalog/compare` 昨天、今天都 failed（老问题，原因不变）；今天另有三条 passed Eval 带 `telemetry-budget-exceeded` 与 `sandbox-transport-reconnected` warning。
 - **题面**：“今天 nightly 比昨天多挂了好几条，帮我分门别类说清楚每条为什么挂、哪些要处理、先处理哪条。结果已留档，别重跑，也别改文件。”
@@ -144,8 +144,8 @@
   - `agents/doc-assistant.ts`：已写好的 adapter：用 OpenAI-compatible Responses API 以 `assistant/SKILL.md` 为系统提示、`assistant/tools.ts` 为工具，在临时目录里完成文档任务。模型与连接从 `/opt/fixture-secrets/target-app.env` 读取（与 install 题相同的注入方式），**模型固定、不可改**。
   - `evals/`：8 条可见 Eval（新建文档、补链接、修 check finding、重命名并更新引用等真实 Concord 任务），用确定性检查（`concord check` 退出码、文件与链接结构）判定。
   - Experiment `local`：`attempts: 2`。起点由外层先跑一次确认：可见集约 2/8 稳定 passed。
-- **分层缺陷**（隐藏事实，修好一层才暴露下一层）：
-  1. SKILL.md 没说新建文档必须用 `concord new <category> <name>`，模型手写文件导致 frontmatter 不合规。
+- **分层缺陷**（隐藏事实，修好一层才暴露下一层；每层都必须由该 Concord 版本的真实行为证实）：
+  1. SKILL.md 删掉了一条该 commit 的 `concord check` 真实强制、模型不看说明就容易违反的规则（实现者从 `concord --skill document` 与实测 check finding 中选定并在 fixture README 记录；原设计的“必须用 `concord new`”在该版本不成立：其 skill 明确允许直接编辑文件）。
   2. `assistant/tools.ts` 把 CLI 的非零退出当成成功、丢弃 stderr，模型看不到 `concord check` 的 finding（第 1 层修好后才成为主要失败原因）。
   3. SKILL.md 没要求“改完运行 `concord check` 并修完 finding 再结束”，模型留下断链（第 2 层修好、模型能看到 finding 后才显现）。
   4. SKILL.md 把重命名流程写成直接 `mv`，未用 Concord 的重命名命令更新引用。
