@@ -17,7 +17,7 @@ export default defineExperiment({
   description: `niceeval@${version}（历史对照）：Harness 运行、反馈与 authoring 闭环`,
   adapter: sandboxCodexAgent(),
   model: "gpt-6.1-sol",
-  reasoningEffort: "low",
+  reasoningEffort: "medium",
   attempts: 1,
   earlyExit: false,
   flags: { candidateVersion: version, harnessRubric: "v2" },

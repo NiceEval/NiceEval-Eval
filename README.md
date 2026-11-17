@@ -40,7 +40,7 @@ Eval 的断言都读这一个值。`canary` 跨日比较要记录解析出的精
 | `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否用这个版本提供的一切完成工作流 | 9 格 |
 
 `install` 与 `harness` 两族合计 33 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge（`gpt-6-astra`）调用。
-Harness 固定 1 Attempt、low 推理设置并关闭首过即停。全仓并发上限 10。2026-11-17 起由 medium 降为 low：medium 下三个候选总分都在 96–97%，单题差异只有 ±2 分，比不出版本；推理更弱的 agent 更依赖 CLI、类型与文档，版本差异更容易显出来。
+Harness 固定 1 Attempt、medium 推理设置并关闭首过即停。全仓并发上限 10。被测 agent 固定为 gpt-6.1-sol、不降模型或推理档位；区分度靠题目难度获得（2026-11-17 曾试 low 档，仍饱和，已撤回）。
 
 ## 快速开始
 
