@@ -40,7 +40,7 @@ Eval 的断言都读这一个值。`canary` 跨日比较要记录解析出的精
 | `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否用这个版本提供的一切完成工作流 | 9 格 |
 
 `install` 与 `harness` 两族合计 33 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge（`gpt-6-astra`）调用。
-Harness 固定 1 Attempt、medium 推理设置并关闭首过即停。全仓并发上限 10。
+Harness 固定 1 Attempt、low 推理设置并关闭首过即停。全仓并发上限 10。2026-11-17 起由 medium 降为 low：medium 下三个候选总分都在 96–97%，单题差异只有 ±2 分，比不出版本；推理更弱的 agent 更依赖 CLI、类型与文档，版本差异更容易显出来。
 
 ## 快速开始
 
@@ -108,7 +108,7 @@ pnpm --silent exec niceeval compare run:<baseline-run-id> -- run:<candidate-run-
 
 三道 authoring 题（`log-summary-repair`、`cancel-async-authoring`、`tool-guard`）不相信 agent 自己的运行：外层把被测项目里的 canned agent 临时换成探针，
 用一组已知产物或已知工具调用检验改后的 Eval，既不能过紧也不能放水。
-分数、完成事实与修改范围分开报告。题库设计、评分口径与适用边界见
+版本比较以分数为主：逐题分数与族总分在前，verdict 与通过率在后（一条 gate 失败就整格 failed，会把分数差异折叠掉）。分数、完成事实与修改范围分开报告。题库设计、评分口径与适用边界见
 [`evals/harness/README.md`](evals/harness/README.md)，发版比较流程见
 [发布评估协议](docs/harness-release-evaluation.md)，fixture 与共享基建见
 [`fixtures/harness/README.md`](fixtures/harness/README.md)。

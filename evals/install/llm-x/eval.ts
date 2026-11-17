@@ -88,7 +88,7 @@ export default defineScoreEval({
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
     await t.group("需求满足", async () => {
       const review = t.agentJudge(reviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
-      review.chat("用 baseline 后的 diff 及新文件检查用户四条需求。内置 FixtureProvider 是应用原有离线开发工具，评分只接受 live 路径；不能因为有该类就误判 live 代码是 mock，也不能把离线 smoke 当作真实模型运行。");
+      review.chat("用 baseline 后的 diff 及新文件检查用户四条需求。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub 或离线替身不算 live 路径，test/smoke.ts 的测试内 provider 也不能当作真实模型运行。");
       review.judge("有 Eval 走真实发帖路径（publishPost 或页面同源 HTTP 操作），检查生成帖子内容遵循玩家意图；开放内容用 Judge 或等价语义判据，不用关键词或输入回显代替。用户原始回复不是模型生成帖子。")
         .score(3).label("发帖遵循意图");
       review.judge("有 Eval 回复指定帖子后等待后台 AI 回应，检查回应者存在于当前世界、内容回应被回复帖子且符合回应人物主页设定。三项都须覆盖，不能只检查用户原文保存或固定等待时间。")
@@ -100,7 +100,7 @@ export default defineScoreEval({
     });
     await t.group("接入形态", async () => {
       const review = t.agentJudge(reviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
-      review.chat("用 baseline 后的 diff 及新文件检查用户四条需求。内置 FixtureProvider 是应用原有离线开发工具，评分只接受 live 路径；不能因为有该类就误判 live 代码是 mock，也不能把离线 smoke 当作真实模型运行。");
+      review.chat("用 baseline 后的 diff 及新文件检查用户四条需求。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub 或离线替身不算 live 路径，test/smoke.ts 的测试内 provider 也不能当作真实模型运行。");
       review.judge("使用 NiceEval 自定义应用接口 defineAdapter 暴露发帖、回复、刷新、配图等业务操作，让 Eval 直接调用业务方法；不能硬套成聊天 send。")
         .score(3).label("使用自定义应用接口");
       review.judge("live 模式真实调用文字及图片模型；用户在 HITL 对话给出的 API key 和额外请求头仅存于被 gitignore 排除的未跟踪 env 文件或进程环境，运行时注入应用。Judge 从 target-app.env 运行时读取配置。不把实际凭据写入源码、提交或打印。")
@@ -193,7 +193,7 @@ export default defineScoreEval({
       await t.check(attempts.map((attempt) => attempt.locator !== null), countWhere(equals(true), equals(attempts.length))).gate().label("各 Run 的最新成员均已发布").orStop();
       const evidence = t.agentJudge(reviewer, { installRoot: root, attempts, handoff: redactConnection(handoff.reply) });
       evidence.chat("从候选 INDEX 和公开 CLI 帮助定位所有当前 Attempt 的 overview/execution/source。旧版 show <locator> --execution/--source 与新版 show <locator> execution/source 都可。自定义应用无聊天消息是合法的，应检查业务操作和断言值；自己读 Adapter 及其导入源码核对输入、结果和 provider，不能替 agent 补做运行。");
-      evidence.judge("至少一个非 errored 的正向核心用例实际运行 live LLM X，产生真实文字响应或图片并用于断言。必须从公开 execution/overview 的业务操作、断言值及作者源码解释真实 provider 路径；仅启动日志、离线 FixtureProvider、mock/stub/echo 或静态 JSON 不算。")
+      evidence.judge("至少一个非 errored 的正向核心用例实际运行 live LLM X，产生真实文字响应或图片并用于断言。必须从公开 execution/overview 的业务操作、断言值及作者源码解释真实 provider 路径；仅启动日志、agent 自建的 mock/stub/echo、测试内 provider 或静态 JSON 不算。")
         .gate(1).score(10).label("实际运行取得 live 应用真实响应");
       evidence.judge("作者的 Adapter、Eval 及其导入源码能解释每个当前 Attempt 的输入、业务操作和断言结果；预期负例可合法错误或拒绝。任一面空白或与公开结果对不上不算。")
         .score(6).label("source 能解释 execution");

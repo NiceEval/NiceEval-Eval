@@ -108,4 +108,4 @@ Judge 的材料是全部 `waiting` Turn 的 `input.requested` 提问加上模拟
 
 - `pnpm run typecheck` 通过；`niceeval exp install/v0.21.0 --dry` 显示新增的 llm-x、comfyui 两格，已有格的沿用状态不变。
 - 在 0.21.0 上真实跑一次 llm-x：被测 agent 进入题目正文，判据都给出了判定，没有因为题目自身的缺陷而 errored。是否 passed 不是验收条件。
-- 在 Sandbox 里用同样的连接信息实际跑通一次 fixture 应用的 live 模式（建世界、发帖带图），再开始真实运行题目；跑不通时停下来报告，不要自行换成 fixture 模式或删掉配图需求。
+- 在 Sandbox 里用同样的连接信息实际跑通一次宿主应用（建世界、发帖带图），再开始真实运行题目；跑不通时停下来报告，不要自行换成离线替身或删掉配图需求。
