@@ -1,5 +1,5 @@
 import { defineExperiment } from "niceeval";
-import { resolveCandidate } from "../../../lib/candidate.ts";
+import { resolveCandidate } from "../../lib/candidate.ts";
 import {
   agentEndpointCheck,
   harnessProject,
@@ -8,9 +8,9 @@ import {
   niceevalInit,
   removeInitExamples,
   sandboxCodexAgent,
-} from "../../../lib/sandbox.ts";
+} from "../../lib/sandbox.ts";
 
-const version = resolveCandidate("0.20.0");
+const version = resolveCandidate("0.21.0");
 
 // 已装好候选的项目里运行、诊断、修复与编写 Eval；agent 拿到的是这个版本的全部：CLI、类型声明与随包文档。
 export default defineExperiment({
