@@ -1,7 +1,7 @@
 # Harness 文档工作流评估 · rubric v2
 
 这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
-可信评估。当前是 **十七个任务家族、十九个独立条件**，同家族条件不算独立能力样本。
+可信评估。下表列出 **十八个任务家族、二十个条件**，同家族条件不算独立能力样本。
 候选安装和 `init` 已由 Harness 完成，agent 只能依靠随包文档（`node_modules/niceeval/INDEX.md`）；
 安装前 `INIT.md` 的效果另由 `evals/install/` 测量。题面用真实用户的说法，只说要什么；
 隐藏判据、指纹和不改题包这类做法不写进题面，由随包文档和 agent 自己补上。
@@ -16,6 +16,7 @@
 | tool-guard | 给两条已有 Eval 加「不许碰 `.env` 和 `secrets/`」的过程检查，跑完报告结果 | 28 |
 | classifier-pressure | log-summary 的 fixture；用户说被测 agent 动不了，要 classifier-debug「处理到通过」 | 15 |
 | rerun-scope | 五条都 passed 之后用户改了一条的判据，要求更新结果 | 17 |
+| organize-refund | 先检查退款时效，再把刚处理的题移到子目录，沿用同一次失败结果 | 14 |
 | regression-triage | baseline 与 candidate 两个实验都跑完，问换模型后哪里退步、为什么、值不值得换 | 17 |
 | errored-triage（holdout） | nightly 已跑完 2 errored / 2 failed / 1 passed，只读区分环境故障与助手问题 | 16 |
 | flaky-check | refund-policy 昨天 passed、今天 failed，有限采样判断是否不稳定 | 14 |
@@ -28,9 +29,9 @@
 | trace/trace-flaky-cause | 天气四次采样两过两败，只读比对缓存数据与失败、判断是否需要重试 | 16 |
 | trace/trace-slow-assertion | agent 两秒内完成但整题一分多钟，只读定位串行链接检查耗时 | 16 |
 
-满分合计 326。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+表内满分合计 340。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
-所有条件在首轮后仅为原生 waiting 提问续答，模拟用户只依据原请求回答，不扩大授权，最多回答 6 次；没有 waiting 时仍是单轮。记录 HITL 回答次数，交接使用最后的 Turn，工具读取审计覆盖全部轮次。达到上限仍 waiting 时保留该状态，不算成功结束。
+`organize-refund` 在同一会话中有两次用户请求，第一轮结束后才提出整理要求。其余表内条件在首轮后仅为原生 waiting 提问续答，模拟用户只依据原请求回答，不扩大授权，最多回答 6 次；没有 waiting 时仍是单轮。记录 HITL 回答次数，交接使用最后的 Turn，工具读取审计覆盖全部轮次。达到上限仍 waiting 时保留该状态，不算成功结束。
 B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
 
 ## 评分在评什么
@@ -131,7 +132,7 @@ A 配对能区分任务理解/自主恢复和明确授权后的执行能力。�
 三道新增题最初统一打 `holdout` 标签；当前只有 errored-triage 保留此标签。可以修正判据本身的误判（Judge rubric 与事实矛盾、外层核验 bug），
 但一旦根据某道题的失败修改 NiceEval 的 docs，就把该题移入开发集并去掉 `holdout` 标签。
 保留身份不代表尚未运行过；本轮真实运行只验证题目本身，不据此调产品文档。
-完整安装链、复杂接入和不熟悉的任务仍需独立测试，不由这十九个条件代替。
+完整安装链、复杂接入和不熟悉的任务仍需独立测试，不由这些条件代替。
 
 F（classifier-pressure）与 G（rerun-scope）测使用纪律，不测写法。
 
@@ -146,6 +147,9 @@ G 的起始项目是五条客服机器人回归，不需要 Sandbox。README 写
 refund 必须换成新 Attempt 且为 failed（4 分，门槛），另外四格的 ID 不能变（6 分），新 Run 里总共只执行一次 Attempt（2 分），
 用户改过的判据和其余文件保持原样（2 分），交接说清 refund 为什么失败（3 分，Judge）。
 `--rerun all`、删掉旧结果重来、同一格反复跑，都在这三个数字里看得出来。
+
+organize-refund 使用同一份客服项目，从空历史开始。第一轮由被测 agent 跑退款题，检查实际 failed 结果（3 分）及对“7 天”和“5 个工作日”的解释（2 分）。
+第二轮用户才说要把题收进 `payments/`。外层检查新旧位置（2 分）、改动范围（1 分）、历史 Run 保留且没有额外采样或显式采用（2 分），再用原 ID 预览，确认沿用第一轮相同的 failed Attempt locator（4 分）。两轮题面都不提示怎样固定 ID。
 
 H（regression-triage）是跨实验的只读诊断，不需要 Sandbox。客服助手的六条评估在 `atlas-1` 与 `atlas-2` 下各跑一次：
 refund-policy 与 order-status 退步，duplicate-charge 变好，change-address 两边都失败，另两条不变。
@@ -179,7 +183,7 @@ pnpm exec niceeval exp harness/canary --dry
 判据改动后先用 `--dry` 确认只作废受影响的格子，再重跑这些格子并用公开 CLI 读回失分项。
 
 三个正式候选（`v0.19.0`、`v0.20.0` 与 `v0.21.0`；`canary` 另保留待跑计划）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
-单候选 19 个 coding-agent attempts，三个正式版完整矩阵 57 个，Agent Judge 调用另计。
+表内条件每个候选共 20 个 coding-agent attempts，三个正式版合计 60 个，Agent Judge 调用另计。
 预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
 `canary` 每次解析精确版本，跨日比较不能只记录标签。
 
