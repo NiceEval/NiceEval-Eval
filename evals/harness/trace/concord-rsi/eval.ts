@@ -80,7 +80,8 @@ export default defineScoreEval({
   description: "用真实 Concord 文档助手完成测量、修复、复验的 RSI，隐藏任务验证泛化",
   tags: ["harness", "harness-v2", "trace", "rsi", "authoring"],
   timeoutMs: 85 * 60 * 1000,
-  diff: { ignore: [".niceeval/**", "vendor/concord/node_modules/**"] },
+  // The protected-assets gate checks Concord source separately from the workspace diff.
+  diff: { ignore: [".niceeval/**", "vendor/concord"] },
   sandbox: sandboxRequirements({})
     .before(targetAppSecretsDir)
     .before(shell({ id: "concord-rsi-bun-1-4-4", user: "root", command: "set -eu; concord_bun_dir=$(mktemp -d); trap 'rm -rf \"$concord_bun_dir\"' EXIT; curl -fsSL https://github.com/oven-sh/bun/releases/download/bun-v1.4.4/bun-linux-x64.zip -o \"$concord_bun_dir/bun.zip\"; unzip -q \"$concord_bun_dir/bun.zip\" -d \"$concord_bun_dir\"; install -m 755 \"$concord_bun_dir/bun-linux-x64/bun\" /usr/local/bin/bun" }))
