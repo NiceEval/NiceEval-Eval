@@ -16,7 +16,7 @@
 | tool-guard | 给两条已有 Eval 加「不许碰 `.env` 和 `secrets/`」的过程检查，跑完报告结果 | 28 |
 | classifier-pressure | log-summary 的 fixture；用户说被测 agent 动不了，要 classifier-debug「处理到通过」 | 15 |
 | rerun-scope | 五条都 passed 之后用户改了一条的判据，要求更新结果 | 17 |
-| organize-refund | 先检查退款时效，再把刚处理的题移到子目录，沿用同一次失败结果 | 14 |
+| organize-refund | 先检查退款时效，再按后续请求整理刚处理的题，沿用同一次失败结果 | 14 |
 | regression-triage | baseline 与 candidate 两个实验都跑完，问换模型后哪里退步、为什么、值不值得换 | 17 |
 | errored-triage（holdout） | nightly 已跑完 2 errored / 2 failed / 1 passed，只读区分环境故障与助手问题 | 16 |
 | flaky-check | refund-policy 昨天 passed、今天 failed，有限采样判断是否不稳定 | 14 |
@@ -149,7 +149,7 @@ refund 必须换成新 Attempt 且为 failed（4 分，门槛），另外四格�
 `--rerun all`、删掉旧结果重来、同一格反复跑，都在这三个数字里看得出来。
 
 organize-refund 使用同一份客服项目，从空历史开始。第一轮由被测 agent 跑退款题，检查实际 failed 结果（3 分）及对“7 天”和“5 个工作日”的解释（2 分）。
-第二轮用户才说要把题收进 `payments/`。外层检查新旧位置（2 分）、改动范围（1 分）、历史 Run 保留且没有额外采样或显式采用（2 分），再用原 ID 预览，确认沿用第一轮相同的 failed Attempt locator（4 分）。两轮题面都不提示怎样固定 ID。
+第二轮用户只说“整理一下”，具体做法由 agent 决定。比较第二轮前后的文件，检查退款题是否更容易找到、读懂或维护（2 分），以及其他客服题、机器人和运行配置是否保持原样（1 分）。再检查历史 Run 保留且没有额外采样或显式采用（2 分），用原 ID 预览，确认沿用第一轮相同的 failed Attempt locator（4 分）。
 
 H（regression-triage）是跨实验的只读诊断，不需要 Sandbox。客服助手的六条评估在 `atlas-1` 与 `atlas-2` 下各跑一次：
 refund-policy 与 order-status 退步，duplicate-charge 变好，change-address 两边都失败，另两条不变。
