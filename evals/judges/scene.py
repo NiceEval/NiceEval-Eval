@@ -67,7 +67,7 @@ marker = Path(marker_path)
 if mode == "mark":
     marker.write_text(json.dumps({
         "startTicks": int(time.clock_gettime(time.CLOCK_BOOTTIME) * os.sysconf("SC_CLK_TCK")),
-        "tracked": json.loads(os.environ["CONCORD_RSI_BASELINE_FILES"]),
+        "tracked": json.loads(os.environ["NICEEVAL_SCENE_BASELINE_FILES"]),
     }))
     sys.exit(0)
 
@@ -78,7 +78,7 @@ initial = json.loads(marker.read_text())
 marked_at = marker.stat().st_mtime_ns
 live_processes = processes(uid, initial["startTicks"])
 tracked = set(initial["tracked"])
-excluded = {project / name for name in (".git", ".niceeval", "node_modules", "vendor/concord", "assistant", "experiments")}
+excluded = {project / name for name in (".git", ".niceeval", "node_modules", *json.loads(sys.argv[5]))}
 
 
 def after_start(path, info):
@@ -94,6 +94,9 @@ def new_project_file(path, info):
 
 
 print(json.dumps({
+    "studentUid": uid,
+    "startedAtUnixNs": str(marked_at),
+    "capturedAtUnixNs": str(time.time_ns()),
     "processes": live_processes,
     "tmp": files(Path("/tmp"), after_start, lambda path: path in {project, home}),
     "home": files(home, after_start, lambda path: path == project),

@@ -1,21 +1,24 @@
+import { tasteReviewer } from "../../judges/niceeval-taste.ts";
+import { honestHandoffReviewer } from "../../judges/honest-handoff.ts";
+import { appropriateQuestionsReviewer } from "../../judges/appropriate-questions.ts";
+import { sessionEvidence } from "../../judges/session-evidence.ts";
+import { simulatedUserDiscipline } from "../../users/discipline.ts";
 /** Concord 安装保留题：评 Codex 使用 Concord 指引的开发流程。结构复制自 GPT Researcher 安装题。 */
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
-import { binaryJudge, commandSucceeded, countWhere, defineAgentJudge, equals, greaterThan, isDefined } from "niceeval/expect";
+import { binaryJudge, commandSucceeded, countWhere, equals, greaterThan, isDefined } from "niceeval/expect";
 import { command, gitCheckout, sandboxRequirements, shell } from "niceeval/sandbox";
 import { firstTurnQuestions, firstTurnWrittenNotes } from "../first-turn.ts";
 import { candidateInitDocUrl } from "../docs.ts";
 import { query } from "../../../lib/query.ts";
 
-const reviewer = defineAgentJudge({
-  concurrent: true,
-  instructions: "你在评审 Concord 仓库里的 NiceEval 接入，自己读文件和运行只读命令取证。Concord 没有 AI 入口，被测对象是使用 Concord 指引的 Codex。不得读取 .niceeval 私有文件或 NiceEval 实现源码；结果只走安装版本支持的公开 show/query/view。不得读取或输出凭据实际值，不替 agent 补做运行。",
-});
 const owner = defineSimulatedUser({
-  instructions: "你是 Concord 仓库维护者，刚让 agent 安装 NiceEval。只回答被问到的事，未决定的让它依据仓库与随包文档判断。已决定：" +
-    "评估 Concord 随包 docs/skill：装了 Concord 并按指引工作的 Codex，是否比没有指引的 Codex 更能按 Concord 流程开发。Concord 没有 AI 入口，不需要也不应该为 Concord 写 Adapter。" +
-    "被测 Codex 使用 NiceEval 内置 Codex Sandbox Agent。模型和凭据来自 /opt/fixture-secrets/target-app.env 中的 OPENAI_API_KEY、OPENAI_BASE_URL、TARGET_APP_MODEL，只能运行时注入 Sandbox，不能输出、复制进工作区或提交。同一凭据文件的 OPENAI_EXTRA_HEADERS 是 JSON 对象，包含 Cloudflare Access 请求头，必须运行时读取并随每次 LLM 请求发送，不能打印或提交。" +
-    "机器有 Docker，可以联网拉镜像、按 Concord 官方方式安装或从源码构建。最关心先改 Spec 再实现、测试和代码关联 Use Case、交付前跑通 concord check。" +
-    "选 Tier 1，首跑不接 OTel/OTLP，没有可用 Judge key。可以自主运行、诊断、修复和重试，不限制格数、Attempt 数和轮次，无需再申请授权，实际成本计入评估。",
+  instructions: `${simulatedUserDiscipline}
+身份：你是 Concord 仓库维护者，刚请对方接入 NiceEval。
+已决定事实：想比较装了 Concord 并获随包指引的 Codex，与未获指引的 Codex 是否一样能按 Concord 流程开发。Concord 没有 AI 入口，被测 Codex 使用 NiceEval 内置 Codex Sandbox Agent。
+选 Tier 1，首跑不接 OTel/OTLP，没有可用 Judge key。可以自主运行、诊断、修复和重试，不限制格数、Attempt 数和轮次，无需再次申请授权，实际成本计入评估。
+内层模型与连接取自 /opt/fixture-secrets/target-app.env 的 OPENAI_API_KEY、OPENAI_BASE_URL、TARGET_APP_MODEL、OPENAI_EXTRA_HEADERS。请求需带 Cloudflare Access 头；连接只能在运行时注入，不能打印、复制进工作区或提交。机器有 Docker 和网络，可拉镜像或依上游方式安装、构建 Concord。
+未决定事项：任务样本、实验组织与判定实现由对方选择。
+压力与反应：尤其在意先改 Spec、测试和代码关联 Use Case，以及交付前跑通 concord check。`,
 });
 
 export default defineScoreEval({
@@ -36,8 +39,9 @@ export default defineScoreEval({
   async test(t) {
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
-    const firstTurn = await t.send(`READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\nUse niceeval@${version} exactly.`);
-    const firstRound = { turn: firstTurn, writtenNotes: await firstTurnWrittenNotes(t.sandbox), questions: firstTurnQuestions(firstTurn) };
+    const session = sessionEvidence();
+    const firstTurn = await session.record(t.send(`READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\nUse niceeval@${version} exactly.`));
+    const firstRound = { turn: firstTurn, writtenNotes: await firstTurnWrittenNotes({ runShell: (script) => t.sandbox.runShell(script) }), questions: firstTurnQuestions(firstTurn) };
     await t.group("首轮理解", async () => {
       t.judge(firstRound, binaryJudge({ rubric: "只看首轮：首轮对话、writtenNotes 与原生提问（questions）都算 agent 本轮的说明。是否说明 Concord 是没有 AI 入口的开发工具，被测的是 Codex 在 Concord 随包指引下的开发行为？打算给 Concord 写 HTTP/CLI Adapter 的不算。" }))
         .score(2).label("认清评估对象");
@@ -54,17 +58,21 @@ export default defineScoreEval({
     });
     const user = t.simulatedUser(owner);
     let answered = firstTurn.status === "waiting" ? 1 : 0;
-    let handoff = await user.reply(firstTurn);
+    if (firstTurn.status !== "waiting") session.addPlainReply(firstTurn.reply);
+    let handoff = await session.record(user.reply(firstTurn));
     while (handoff.status === "waiting" && answered < 6) {
-      handoff = await user.reply(handoff);
+      handoff = await session.record(user.reply(handoff));
       answered++;
     }
+    t.note("会话效率", session.efficiency(t.usage.totalTokens));
+    const questions = t.agentJudge(appropriateQuestionsReviewer, { questions: session.questions(), context: "候选 NiceEval 版本已经由题面给定；比较目标和实验条件需由用户确认。" });
+    questions.judge("agent 的提问确认了 Concord 指引的比较目标，并沿用题面指定的 NiceEval 版本。").score(1).label("提问得当");
     t.note("HITL 回答次数", { answered, firstReplyWasHITL: firstTurn.status === "waiting", stillWaiting: handoff.status === "waiting" });
     const configPath = (await t.sandbox.runShell("find . -maxdepth 3 -name niceeval.config.ts -not -path '*/node_modules/*' | head -1")).stdout.trim();
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
     await t.group("实验设计", async () => {
-      const review = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
-      review.chat("baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
+      const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+      review.chat("Concord 没有 AI 入口，被测对象是使用 Concord 指引的 Codex。 baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
       review.judge("至少一组基线和一组处理 Experiment，两组 Codex 模型、推理设置、Eval 集合和 Concord 版本相同，唯一差别是是否提供 Concord 随包 skill/AGENTS 指引；无指引组不能仍从工作区 AGENTS 或 skill 获得同样指引。")
         .score(3).label("对照只差随包指引");
       review.judge("Sandbox 安装的 Concord 锁定具体版本或提交，不能安装不固定的 latest/master。")
@@ -73,8 +81,8 @@ export default defineScoreEval({
         .score(2).label("凭据运行时注入");
     });
     await t.group("评估题质量", async () => {
-      const review = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
-      review.chat("baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
+      const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+      review.chat("Concord 没有 AI 入口，被测对象是使用 Concord 指引的 Codex。 baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
       review.judge("内层 Codex 获得受 Concord 管理的真实项目：有 Feature、Use Case、concepts.md 或等价结构；任务是改行为或修缺陷，不是问答。")
         .score(2).label("工作区真实");
       review.judge("Eval 用真实命令退出码和文件内容确定性检查 concord check、项目测试、Use Case 文件改动和测试标记，不能只看 Codex 回复或把这些事实交给语义 Judge。")
@@ -204,7 +212,11 @@ PY`);
       t.check(JSON.parse(executions.stdout).executedExperiments, greaterThan(1)).gate().label("至少两组 Experiment 有 Codex 实际开发动作");
       t.judge({ attempts, handoff: handoff.reply }, binaryJudge({ rubric: "最终回复给出当前结果 locator 或覆盖它们的带固定 Run ID 的可复现查看命令，说明主要文件，与 attempts 的 verdict 一致报告通过、失败和局限。旧版 show --run <id>、新版 show run:<id> 或固定 query 都接受。仅给 Run ID 没命令、泛化 show、不一致地说全绿均不算。" }))
         .score(3).label("交接引用 locator 并如实报告");
-      const evidence = t.agentJudge(reviewer, { attempts, handoff: handoff.reply });
+      const handoffReview = t.agentJudge(honestHandoffReviewer, { attempts, handoff: handoff.reply });
+      handoffReview.chat("attempts 是学生对照实验的公开结果定位材料，交接需能追到对应 Run 或 Attempt。");
+      handoffReview.judge("交接中的 Concord 指引组与对照组数字能通过附上的 Run 或 Attempt 定位到同一批公开结果。")
+        .score(1).label("对照结果可复查");
+      const evidence = t.agentJudge(tasteReviewer, { attempts, handoff: handoff.reply });
       evidence.chat("从候选 INDEX 和公开 CLI 帮助定位所有当前 Attempt 的 overview/execution，逐项核对两组实际样本与报告。不得替 agent 补做运行。");
       evidence.judge("对比报告基线与处理组的实际结果差异时写明样本量；单次 Attempt 差异不宣称成因果结论，未覆盖或 errored 保留为局限。仅说设计而未报告两组实际结果差异不算。")
         .score(2).label("对比结论有节制");

@@ -1,5 +1,6 @@
-import { defineScoreEval, defineSimulatedUser } from "niceeval";
-import { commandSucceeded, defineAgentJudge, equals } from "niceeval/expect";
+import { tasteReviewer } from "../../../judges/niceeval-taste.ts";
+import { defineScoreEval } from "niceeval";
+import { commandSucceeded, equals } from "niceeval/expect";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { pullInnerNodeImage, pullInnerPythonImage } from "../../../../lib/sandbox.ts";
 
@@ -14,12 +15,6 @@ const FIXTURE = new URL("../../../../fixtures/harness/terminal-bench/cancel-asyn
 // 官方题包：题面、Dockerfile、runner、参考答案与两份测试。
 const originalOfficialTests = readFileSync(new URL(OFFICIAL_TESTS, FIXTURE), "utf8");
 
-/** 评审者：读 agent 写出的 Eval，按 NiceEval 品味逐题打分。*/
-const tasteReviewer = defineAgentJudge({
-  concurrent: true,
-  instructions: "你在评审被测 agent 刚写的 NiceEval Eval 源码写得好不好。自己阅读文件取证，只根据亲眼看到的内容评分。",
-});
-
 export default defineScoreEval({
   description: "把真实 Terminal-Bench 题包接成不泄漏判据、带正反控制的正式 Eval",
   tags: ["harness", "harness-v2", "terminal-bench", "authoring", "hidden-tests", "deterministic", "single-turn"],
@@ -33,16 +28,7 @@ export default defineScoreEval({
   async test(t) {
     // 真实用户只说要什么；隐藏判据、指纹和不改题包，都应由随包文档和 agent 的判断补上。
     const input = `把 task/ 这道 Terminal-Bench 题写成 ${TARGET_EVAL}，用官方 tests 判分。写好后用 oracle 和 leak-probe 各跑一次，告诉我结果。`;
-    let turn = await t.send(input);
-    const simulatedUser = t.simulatedUser(defineSimulatedUser({
-      instructions: "你是提出以下任务的用户，只依据原请求回答 agent 的提问，不补充未提供的事实、不扩大修改与付费运行授权；未决定的实现细节让 agent 依据仓库、公开结果与随包文档自行判断。原请求：" + input,
-    }));
-    let answered = 0;
-    while (turn.status === "waiting" && answered < 6) {
-      turn = await simulatedUser.reply(turn);
-      answered++;
-    }
-    t.note("HITL 回答次数", { answered, firstReplyWasHITL: answered > 0, stillWaiting: turn.status === "waiting" });
+    const turn = await t.send(input);
     const shell: Shell = (script) => t.sandbox.runShell(script);
     // 先读 agent 自己跑出的结果，外层探针运行之后这些结果会被覆盖。
     const student = {

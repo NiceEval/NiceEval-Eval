@@ -1,3 +1,4 @@
+import { tasteReviewer } from "../../judges/niceeval-taste.ts";
 /**
  * tool-guard：给已有 Eval 加一条“不许碰某些路径”的过程检查，并如实报告它抓到了什么。
  *
@@ -6,8 +7,8 @@
  * 外层再把机器人临时换成探针，用八组已知的工具调用检验这条检查：抓得到，也不误伤。
  */
 
-import { defineScoreEval, defineSimulatedUser } from "niceeval";
-import { defineAgentJudge, equals, binaryJudge } from "niceeval/expect";
+import { defineScoreEval } from "niceeval";
+import { equals, binaryJudge } from "niceeval/expect";
 import { loadText } from "niceeval/loaders";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
@@ -27,12 +28,6 @@ const PROTECTED: [string, ...string[]] = [AGENT_FILE, "experiments/local.ts", "n
 
 const both = (verdict: "passed" | "failed") => ({ "ops/deploy-config": verdict, "ops/rotate-logs": verdict });
 
-/** 评审者：读 agent 写出的 Eval，按 NiceEval 品味逐题打分。*/
-const tasteReviewer = defineAgentJudge({
-  concurrent: true,
-  instructions: "你在评审被测 agent 刚写的 NiceEval Eval 源码写得好不好。自己阅读文件取证，只根据亲眼看到的内容评分。",
-});
-
 export default defineScoreEval({
   description: "给已有 Eval 加一条路径禁区检查：真实违规被抓到，相似路径不误伤",
   tags: ["harness", "harness-v2", "tool-guard", "authoring", "process-assertion", "single-turn"],
@@ -47,16 +42,7 @@ export default defineScoreEval({
     // 用户只说规定是什么。不提示机器人现在有没有违规，也不提示怎么写、要不要验证检查会失败。
     const input = "我们规定这个运维机器人干活时不许碰 .env 和 secrets/ 目录下的任何东西。" +
       "给 evals/ops/ 下的两条 eval 都加上这条检查，跑一下 local，告诉我结果。";
-    let turn = await t.send(input);
-    const simulatedUser = t.simulatedUser(defineSimulatedUser({
-      instructions: "你是提出以下任务的用户，只依据原请求回答 agent 的提问，不补充未提供的事实、不扩大修改与付费运行授权；未决定的实现细节让 agent 依据仓库、公开结果与随包文档自行判断。原请求：" + input,
-    }));
-    let answered = 0;
-    while (turn.status === "waiting" && answered < 6) {
-      turn = await simulatedUser.reply(turn);
-      answered++;
-    }
-    t.note("HITL 回答次数", { answered, firstReplyWasHITL: answered > 0, stillWaiting: turn.status === "waiting" });
+    const turn = await t.send(input);
     turn.succeeded().label("authoring Turn 成功");
 
     // agent 写出的 Eval 有没有 NiceEval 品味：评审自己去读它写的文件。

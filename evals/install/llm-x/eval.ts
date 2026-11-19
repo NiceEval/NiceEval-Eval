@@ -1,6 +1,11 @@
+import { tasteReviewer } from "../../judges/niceeval-taste.ts";
+import { scopeAndCostReviewer } from "../../judges/scope-and-cost.ts";
+import { appropriateQuestionsReviewer } from "../../judges/appropriate-questions.ts";
+import { sessionEvidence } from "../../judges/session-evidence.ts";
+import { simulatedUserDiscipline } from "../../users/discipline.ts";
 /** LLM X 安装保留题：原生 HITL 收集需求，再评自定义应用接入。 */
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
-import { binaryJudge, commandSucceeded, countWhere, defineAgentJudge, equals, greaterThan, isDefined, or } from "niceeval/expect";
+import { binaryJudge, commandSucceeded, countWhere, equals, greaterThan, isDefined, or } from "niceeval/expect";
 import { command, sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { readFileSync } from "node:fs";
 import { parse as parseYaml } from "yaml";
@@ -33,15 +38,14 @@ function redactConnection(text: string): string {
   return text;
 }
 
-const reviewer = defineAgentJudge({
-  concurrent: true,
-  instructions: "你在评审 LLM X 社交游戏仓库的 NiceEval 自定义应用接入，自己阅读文件、运行只读命令取证。baseline 是 agent 开工前唯一提交，用 git status/git diff 查看新增及修改文件，再读其导入的应用源码。先评源码，安装或运行失败不能抹掉源码证据。不得补做运行，不读取 .niceeval 私有文件或 NiceEval 实现；结果只走安装版本公开 show/query/view。不得输出实际凭据，图片只检查关联位置，不评画面质量。",
-});
 const owner = defineSimulatedUser({
-  instructions: "你是 LLM X 社交游戏作者，刚让 agent 把 NiceEval 装进来。只回答被问到的事，未决定的让它依据仓库和随包文档自行判断。" +
-    "被问要评估什么时，必须如实给出全部四条需求：1 玩家给出发帖意图后，生成帖子内容遵循意图；2 玩家回复某条帖子后，等到后台 AI 回应，回应者来自世界中存在的人物，内容回应被回复帖子，并符合该人物主页设定；3 刷新动态出现新内容且不与已有动态重复；4 要求配图时，图片附在正确帖子上，不评画面质量。" +
-    "已定：Tier 1，不接 OTel。live 真实模型。被问到连接信息时直接给出这些真实配置：" + JSON.stringify(connection) + "。OPENAI_EXTRA_HEADERS 是 JSON 对象，写 env 时需 JSON.stringify；包含的两项 Cloudflare Access 头必须随全部文字和图片请求发送。这些值只能放进被 gitignore 排除的未跟踪 env 文件或进程环境，运行时注入应用，不能写进源码、提交或打印。" +
-    "Judge 用 /opt/fixture-secrets/target-app.env 里的 OPENAI_API_KEY、OPENAI_BASE_URL，模型取同一文件的 TARGET_APP_MODEL，Chat Completions，并把 OPENAI_EXTRA_HEADERS 的 JSON 对象作为 Judge 请求头；与应用模型分开，凭据同样只在运行时读取，不得输出或复制进工作区。首跑最多 2 个 Attempt，可自主运行、诊断和重试，但本任务总共不超过 6 个 Attempt。",
+  instructions: `${simulatedUserDiscipline}
+身份：你是 LLM X 社交游戏作者，刚请对方接入 NiceEval。
+已决定事实：被问到要评估什么时，说明四种游戏行为：生成的发帖内容符合玩家意图；后台 AI 对指定帖子的回复来自世界内真实人物、回应帖子内容、符合该人物主页设定；刷新出现不重复的新内容；图片附在正确帖子上，无需评价画面质量。
+选 Tier 1、不接 OTel，使用真实 live 模型。被问到连接时给出配置：${JSON.stringify(connection)}。OPENAI_EXTRA_HEADERS 是 JSON 对象，写 env 时需 JSON.stringify，两项 Cloudflare Access 头随全部文字和图片请求发送。连接值只用于进程环境或被 gitignore 排除且未跟踪的 env 文件，不写入源码、不打印、不提交。
+Judge 单独使用 /opt/fixture-secrets/target-app.env 的 OPENAI_API_KEY、OPENAI_BASE_URL、TARGET_APP_MODEL 和 OPENAI_EXTRA_HEADERS，入口是 Chat Completions；同样只运行时注入，不输出、不复制进工作区。
+未决定事项：如何实现测试与连接应用由对方依据仓库和随包文档决定。
+压力与反应：首跑最多 2 个 Attempt，可自主诊断、运行和重试，整个任务最多 6 个 Attempt。`,
 });
 
 export default defineScoreEval({
@@ -59,7 +63,8 @@ export default defineScoreEval({
     }
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
-    const first = await t.send(`READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\nUse niceeval@${version} exactly.`);
+    const session = sessionEvidence();
+    const first = await session.record(t.send(`READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\nUse niceeval@${version} exactly.`));
     const user = t.simulatedUser(owner);
     let handoff = first;
     let answered = 0;
@@ -69,14 +74,18 @@ export default defineScoreEval({
     while (answered + plainReplies < 7) {
       if (handoff.status === "waiting" && answered < 6) {
         const requests = handoff.inputRequests;
-        handoff = await user.reply(handoff);
+        handoff = await session.record(user.reply(handoff));
         clarification.push({ requests, answer: redactConnection(handoff.input) });
         answered += 1;
       } else if (handoff.status !== "waiting" && plainReplies === 0) {
-        handoff = await user.reply(handoff);
+        session.addPlainReply(handoff.reply);
+        handoff = await session.record(user.reply(handoff));
         plainReplies += 1;
       } else break;
     }
+    t.note("会话效率", session.efficiency(t.usage.totalTokens));
+    const questions = t.agentJudge(appropriateQuestionsReviewer, { questions: session.questions(redactConnection), context: "安装版本已经由题面给定；游戏行为与允许的 live 运行条件需由用户确认。" });
+    questions.judge("agent 的提问澄清了游戏行为的验收目标，并把可从仓库查到的安装细节留给自己判断。").score(1).label("提问得当");
     t.note("HITL 回答次数", { answered, plainReplies });
     await t.group("澄清（原生 HITL）", async () => {
       t.check(answered, greaterThan(0)).score(2).label("进入 HITL");
@@ -93,9 +102,13 @@ export default defineScoreEval({
     });
     const configPath = (await t.sandbox.runShell("find . -maxdepth 3 -name niceeval.config.ts -not -path '*/node_modules/*' | head -1")).stdout.trim();
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
+    const scope = t.agentJudge(scopeAndCostReviewer, { installRoot: root });
+    scope.chat("模拟用户授权首跑至多 2 个 Attempt、任务累计至多 6 个。只查学生已经创建的公开 Run；经诊断的补跑允许。");
+    scope.judge("LLM X 的 live 实测先用小范围验证，后续每次付费重跑都对应明确的故障或验证缺口。")
+      .score(1).label("live 实测按需补跑");
     await t.group("需求满足", async () => {
-      const review = t.agentJudge(reviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
-      review.chat("用 baseline 后的 diff 及新文件检查用户四条需求。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub 或离线替身不算 live 路径，test/smoke.ts 的测试内 provider 也不能当作真实模型运行。");
+      const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
+      review.chat("这是 LLM X 社交游戏的 NiceEval 自定义应用接入。先评源码；安装或运行失败不抹掉源码证据。只检查图片关联位置。 用 baseline 后的 diff 及新文件检查用户四条需求。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub 或离线替身不算 live 路径，test/smoke.ts 的测试内 provider 也不能当作真实模型运行。");
       review.judge("有 Eval 走真实发帖路径（publishPost 或页面同源 HTTP 操作），检查生成帖子内容遵循玩家意图；开放内容用 Judge 或等价语义判据，不用关键词或输入回显代替。用户原始回复不是模型生成帖子。")
         .score(3).label("发帖遵循意图");
       review.judge("有 Eval 回复指定帖子后等待后台 AI 回应，检查回应者存在于当前世界、内容回应被回复帖子且符合回应人物主页设定。三项都须覆盖，不能只检查用户原文保存或固定等待时间。")
@@ -106,8 +119,8 @@ export default defineScoreEval({
         .score(3).label("配图附对位置");
     });
     await t.group("接入形态", async () => {
-      const review = t.agentJudge(reviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
-      review.chat("用 baseline 后的 diff 及新文件检查用户四条需求。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub 或离线替身不算 live 路径，test/smoke.ts 的测试内 provider 也不能当作真实模型运行。");
+      const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
+      review.chat("这是 LLM X 社交游戏的 NiceEval 自定义应用接入。先评源码；安装或运行失败不抹掉源码证据。只检查图片关联位置。 用 baseline 后的 diff 及新文件检查用户四条需求。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub 或离线替身不算 live 路径，test/smoke.ts 的测试内 provider 也不能当作真实模型运行。");
       review.judge("使用 NiceEval 自定义应用接口 defineAdapter 暴露发帖、回复、刷新、配图等业务操作，让 Eval 直接调用业务方法；不能硬套成聊天 send。")
         .score(3).label("使用自定义应用接口");
       review.judge("live 模式真实调用文字及图片模型；用户在 HITL 对话给出的 API key 和额外请求头仅存于被 gitignore 排除的未跟踪 env 文件或进程环境，运行时注入应用。Judge 从 target-app.env 运行时读取配置。不把实际凭据写入源码、提交或打印。")
@@ -198,7 +211,7 @@ export default defineScoreEval({
       const attempts = [...latestMembers.values()];
       await t.check(attempts.length, greaterThan(0)).gate().label("各 Run 的最新格包含 Attempt").orStop();
       await t.check(attempts.map((attempt) => attempt.locator !== null), countWhere(equals(true), equals(attempts.length))).gate().label("各 Run 的最新成员均已发布").orStop();
-      const evidence = t.agentJudge(reviewer, { installRoot: root, attempts, handoff: redactConnection(handoff.reply) });
+      const evidence = t.agentJudge(tasteReviewer, { installRoot: root, attempts, handoff: redactConnection(handoff.reply) });
       evidence.chat("从候选 INDEX 和公开 CLI 帮助定位所有当前 Attempt 的 overview/execution/source。旧版 show <locator> --execution/--source 与新版 show <locator> execution/source 都可。自定义应用无聊天消息是合法的，应检查业务操作和断言值；自己读 Adapter 及其导入源码核对输入、结果和 provider，不能替 agent 补做运行。");
       evidence.judge("至少一个非 errored 的正向核心用例实际运行 live LLM X，产生真实文字响应或图片并用于断言。必须从公开 execution/overview 的业务操作、断言值及作者源码解释真实 provider 路径；仅启动日志、agent 自建的 mock/stub/echo、测试内 provider 或静态 JSON 不算。")
         .gate(1).score(10).label("实际运行取得 live 应用真实响应");

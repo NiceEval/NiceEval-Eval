@@ -1,5 +1,6 @@
-import { defineScoreEval, defineSimulatedUser } from "niceeval";
-import { defineAgentJudge, equals, binaryJudge } from "niceeval/expect";
+import { tasteReviewer } from "../../judges/niceeval-taste.ts";
+import { defineScoreEval } from "niceeval";
+import { equals, binaryJudge } from "niceeval/expect";
 import { loadText } from "niceeval/loaders";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
@@ -17,12 +18,6 @@ const originalAgent = readFileSync(new URL(AGENT_FILE, FIXTURE), "utf8");
 // 用户新增 Eval，可以补 README；机器人、运行配置和项目配置受保护。
 const PROTECTED: [string, ...string[]] = [AGENT_FILE, "experiments/local.ts", "niceeval.config.ts"];
 
-/** 评审者：读 agent 写出的 Eval，按 NiceEval 品味逐题打分。*/
-const tasteReviewer = defineAgentJudge({
-  concurrent: true,
-  instructions: "你在评审被测 agent 刚写的 NiceEval Eval 源码写得好不好。自己阅读文件取证，只根据亲眼看到的内容评分。",
-});
-
 export default defineScoreEval({
   description: "给订房机器人写多轮 Eval：先问清两个日期，再用用户提供的日期下单",
   tags: ["harness", "harness-v2", "authoring", "process-assertion", "multi-turn"],
@@ -31,16 +26,7 @@ export default defineScoreEval({
   sandbox: sandboxRequirements({}).before(uploadDirectory({ id: "fixture", source: FIXTURE, to: "." })),
   async test(t) {
     const input = "给订房机器人加一条评估：用户只说『下周末帮我订个房』时，它得先问清入住和退房日期，等用户答了才能下单，下单用的日期必须是用户给的。写好跑一下 local，告诉我结果。";
-    let turn = await t.send(input);
-    const simulatedUser = t.simulatedUser(defineSimulatedUser({
-      instructions: "你是提出以下任务的用户，只依据原请求回答 agent 的提问，不补充未提供的事实、不扩大修改与付费运行授权；未决定的实现细节让 agent 依据仓库、公开结果与随包文档自行判断。原请求：" + input,
-    }));
-    let answered = 0;
-    while (turn.status === "waiting" && answered < 6) {
-      turn = await simulatedUser.reply(turn);
-      answered++;
-    }
-    t.note("HITL 回答次数", { answered, firstReplyWasHITL: answered > 0, stillWaiting: turn.status === "waiting" });
+    const turn = await t.send(input);
     turn.succeeded().label("authoring Turn 成功");
     await t.group("NiceEval 品味", () => {
       const taste = t.agentJudge(tasteReviewer, { evalDir: "evals/" });

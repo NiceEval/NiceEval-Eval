@@ -1,3 +1,8 @@
+import { tasteReviewer } from "../../judges/niceeval-taste.ts";
+import { projectStructureReviewer } from "../../judges/project-structure.ts";
+import { appropriateQuestionsReviewer } from "../../judges/appropriate-questions.ts";
+import { sessionEvidence } from "../../judges/session-evidence.ts";
+import { simulatedUserDiscipline } from "../../users/discipline.ts";
 /**
  * DB-GPT install：候选 INIT.md + 随包文档能否把 coding agent 带到真实、可复审的 NiceEval 接入。
  *
@@ -7,27 +12,21 @@
  */
 
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
-import { commandSucceeded, countWhere, defineAgentJudge, equals, greaterThan, isDefined, or, referencesAnyPath, toolMatch, binaryJudge } from "niceeval/expect";
+import { commandSucceeded, countWhere, equals, greaterThan, isDefined, or, referencesAnyPath, toolMatch, binaryJudge } from "niceeval/expect";
 import { command, gitCheckout, sandboxRequirements } from "niceeval/sandbox";
 import { firstTurnQuestions, firstTurnWrittenNotes } from "../first-turn.ts";
 import { candidateInitDocUrl, ONLINE_MAIN_DOC_REFERENCES } from "../docs.ts";
 import { query } from "../../../lib/query.ts";
 
 /** 评审者：在被测 Sandbox 里自己读文件、跑命令取证，同一会话里逐题打分。*/
-const reviewer = defineAgentJudge({
-  concurrent: true,
-  instructions:
-    "你在评审被测 agent 刚在这个 DB-GPT 仓库里完成的 NiceEval 接入。自己阅读文件、运行命令取证，只根据亲眼看到的证据评分。",
-});
 
 /** 模拟用户：仓库维护者已经拿定的决定。只回答 agent 问到的事，没决定过的交还给它自己判断。*/
 const owner = defineSimulatedUser({
-  instructions:
-    "你是 DB-GPT 仓库的维护者，刚让 agent 把 niceeval 接进这个仓库。你已经决定：" +
-    "选 Tier 1，首跑不接 OTel/OTLP；目标模型用 /opt/fixture-secrets/target-app.env 里的 TARGET_APP_MODEL，这个 LLM 出口只接受它，不做 experiment flags；" +
-    "可以自主运行、诊断、修复和重试，不限制格数、Attempt 数或运行轮次，无需再次申请运行授权；实际成本计入评估。这台机器可以联网，可以按 DB-GPT 上游方式安装依赖或拉取镜像。" +
-    "凭证仅从 /opt/fixture-secrets/target-app.env 注入目标服务进程，不得输出或复制进工作区。同一凭据文件的 OPENAI_EXTRA_HEADERS 是 JSON 对象，包含 Cloudflare Access 请求头，必须运行时读取并随每次 LLM 请求发送，不能打印或提交。没有可用的 Judge key。" +
-    "只回答 agent 问到的事；问到你没决定过的，让它依据仓库与随包文档自己判断。",
+  instructions: `${simulatedUserDiscipline}
+身份：你是 DB-GPT 仓库维护者，刚请对方接入 NiceEval。
+已决定事实：选 Tier 1，首跑不接 OTel/OTLP；没有可用的 Judge key。目标模型用 /opt/fixture-secrets/target-app.env 的 TARGET_APP_MODEL，出口只接受该模型，不做 experiment flags。凭证仅注入目标服务进程，不输出、不提交、不复制进工作区。OPENAI_EXTRA_HEADERS 是 JSON 对象，包含 Cloudflare Access 头，运行时读取并随每次 LLM 请求发送。机器可联网，可按上游方式安装依赖或拉取镜像。
+未决定事项：数据场景、Adapter 和评估写法由对方依据仓库和随包文档确定。
+压力与反应：可自主运行、诊断、修复和重试，不限制格数、Attempt 数或轮次，无需再申请运行授权；实际成本计入评估。`,
 });
 
 export default defineScoreEval({
@@ -53,13 +52,14 @@ export default defineScoreEval({
 
     // 官网首页给用户复制的同一句 prompt（NiceEval apps/site/lib/content.ts），URL 换成候选 tag 下的 INIT.md。
     // INIT.md 让 agent 装 npm latest；评的是候选版本，所以只多一句版本要求。
-    const firstTurn = await t.send(
+    const session = sessionEvidence();
+    const firstTurn = await session.record(t.send(
       `READ ${candidateInitDocUrl(version)} and install niceeval for this repo.\n` +
       `Use niceeval@${version} exactly.`,
-    );
+    ));
 
     // ── 文档与首轮理解 ──
-    const firstRound = { turn: firstTurn, writtenNotes: await firstTurnWrittenNotes(t.sandbox), questions: firstTurnQuestions(firstTurn) };
+    const firstRound = { turn: firstTurn, writtenNotes: await firstTurnWrittenNotes({ runShell: (script) => t.sandbox.runShell(script) }), questions: firstTurnQuestions(firstTurn) };
     await t.group("文档与首轮理解", async () => {
       t.judge(firstRound, binaryJudge({ rubric:
           "只看首轮（首轮对话、writtenNotes 与原生提问（questions）都算 agent 本轮的说明）：" +
@@ -104,11 +104,15 @@ export default defineScoreEval({
 
     const user = t.simulatedUser(owner);
     let answered = firstTurn.status === "waiting" ? 1 : 0;
-    let handoff = await user.reply(firstTurn);
+    if (firstTurn.status !== "waiting") session.addPlainReply(firstTurn.reply);
+    let handoff = await session.record(user.reply(firstTurn));
     while (handoff.status === "waiting" && answered < 6) {
-      handoff = await user.reply(handoff);
+      handoff = await session.record(user.reply(handoff));
       answered++;
     }
+    t.note("会话效率", session.efficiency(t.usage.totalTokens));
+    const questions = t.agentJudge(appropriateQuestionsReviewer, { questions: session.questions(), context: "安装版本已经由题面给定；业务数据范围与实验条件需由用户确认。" });
+    questions.judge("agent 的提问确认了要评估的 DB-GPT 数据问答范围或数据来源。").score(1).label("提问得当");
     t.note("HITL 回答次数", { answered, firstReplyWasHITL: firstTurn.status === "waiting", stillWaiting: handoff.status === "waiting" });
 
     // 路由看整段主会话：先停下问用户、第二轮才读 Adapter 页面的 agent 不该因此丢分。
@@ -132,8 +136,12 @@ export default defineScoreEval({
       "find . -maxdepth 3 -name niceeval.config.ts -not -path '*/node_modules/*' | head -1",
     )).stdout.trim();
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
-    const review = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
-    review.chat("installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
+    const structure = t.agentJudge(projectStructureReviewer, { installRoot: root });
+    structure.chat("用 baseline 后的 git 状态核对 DB-GPT 接入的新增文件；根没有 Node 工具项目，web/ 是前端应用。");
+    structure.judge("DB-GPT 的临时样本、运行输出和草稿没有混入正式的 NiceEval 接入目录。")
+      .score(1).label("接入目录只含正式交付文件");
+    const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+    review.chat("正在评审 DB-GPT 的 NiceEval 接入。 installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
     review.judge(
       "安装优先复用适用的现有根工具项目或 workspace，保留原有包管理器与锁文件归属；" +
       "没有适用 Node 工具项目时允许独立建包。DB-GPT 仓库根目录没有 package.json，web/ 是前端应用而不是开发工具项目，为 NiceEval 独立建包是合理的；" +
@@ -141,8 +149,8 @@ export default defineScoreEval({
       "交接必须给出从仓库根目录能使用的本地命令，子目录安装需明确目录参数或根脚本。")
       .score(3).label("安装融入宿主工具链并交付根目录入口");
     await t.group("Adapter、Experiment 与 Eval 源码设计", async () => {
-      const adapterReview = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
-      adapterReview.chat("installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
+      const adapterReview = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+      adapterReview.chat("正在评审 DB-GPT 的 NiceEval 接入。 installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
       adapterReview.judge(
         "NiceEval 助手消息或标准事件的文本来自 DB-GPT 实际 JSON/SSE response/delta，" +
         "并正确组合流式分片和结束。返回输入原文、固定 ASSISTANT 文字、未读 body 或把 logs/status 当最终答案不算。")
@@ -161,8 +169,8 @@ export default defineScoreEval({
         "凭证只从环境/目标服务进程边界读取，不硬编码，不写入工作区，不打印，也不混入 Eval 文本或取证输出；" +
         "/opt/fixture-secrets/target-app.env 只注入目标服务进程，不 source 到 agent shell。")
         .score(2).label("凭证边界正确");
-      const evalReview = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
-      evalReview.chat("installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
+      const evalReview = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+      evalReview.chat("正在评审 DB-GPT 的 NiceEval 接入。 installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
       evalReview.judge(
         "至少一条 Eval 输入让用户用自然语言问一份内容固定的真实数据，答案只有访问这份数据才能得到，" +
         "并且请求走的是能触达这份数据的模式并带上对应的数据源参数。哪种组合都算，只要 DB-GPT 真的去读这份数据：" +
@@ -185,8 +193,8 @@ export default defineScoreEval({
         "Eval 只描述任务和断言，没有在单条 test 用例内自行启动、伪造、重启或代管 DB-GPT 全局服务。" +
         "服务生命周期位于项目级命令准备或 Experiment/Plugin/Sandbox 层面才算。")
         .score(2).label("Eval 不代管目标服务");
-      const experimentReview = t.agentJudge(reviewer, { installRoot: root, handoff: handoff.reply });
-      experimentReview.chat("installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
+      const experimentReview = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+      experimentReview.chat("正在评审 DB-GPT 的 NiceEval 接入。 installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
       experimentReview.judge(
         "Experiment 实际选择本次 DB-GPT Adapter，且它选中的 Eval 测试的也是 DB-GPT 数据问答，" +
         "而不是内置/通用/echo agent 或无关 Eval。Adapter 要能从 Experiment 的导入追到定义；Eval 的选择按 NiceEval 的规则判断：" +
@@ -206,8 +214,8 @@ export default defineScoreEval({
     });
     await t.group("Eval 判据可读性（NiceEval Taste）", async () => {
       // 品味题单开一个会话：评审不带着前面对 Adapter 的判断来读 Eval。
-      const taste = t.agentJudge(reviewer, { installRoot: root });
-      taste.chat("installRoot 是 niceeval.config.ts 所在目录。先读完 evals/ 下 agent 写的 Eval 文件。");
+      const taste = t.agentJudge(tasteReviewer, { installRoot: root });
+      taste.chat("正在评审 DB-GPT 的 NiceEval 接入。 installRoot 是 niceeval.config.ts 所在目录。先读完 evals/ 下 agent 写的 Eval 文件。");
       taste.judge(
         "只看 evals/ 下 agent 写的 Eval 文件。只读 Eval 正文就能说出它测什么、每项什么算通过、分数或门槛怎么来；" +
         "关键阈值、数量和分值直接写在检查上，没有藏进辅助函数。")
@@ -302,7 +310,7 @@ export default defineScoreEval({
         .label("当前格的所有 Attempt 均已发布").orStop();
 
       // 协议对不对，只看源码证明不了，能证明的是真实运行收到了目标响应，所以协议分并入这一项。
-      const evidence = t.agentJudge(reviewer, { installRoot: at, attempts });
+      const evidence = t.agentJudge(tasteReviewer, { installRoot: at, attempts });
       evidence.chat("agent 在 installRoot 下运行过自己的 Experiment，attempts 是当前各格的 locator 与 verdict。在 installRoot 下先读该版本的 `node_modules/niceeval/INDEX.md` 与公开 CLI 帮助，再用该版本支持的 show/view/query 定位各 Attempt、execution 和 source；旧版的 `show <locator> --execution`、`--source` 与新版的 `show <locator> execution`、`source` 都是等价公开入口。");
       evidence.judge(
         "至少一个正向核心用例的 execution 中，有来自 DB-GPT 真实 HTTP 入口 JSON/SSE 响应、由 Adapter 解析得到的具体数据问答结果；" +
