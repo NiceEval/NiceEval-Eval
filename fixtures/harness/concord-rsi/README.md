@@ -8,7 +8,7 @@
 
 内层 adapter 从 `/opt/fixture-secrets/target-app.env` 读取模型、连接和凭据，使用 Responses API 与真实工具循环。adapter 在运行时读取 SKILL，Eval 在发现期用受管 loader 登记 SKILL 内容。临时题目先运行真实 `concord init`，再移除其附带的完整指南和模板。
 
-`holdout/`、`holdout-experiment.ts`、参考答案与本文均由外层持有。外层将原始助手、改后助手及各自依赖的项目运行文件分别复制到 root-only 工作区，再放入外层持有的隐藏实验。每份副本使用独立结果 home。私有副本和任务临时项目由 Attempt 的沙箱生命周期回收。原始测量和学生会话并行，改后测量和学生工作区的可见集验收并行。隐藏题只在这些副本中加载。外层按公开 Run 证据区分业务失败和执行故障，记录定向补跑结果。开工前冻结受保护源码、配置与凭据的摘要，允许学生增设局部测量实验。候选隐藏集在 root 进程中执行学生修改过的工具代码。Agent Judge 审查改动是否特判，以及 skill 和工具是否只访问任务根内的文件，避开 Eval 源码、fixture、holdout、私有 Record 与根外路径。这项审查和工具调用检查依赖可观察证据，运行进程仍有读取私有测量文件的权限。
+`holdout/`、`holdout-experiment.ts`、参考答案与本文均由外层持有。外层将原始助手、改后助手及各自依赖的项目运行文件分别复制到 root-only 工作区，再放入外层持有的隐藏实验。每份副本使用独立结果 home。私有副本和任务临时项目由 Attempt 的沙箱生命周期回收。原始隐藏集在学生会话前测完，改后隐藏集与学生工作区的可见集验收并行。学生开工前提交 Git 基线并创建时间标记，供评审查阅 diff 与交付现场。会话结束后、外层验收前记录学生用户新启动的存活进程、临时文件及工作区交付范围外的新文件。隐藏题只在这些副本中加载。外层按公开 Run 证据区分业务失败和执行故障，记录定向补跑结果。开工前冻结受保护源码、配置与凭据的摘要，允许学生增设局部测量实验。候选隐藏集在 root 进程中执行学生修改过的工具代码。Agent Judge 审查改动是否特判，以及 skill 和工具是否只访问任务根内的文件，避开 Eval 源码、fixture、holdout、私有 Record 与根外路径。这项审查和工具调用检查依赖可观察证据，运行进程仍有读取私有测量文件的权限。
 
 ## 缺陷选择与真实行为证据
 
@@ -25,7 +25,7 @@
 
 - 校准用 NiceEval 在 Instabox 上运行：每层是一个 Experiment 条件，结果写进 Record，用公开 `show` / `compare` 读。本地不搭副本，也不用本地 Docker 模拟沙箱。
 - 只有一份项目。各层只差 `assistant/SKILL.md` 与 `assistant/tools.ts`，用 `references/` 的补丁切换，不为每层或每个候选复制完整项目。
-- Concord 只装运行时依赖（`bun install --production`），同一个 commit 只装一份。
+- 当前 fixture 通过 Bun 直接执行固定 commit 的 TypeScript CLI。实测 Bun 1.4.4 的 `bun install --frozen-lockfile --production` 后，`concord init` 缺少 `effect`，`bun run build:native` 缺少 `@effect/platform-node`，因此 fixture 使用 `bun install --frozen-lockfile`。
 - 确需本地复现时，副本放在系统临时目录（`mktemp -d`）并用 `trap` 在退出时删除；依赖安装使用本机全局 pnpm store，不在容器或副本里另建 store；只保留 Run ID 与结论。
 
 ## 修订前的逐层真实模型校准

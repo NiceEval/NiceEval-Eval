@@ -12,6 +12,7 @@ CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档�
 | `experiments/<族>/<版本>.ts` | 一个候选版本一份完整的 `defineExperiment`，同族文件之间只差版本号和说明 |
 | `evals/install/<宿主>/eval.ts` | 安装题：从零把 NiceEval 接入一个真实开源项目 |
 | `evals/harness/**/eval.ts` | Harness 题：在已装好的项目里运行、诊断、修复、编写 Eval |
+| `evals/judges/` | 共享评审者（NiceEval 品味、项目结构、收拾现场、交接如实、范围与成本纪律）与现场快照取证；各题只写自己的判据 |
 | `fixtures/` | 各题的起始项目与外层探针，不被本仓库的 discovery 扫描 |
 | `lib/` | 候选解析、沙箱准备步骤与读取被测项目结果的 query 封装；不登记任何检查 |
 | `sandbox/harness-project/` | Harness 的项目 seed |
