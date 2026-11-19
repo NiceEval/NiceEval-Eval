@@ -26,11 +26,11 @@
 - 校准用 NiceEval 在 Instabox 上运行：每层是一个 Experiment 条件，结果写进 Record，用公开 `show` / `compare` 读。本地不搭副本，也不用本地 Docker 模拟沙箱。
 - 只有一份项目。各层只差 `assistant/SKILL.md` 与 `assistant/tools.ts`，用 `references/` 的补丁切换，不为每层或每个候选复制完整项目。
 - Concord 只装运行时依赖（`bun install --production`），同一个 commit 只装一份。
-- 确需本地复现时，依赖安装使用本机全局 pnpm store，不在容器或副本里另建 store；复现结束立即删除副本，只保留 Run ID 与结论。
+- 确需本地复现时，副本放在系统临时目录（`mktemp -d`）并用 `trap` 在退出时删除；依赖安装使用本机全局 pnpm store，不在容器或副本里另建 store；只保留 Run ID 与结论。
 
 ## 修订前的逐层真实模型校准
 
-参考补丁按顺序应用于 repo 副本：`git apply ../references/layer-1.patch`，然后 layer-2、layer-3、layer-4（命令中的相对路径按副本位置调整）。补丁只改 assistant/SKILL.md 或 assistant/tools.ts。运行前导出 `NICEEVAL_HOME="$PWD/.niceeval-local/homes/current"`，本地核验副本全部放在 `.niceeval-local/concord-rsi/`；运行 `pnpm exec niceeval exp local --rerun all --json`，经 receipt 和公开 `show run:<Run ID> --json` 读取结果。
+参考补丁按顺序应用于 repo 副本：`git apply ../references/layer-1.patch`，然后 layer-2、layer-3、layer-4（命令中的相对路径按副本位置调整）。补丁只改 assistant/SKILL.md 或 assistant/tools.ts。当时运行前导出 `NICEEVAL_HOME="$PWD/.niceeval-local/homes/current"`，本地核验副本放在仓库内（该做法已废弃，现行做法见上节）；运行 `pnpm exec niceeval exp local --rerun all --json`，经 receipt 和公开 `show run:<Run ID> --json` 读取结果。
 
 实测内层模型为连接注入的 deepseek-v4.1-flash，所有阶段使用相同模型与 low effort。每题 attempts 2，下面是逐样本合计，不能把任意一次通过说成“两次稳定通过”：
 

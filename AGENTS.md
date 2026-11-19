@@ -21,7 +21,7 @@ INIT.md + 随包 INDEX.md 这套文档对 AI 的实际效果；它同时也是�
 
 ## 校准与本地验证
 
-题目校准与复现优先用 NiceEval 在 Instabox 上运行，结果进 Record，用公开 CLI 读，本地不留副本。确需本地副本时：一份项目加补丁切换，不按层或候选整套复制；依赖安装用本机全局 pnpm store，不在容器或副本内另建 store；被测工具只装运行时依赖；结束即删除副本，只保留 Run ID 与结论。`.niceeval-local/` 下除 `homes/` 外不长期保留任何东西。
+题目校准与复现优先用 NiceEval 在 Instabox 上运行，结果进 Record，用公开 CLI 读，本地不留副本。确需本地副本时：放在系统临时目录（`mktemp -d`），用 `trap` 在退出时删除，不放进仓库；一份项目加补丁切换，不按层或候选整套复制；依赖安装用本机全局 pnpm store，不在容器或副本内另建 store；被测工具只装运行时依赖；只保留 Run ID 与结论。`.niceeval-local/` 只放 `homes/`，不放任何副本或产物。
 
 NiceEval 问题按工作区 [`../AGENTS.md`](../AGENTS.md)「问题与反馈」处理；本仓库是 NiceEval 的 dogfood 场，遇到 NiceEval 的缺口就提，不在这里写 workaround。
 
