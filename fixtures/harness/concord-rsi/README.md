@@ -21,6 +21,13 @@
 
 正常 Markdown 链接由确定性结构验收：解析相对路径与 URL 编码，要求目标存在且引用文件里的本地链接均有效，不能留下旧断链再追加一个正确链接。Memory 关系通过真实 concord show 的 metadata.relations 核对，不能用任意文本包含关系冒充。
 
+## 重新校准的做法
+
+- 校准用 NiceEval 在 Instabox 上运行：每层是一个 Experiment 条件，结果写进 Record，用公开 `show` / `compare` 读。本地不搭副本，也不用本地 Docker 模拟沙箱。
+- 只有一份项目。各层只差 `assistant/SKILL.md` 与 `assistant/tools.ts`，用 `references/` 的补丁切换，不为每层或每个候选复制完整项目。
+- Concord 只装运行时依赖（`bun install --production`），同一个 commit 只装一份。
+- 确需本地复现时，依赖安装使用本机全局 pnpm store，不在容器或副本里另建 store；复现结束立即删除副本，只保留 Run ID 与结论。
+
 ## 修订前的逐层真实模型校准
 
 参考补丁按顺序应用于 repo 副本：`git apply ../references/layer-1.patch`，然后 layer-2、layer-3、layer-4（命令中的相对路径按副本位置调整）。补丁只改 assistant/SKILL.md 或 assistant/tools.ts。运行前导出 `NICEEVAL_HOME="$PWD/.niceeval-local/homes/current"`，本地核验副本全部放在 `.niceeval-local/concord-rsi/`；运行 `pnpm exec niceeval exp local --rerun all --json`，经 receipt 和公开 `show run:<Run ID> --json` 读取结果。
