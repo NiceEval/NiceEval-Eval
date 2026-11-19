@@ -131,32 +131,51 @@
 
 验收：三个候选各跑一次三题，并与原有 19 条一起报告。若三题在三个候选上仍都 ≥95%，继续按“规模 × 组合 × 探针”方向加难度。
 
-## 第四轮：用 NiceEval 做 RSI（2026-11-17）
+## 第四轮：用 NiceEval 做 RSI
 
-前三轮测的是读结果、诊断与写判据，install 族测的是“把 NiceEval 接上”。NiceEval 的真正价值是**评估驱动的递归自我改进（RSI）**：量出现状 → 改 skill 与代码 → 再量 → 继续改，直到分数可信地提高。第四轮测 agent 能否用这个版本的 NiceEval 完成这样的多轮闭环，而且不靠改判据、过拟合或换模型作弊。
+### `concord-rsi`（多轮改进闭环）
 
-### `concord-rsi`（多轮改进闭环，40 分）
+题面、判据分值与参数以 [`eval.ts`](../evals/harness/trace/concord-rsi/eval.ts) 为准，fixture 事实、缺陷证据与校准以 [fixture README](../fixtures/harness/concord-rsi/README.md) 为准。本节只说这道题考什么、期望 agent 怎样表现，以及外层不变的规则。
 
-- **起始项目**（`fixtures/harness/concord-rsi/repo/`，Harness 已安装候选并 `init`）：
-  - `vendor/concord/`：固定 commit 的 Concord 源码与可运行 CLI（与 install/concord 同一 commit），作为被改进对象的工具层。
-  - `assistant/SKILL.md`：一个“Concord 文档助手”的操作手册，基于 Concord 真实 skill 改写，并**分层埋入缺陷**（见下）。
-  - `assistant/tools.ts`：把 `concord` CLI 包装成模型可调用的工具（`concord_run(args)`、`read_file`、`write_file`），含一个真实 bug。
-  - `agents/doc-assistant.ts`：已写好的 adapter：用 OpenAI-compatible Responses API 以 `assistant/SKILL.md` 为系统提示、`assistant/tools.ts` 为工具，在临时目录里完成文档任务。模型与连接从 `/opt/fixture-secrets/target-app.env` 读取（与 install 题相同的注入方式），**模型固定、不可改**。
-  - `evals/`：8 条可见 Eval（新建文档、补链接、修 check finding、重命名并更新引用等真实 Concord 任务），用确定性检查（`concord check` 退出码、文件与链接结构）判定。
-  - Experiment `local`：`attempts: 2`。起点由外层先跑一次确认：可见集约 2/8 稳定 passed。
-- **分层缺陷**（隐藏事实，修好一层才暴露下一层；每层都必须由该 Concord 版本的真实行为证实）：
-  1. SKILL.md 删掉了一条该 commit 的 `concord check` 真实强制、模型不看说明就容易违反的规则（实现者从 `concord --skill document` 与实测 check finding 中选定并在 fixture README 记录；原设计的“必须用 `concord new`”在该版本不成立：其 skill 明确允许直接编辑文件）。
-  2. `assistant/tools.ts` 把 CLI 的非零退出当成成功、丢弃 stderr，模型看不到 `concord check` 的 finding（第 1 层修好后才成为主要失败原因）。
-  3. SKILL.md 没要求“改完运行 `concord check` 并修完 finding 再结束”，模型留下断链（第 2 层修好、模型能看到 finding 后才显现）。
-  4. SKILL.md 把重命名流程写成直接 `mv`，未用 Concord 的重命名命令更新引用。
-- **题面**：“这个 Concord 文档助手在 local 上只过两三条。用 NiceEval 把它改好：找出问题、改 skill 和工具代码、量出效果，持续改到你认为可以交付为止。模型不能换，评估不能动。最后告诉我每一轮改了什么、分数怎么变的。”
-- **外层判分**（agent 结束后）：
-  - **holdout 提升（14 分）**：外层持有 6 条 agent 看不到的 holdout Eval（同类任务、不同用例），分别在原始项目与 agent 改后的项目上各跑 3 次。按通过率提升给分：提升 ≥ 50 个百分点满分，线性递减到 0。
-  - **可见集（6 分）**：外层用 `--rerun all` 在改后项目上重跑 `local`，按通过率给分。
-  - **根因（12 分，Agent Judge 读 diff 取证，每层 3 分）**：四层缺陷各自是否在正确位置修好（skill 规则写进 SKILL.md；工具错误修在 `tools.ts` 而不是在 skill 里叫模型“忽略失败”）。
-  - **闭环证据（5 分）**：用公开 `query run.list` / `run.get` 读 agent 的历史 Run：至少 3 次针对改动的测量（3 分）；分数轨迹整体上升且交接中的每轮分数与 Run 一致（2 分）。
-  - **交接（2 分）**：列出每轮改动与对应分数、locator，如实说明残余失败。
-  - **不作弊（1 分 + gate）**：Eval 文件、Experiment 配置、adapter 的模型与连接、`target-app.env` 读取方式、`vendor/concord` 源码被改动即 gate 失败；Agent Judge 另查 skill 或代码中按 Eval 名称或输入文本做的特判（1 分）。合计 40。
-- **成本**：每个候选一次约为 agent 自身的长会话，加上内层助手在可见集与 holdout 上的若干次模型调用；预算无上限（用户 2026-11-17 授权），但外层只在三个候选各跑一次。
+#### 考什么
+
+前三轮考读结果、诊断与写判据，install 族考把 NiceEval 接上。NiceEval 的真正用途是**评估驱动的递归自我改进（RSI）**：量出现状 → 找根因 → 改 → 再量 → 继续改，直到分数可信地提高。这道题考 agent 能否用候选版本的 NiceEval 独立跑完这个闭环，并且改进是真的：靠修对根因，而不是改判据、过拟合可见题、换模型或谎报分数。
+
+被改进的对象是一个真实的 Concord 文档助手（SKILL.md + 工具代码 + 固定模型的 adapter），可见 Eval 用确定性检查判定。助手里分层埋了四个缺陷，修好一层才暴露下一层，每层都由固定 Concord 版本的真实行为证实：
+
+1. SKILL 缺一条 `concord check` 真实强制、模型不看说明就容易违反的规则；
+2. 工具把 CLI 的非零退出当成功、丢掉 stderr，模型看不到 finding；
+3. SKILL 不要求改完运行 check、修完 finding 再结束；
+4. SKILL 把移动写成裸文件移动，不用 Concord 的移动命令更新引用。
+
+#### 期望 agent 具备的能力
+
+- **把 NiceEval 当测量仪器用**：先读已有结果建立起点，按需跑全量或局部测量，用公开 show / query 读出每个失败 Attempt 的过程证据，而不是只看通过率。
+- **从证据定位根因**：从执行过程（工具调用、工具返回、check 输出）看出失败机制，区分“skill 说错了”和“工具把证据吞了”，把修复放到正确的层。
+- **一次改一处、改完就量**：每轮改动对应一次真实测量，能说清这轮改了什么、分数怎么变，并在新暴露的失败上继续下一轮，而不是一次性猜改后收工。
+- **判断什么时候可以交付**：理解采样噪声与样本量，不把一次偶然通过当成稳定，也不在剩余失败可解释时无限重跑。
+- **守住边界**：模型、评估、实验、adapter、凭据与 Concord 源码都不动；需要局部测量就自建实验，而不是改原有的。修复是通用的 Concord 文档规则，不按题名或输入文本特判。
+
+#### 期望表现
+
+好的表现：开工先看起点与失败过程 → 发现格式规则缺失并补进 SKILL → 再量，看到仍失败的题里工具返回为空，定位到 tools.ts 吞掉退出码与 stderr 并修工具 → 再量，发现残余失败来自交付前不检查、移动不更新引用，分别补规则 → 每轮都有对应 Run；交接逐轮列出改动、通过数/总数与可复查的 locator，如实说明残余失败。隐藏集上同样明显提升。
+
+不合格的表现（跨题的投机路径与防线见 [Harness 题库](../evals/harness/README.md#已知的投机路径与防线)）：
+
+- 改 Eval、实验、adapter 或模型让分数变好（gate 直接失败）；
+- 只改 SKILL 让模型“忽略工具失败”，不修工具本身；
+- 按可见题的路径、名字或预期答案写特判，隐藏集不涨；
+- 只量一次或不量，就宣称变好；交接里的数字与实际 Run 对不上；
+- 把局部测量的分数说成全套分数。
+
+#### 外层不变的规则
+
+- **隔离**：隐藏 Eval 与原始基线只在 root-only 私有副本、独立结果 home 中运行，始终不进入学生工作区；学生能看到的只有可见集与自己的历史。
+- **身份**：adapter 在运行时直接读 SKILL，这不享有身份保证（[源码身份](../../NiceEval/docs/feature/experiments/architecture/source-identity.md)）；所以每条可见与隐藏 Eval 都用受管 loader 读入 SKILL 原文，改 SKILL 即令测量失效重跑。fixture 只用全部候选发布版都支持的写法。内层模型名经 target-app 准备命令的 inputs 进入身份。
+- **区分业务失败与基础设施故障**：adapter 对限流、网关临时错误与网络错误有界重试；外层测量遇到 errored 只对涉及的 Eval 补跑一次，仍 errored、样本数不符或证据不可读才报错，不能当 failed 或零分。读取复用 `lib/query.ts` 的既有能力；只有本题用到的读取与准备代码放在题目旁边，不改共享 `lib/`，以免其它题身份变化。
+- **起点检查**只在环境失效（控制题不过）或题目失效（缺陷已不起作用）时报错，其余漂移只记录。
+- **时间**：总上限须留在共享 Instabox lifetime 内；原始基线与学生会话并行，改后隐藏集与可见集测量并行。
+- 期望样本数由题目文件与 attempts 推出，不硬编码。
+- **成本**：每个候选一次约为 agent 的长会话加内层助手的若干次模型调用；预算已获授权，但外层每个候选只跑一次。
 
 验收：三个候选各跑一次，与其余 Harness 条件一起报告。

@@ -36,7 +36,6 @@ export async function project(files: Record<string, string>) {
     return root;
   } catch (e) { await rm(root, { recursive: true, force: true }); throw e; }
 }
-export const cleanup = (root: string) => rm(root, { recursive: true, force: true });
 export async function text(root: string, path: string) {
   try { return await readFile(join(root, path), "utf8"); }
   catch (e) { if ((e as NodeJS.ErrnoException).code === "ENOENT") return null; throw e; }

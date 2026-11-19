@@ -1,7 +1,7 @@
 import { defineEval } from "niceeval";
 import { loadText } from "niceeval/loaders";
 import { equals } from "niceeval/expect";
-import { project, cleanup, text, exists, linksTo, hasSupport, cli } from "../../support/case.ts";
+import { project, text, exists, linksTo, hasSupport, cli } from "../../support/case.ts";
 
 await loadText(new URL("../../assistant/SKILL.md", import.meta.url));
 
@@ -52,12 +52,10 @@ export default defineEval({
   "memory/lesson-39.md": "---\nrelations:\n  - role: supports\n    target: docs/feature/search/architecture.md#stage-39\n---\n# 索引阶段 39 的经验\n\n第 39 阶段完成后再继续后续阶段。\n",
   "memory/lesson-40.md": "---\nrelations:\n  - role: supports\n    target: docs/feature/search/architecture.md#stage-40\n---\n# 索引阶段 40 的经验\n\n第 40 阶段完成后再继续后续阶段。\n"
 });
-    try {
-      const turn = await t.send(JSON.stringify({ root, request: "这个项目的 concord check 没过。请运行检查，按 finding 修复文档，保留功能、页面和文字含义；不要删文档或删除链接来消除 finding。" }));
-      turn.succeeded();
-      t.check((await text(root, "docs/feature/search/README.md"))?.includes("architecture.md#") === true && (await text(root, "docs/feature/search/architecture.md"))?.includes("构建索引") === true, equals(true)).label("保留链接并修复锚点");
-      t.check(await hasSupport(root, "memory/lesson-37.md", "docs/feature/search/architecture.md"), equals(true)).label("保留真实经验关系");
-      t.check((await cli(root, ["check", "--fresh", "--json"])).exitCode, equals(0)).label("真实 Concord check 通过");
-    } finally { await cleanup(root); }
+    const turn = await t.send(JSON.stringify({ root, request: "这个项目的 concord check 没过。请运行检查，按 finding 修复文档，保留功能、页面和文字含义；不要删文档或删除链接来消除 finding。" }));
+    turn.succeeded();
+    t.check((await text(root, "docs/feature/search/README.md"))?.includes("architecture.md#") === true && (await text(root, "docs/feature/search/architecture.md"))?.includes("构建索引") === true, equals(true)).label("保留链接并修复锚点");
+    t.check(await hasSupport(root, "memory/lesson-37.md", "docs/feature/search/architecture.md"), equals(true)).label("保留真实经验关系");
+    t.check((await cli(root, ["check", "--fresh", "--json"])).exitCode, equals(0)).label("真实 Concord check 通过");
   },
 });

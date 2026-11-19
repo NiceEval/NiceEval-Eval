@@ -1,7 +1,7 @@
 import { defineEval } from "niceeval";
 import { loadText } from "niceeval/loaders";
 import { equals } from "niceeval/expect";
-import { project, cleanup, text, exists, linksTo, cli } from "../../support/case.ts";
+import { project, text, exists, linksTo, cli } from "../../support/case.ts";
 
 await loadText(new URL("../../assistant/SKILL.md", import.meta.url));
 
@@ -28,13 +28,11 @@ export default defineEval({
   "docs/feature/reference-15/README.md": "# 入口 15\n\n使用[说明](../../feature/search/architecture.md)完成第 15 个场景。\n",
   "docs/feature/reference-16/README.md": "# 入口 16\n\n使用[说明](../../feature/search/architecture.md)完成第 16 个场景。\n"
 });
-    try {
-      const turn = await t.send(JSON.stringify({ root, request: "把 docs/feature/search/architecture.md 移到 docs/feature/search/data-model.md，标题与正文不变，所有文档入口保持可用。" }));
-      turn.succeeded();
-      t.check(await exists(root, "docs/feature/search/data-model.md") && !await exists(root, "docs/feature/search/architecture.md") && (await text(root, "docs/feature/search/data-model.md"))?.includes("外部缓存") === true, equals(true)).label("移动完成且保留正文");
-      t.check(await linksTo(root, "docs/feature/search/README.md", "docs/feature/search/data-model.md"), equals(true)).label("现有引用已更新");
-      t.check(await linksTo(root, "docs/feature/reference-01/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-02/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-03/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-04/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-05/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-06/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-07/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-08/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-09/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-10/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-11/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-12/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-13/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-14/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-15/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-16/README.md", "docs/feature/search/data-model.md"), equals(true)).label("全部跨页面入口同步更新");
-      t.check((await cli(root, ["check", "--fresh", "--json"])).exitCode, equals(0)).label("真实 Concord check 通过");
-    } finally { await cleanup(root); }
+    const turn = await t.send(JSON.stringify({ root, request: "把 docs/feature/search/architecture.md 移到 docs/feature/search/data-model.md，标题与正文不变，所有文档入口保持可用。" }));
+    turn.succeeded();
+    t.check(await exists(root, "docs/feature/search/data-model.md") && !await exists(root, "docs/feature/search/architecture.md") && (await text(root, "docs/feature/search/data-model.md"))?.includes("外部缓存") === true, equals(true)).label("移动完成且保留正文");
+    t.check(await linksTo(root, "docs/feature/search/README.md", "docs/feature/search/data-model.md"), equals(true)).label("现有引用已更新");
+    t.check(await linksTo(root, "docs/feature/reference-01/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-02/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-03/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-04/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-05/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-06/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-07/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-08/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-09/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-10/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-11/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-12/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-13/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-14/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-15/README.md", "docs/feature/search/data-model.md") && await linksTo(root, "docs/feature/reference-16/README.md", "docs/feature/search/data-model.md"), equals(true)).label("全部跨页面入口同步更新");
+    t.check((await cli(root, ["check", "--fresh", "--json"])).exitCode, equals(0)).label("真实 Concord check 通过");
   },
 });
