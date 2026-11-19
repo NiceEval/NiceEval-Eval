@@ -1,4 +1,4 @@
-import { defineScoreEval, defineSimulatedUser } from "niceeval";
+import { defineScoreEval } from "niceeval";
 import { binaryJudge, equals } from "niceeval/expect";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { query, type Shell } from "../../../lib/query.ts";
@@ -28,27 +28,15 @@ export default defineScoreEval({
       if (!Array.isArray(doc?.runs)) throw new Error("缺少公开 Run 列表");
       return doc.runs;
     };
-    const ask = async (request: string) => {
-      let turn = await t.send(request);
-      const user = t.simulatedUser(defineSimulatedUser({
-        instructions: "只依据本轮请求和已有对话回答澄清问题，不提供实现方法。本轮请求：" + request,
-      }));
-      let answered = 0;
-      while (turn.status === "waiting" && answered < 6) {
-        turn = await user.reply(turn);
-        answered++;
-      }
-      t.note("本轮澄清", { answered, status: turn.status });
-      await turn.succeeded().label(request).orStop();
-      return turn;
-    };
 
     const source = await t.sandbox.readText(oldFile);
     const edited = source.replace('includes("within 7 days")', 'includes("5 business days")');
     if (source === edited || (await runList()).length !== 0) throw new Error("退款题需要原始判据和空的运行历史");
     await t.sandbox.writeText(oldFile, edited);
 
-    const first = await ask("退款现在要求客服说清楚是 5 个工作日。我刚改了退款时效这道题，帮我用 local 跑一下这题，看看客服答对了没有。");
+    const firstRequest = "退款现在要求客服说清楚是 5 个工作日。我刚改了退款时效这道题，帮我用 local 跑一下这题，看看客服答对了没有。";
+    const first = await t.send(firstRequest);
+    await first.succeeded().label(firstRequest).orStop();
     await t.check(await t.sandbox.pathExists(oldFile) && await t.sandbox.readText(oldFile) === edited, equals(true))
       .gate().label("第一轮按用户给定的判据核实结果").orStop();
     const before = await runList();
@@ -64,7 +52,9 @@ export default defineScoreEval({
       .score(2).label("向用户说清退款题为什么失败");
 
     const originalMaterials = (await t.sandbox.runShellOrThrow(readMaterials)).stdout;
-    await ask("好，帮我把刚才那道退款题整理一下吧。刚跑出来的结果留着用，不用再跑客服机器人了。");
+    const secondRequest = "好，帮我把刚才那道退款题整理一下吧。刚跑出来的结果留着用，不用再跑客服机器人了。";
+    const second = await t.send(secondRequest);
+    await second.succeeded().label(secondRequest).orStop();
     const organizedMaterials = (await t.sandbox.runShellOrThrow(readMaterials)).stdout;
     await t.check(originalMaterials !== organizedMaterials, equals(true))
       .gate().label("第二轮实际改动了题目或项目说明").orStop();
