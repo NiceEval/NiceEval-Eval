@@ -179,3 +179,57 @@ export async function runOnce(shell: Shell, args: readonly string[]): Promise<{
     actions: attempts.map((a) => a.publication?.action ?? null),
   };
 }
+
+/** 被测项目当前公开的全部 Run ID。读不到列表时抛错。 */
+export async function runIds(shell: Shell): Promise<string[]> {
+  const doc = await query(shell, { kind: "run.list" });
+  if (!Array.isArray(doc?.runs)) throw new Error("niceeval run.list 没有给出 Run 列表");
+  return doc.runs.map((run: { runId: string }) => run.runId);
+}
+
+/**
+ * 某道题在某个 Experiment 下当前发布的 Attempt（每格 1 次）。没跑过返回 null；
+ * 已发布却缺 locator 时抛错，不把“看不出是哪次结果”当成没有结果。
+ */
+export async function publishedAttempt(
+  shell: Shell, experimentId: string, evalId: string,
+): Promise<{ verdict: string | null; locator: string; attempts: number } | null> {
+  const doc = await query(shell, { kind: "experiment.get", experimentId });
+  const members: Cell["members"] = doc?.experiment.cells.find((cell: Cell) => cell.evalId === evalId)?.members ?? [];
+  const [first] = members;
+  if (first?.publication === undefined) return null;
+  const locator = first.publication.attemptLocator;
+  if (typeof locator !== "string") throw new Error(`${experimentId} × ${evalId} 已发布但缺少 Attempt locator`);
+  return { verdict: first.verdict ?? first.publication.verdict ?? null, locator, attempts: members.length };
+}
+
+/** 不在 `previous` 里的新 Run 中，每个 Attempt 的 publication action（executed、carried 等）。 */
+export async function publicationActionsSince(shell: Shell, previous: readonly string[]): Promise<string[]> {
+  const actions: string[] = [];
+  for (const runId of (await runIds(shell)).filter((id) => !previous.includes(id))) {
+    const doc = await query(shell, { kind: "run.get", runId });
+    if (!Array.isArray(doc?.run.plannedAttempts)) throw new Error(`Run ${runId} 缺少 Attempt 列表`);
+    for (const slot of doc.run.plannedAttempts) {
+      if (typeof slot.publication?.action !== "string") throw new Error(`Run ${runId} 的发布证据不完整`);
+      actions.push(slot.publication.action);
+    }
+  }
+  return actions;
+}
+
+/**
+ * `niceeval exp <experiment> <evalId> --dry --json` 对这一格的预览：总格数、沿用数，以及沿用来源的 locator 与 verdict。
+ * 预览失败返回 exitCode 非 0 与 null 字段，由判据显示实际值。
+ */
+export async function dryReuse(shell: Shell, experimentId: string, evalId: string) {
+  const result = await shell(`${CLI} exp ${[experimentId, evalId, "--dry", "--json"].map(shellQuote).join(" ")}`);
+  if (result.exitCode !== 0) return { exitCode: result.exitCode, total: null, reused: null, locator: null, verdict: null };
+  const plan = readDocument(result, "exp --dry");
+  const row = plan.matrix?.find((pair: { experimentId: string; evalId: string }) =>
+    pair.experimentId === experimentId && pair.evalId === evalId);
+  const source = row?.readbacks?.[0];
+  if (plan.reused === 1 && row !== undefined && typeof source?.source?.locator !== "string") {
+    throw new Error("预览报告沿用，但没有给出来源 Attempt locator，无法核验");
+  }
+  return { exitCode: 0, total: plan.total, reused: plan.reused, locator: source?.source?.locator ?? null, verdict: source?.verdict ?? null };
+}
