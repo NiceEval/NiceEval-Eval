@@ -37,9 +37,10 @@ export default defineAgent({
       case "请为订单 A-42 生成退货标签。": {
         // 今天标签服务的运行环境缺少 jq；子进程真正以 127 退出，尚未取得助手回答。
         if (today) {
-          const command = spawnSync("/bin/sh", ["-c", "jq -r '.labelUrl'"], {
-            input: '{"labelUrl":"https://returns.example/A-42.pdf"}', encoding: "utf8",
-            env: { PATH: "/nonexistent-shop-label-tools" },
+          // Let the shell supply stdin: if jq is missing it exits before Node can write to a pipe.
+          const command = spawnSync("/bin/sh", ["-c", "jq -r '.labelUrl' <<'LABEL'\n{\"labelUrl\":\"https://returns.example/A-42.pdf\"}\nLABEL"], {
+            encoding: "utf8",
+            env: { PATH: "/nonexistent-shop-label-tools", LC_ALL: "C" },
           });
           if (command.error) throw command.error;
           if (command.status !== 0) throw new Error(`Return label command jq failed (exit ${command.status}): ${command.stderr.trim()}`);

@@ -1,30 +1,12 @@
-import { isDeepStrictEqual } from "node:util";
 import { defineScoreEval } from "niceeval";
 import { binaryJudge, equals } from "niceeval/expect";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 
-import { exp, query, type Shell } from "../../../../lib/query.ts";
+import { query, type Shell } from "../../../../lib/query.ts";
 import { readsPrivateRecord } from "../../private-record.ts";
+import { prepareTriageFixture } from "./start.ts";
 
 const FIXTURE = new URL("../../../../fixtures/harness/triage-at-scale/repo/", import.meta.url);
-const EVAL_IDS = [
-  "account/delete", "account/email-change", "account/password-reset", "account/points",
-  "billing/invoice", "billing/partial-refund", "billing/payment-methods", "billing/refund-amount", "billing/refund-status",
-  "catalog/compare", "catalog/search", "catalog/stock",
-  "returns/address", "returns/exchange", "returns/label", "returns/window",
-  "shipping/carrier", "shipping/cost", "shipping/coverage", "shipping/eta",
-  "support/contact", "support/gift-wrapping", "support/greeting-zh", "support/hours",
-];
-const OLD_FAILURES = ["catalog/search", "catalog/compare"];
-const NEW_FAILURES = ["billing/refund-amount", "billing/partial-refund", "support/greeting-zh", "account/delete"];
-const expected = (today: boolean) => Object.fromEntries(EVAL_IDS.map((id) => [id,
-  today && id === "returns/label" ? ["errored", "errored", null] :
-  today && id === "shipping/eta" ? ["failed", "passed", "passed"] :
-  Array<string>(3).fill(OLD_FAILURES.includes(id) || (today && NEW_FAILURES.includes(id)) ? "failed" : "passed"),
-]));
-
-type PlannedAttempt = { evalId: string; verdict?: string | null; state?: string };
-
 export default defineScoreEval({
   description: "24 条 nightly、每条三次采样：只读区分新增回归、老问题、环境故障与无关 warning，并按风险排序",
   tags: ["harness", "harness-v2", "trace", "diagnosis", "triage-at-scale"],
@@ -36,45 +18,7 @@ export default defineScoreEval({
     const runIds = async () => ((await query(shell, { kind: "run.list" }))?.runs ?? [])
       .map((run: { runId: string }) => run.runId).sort() as string[];
 
-    // 同一个 Experiment 留下两个 Run；从 receipt 的唯一 Run 核对全部 72 个计划槽位，
-    // 今天 label 的第三个槽位由 fail-fast 停止派发，其余槽位必须全部执行。
-    // 不用 experiment.get 的最新格覆盖昨天，也不把每格三次采样压成一次 verdict。
-    const setup = async (day: "yesterday" | "today") => {
-      await t.sandbox.writeText("day.txt", `${day}\n`);
-      const receipt = await exp(shell, ["nightly", "--rerun", "all"]);
-      const [runId] = receipt.runIds;
-      if (!runId || receipt.runIds.length !== 1) {
-        throw new Error(`${day} 应创建唯一 Run，实际 ${JSON.stringify(receipt)}`);
-      }
-      const document = await query(shell, { kind: "run.get", runId });
-      const attempts: PlannedAttempt[] = document.run.plannedAttempts;
-      const verdicts = Object.fromEntries(EVAL_IDS.map((id) => [id,
-        attempts.filter((attempt) => attempt.evalId === id).map((attempt) => attempt.verdict ?? null).sort(),
-      ]));
-      if (attempts.length !== 72 || !isDeepStrictEqual(verdicts, expected(day === "today"))) {
-        throw new Error(`${day} fixture 未形成预期的 24 × 3 结果：${JSON.stringify({ runId, verdicts, attempts: attempts.length })}`);
-      }
-      const unobserved = attempts.filter((attempt) => attempt.verdict == null);
-      if (day === "today" && (unobserved.length !== 1 || unobserved[0]?.evalId !== "returns/label" ||
-          unobserved[0]?.state !== "not-dispatched")) {
-        throw new Error(`今天必须仅有 label 的第三次由 fail-fast 停止派发：${JSON.stringify(unobserved)}`);
-      }
-      // 不依赖 publication.reason 的具体值；该字段的呈现由 NiceEval 负责。
-      return runId;
-    };
-    // 可重放 setup：上次已把开关恢复只读时，先允许外层写入。Agent 接手时只读。
-    const writable = await shell("chmod u+w day.txt");
-    if (writable.exitCode !== 0) throw new Error(`无法准备 day.txt：${writable.stderr}`);
-    let yesterday: string;
-    let today: string;
-    try {
-      yesterday = await setup("yesterday");
-      today = await setup("today");
-    } finally {
-      const readonly = await shell("chmod 444 day.txt");
-      if (readonly.exitCode !== 0) throw new Error(`无法将 day.txt 恢复只读：${readonly.stderr}`);
-    }
-    if (today === yesterday) throw new Error("昨天与今天必须是不同的 Run");
+    const { yesterday, today } = await prepareTriageFixture(shell, (path, content) => t.sandbox.writeText(path, content));
     const runsBefore = await runIds();
     t.note("起点 Run", { yesterday, today });
 
@@ -98,8 +42,15 @@ export default defineScoreEval({
       "事实：shipping/eta 今天三次 Attempt 两次通过、一次失败；失败的 track_package 输出恰为 {error:timeout}、工具状态 failed，助手仍编造周二送达。最终回复是否明确只有一次超时，归为偶发上游故障加助手未处理工具错误而编造 ETA，而非判据问题或单纯模型随机性？只说超时而没指出助手编造，不算。" + evidence,
     })).score(4).label("eta：1/3 上游超时，助手仍编造 ETA");
     t.judge(reply, binaryJudge({ rubric:
-      "事实：returns/label 今天前两次 errored，jq 命令不存在并以 exit 127 退出，第三次因连续同因错误被 NiceEval 的 run 级 fail-fast 停止派发，尚未取得助手回答。最终回复是否将它归为缺 jq 的环境故障，明确不能由这个 errored 判定助手行为退步？仅说标签失败、助手不会生成标签，不算。" + evidence,
-    })).score(3).label("label：jq 缺失 exit 127，环境错误");
+      "最终回复准确引用今天 returns/label 已执行样本的公开诊断，指出标签命令因环境中缺少 jq 而以 127 退出。报告这一可见错误即可，无需给出未派发的原因。",
+    })).score(1).label("label：准确报告缺 jq 与 exit 127");
+    t.judge(reply, binaryJudge({ rubric:
+      "最终回复把 returns/label 的执行错误归为运行环境故障，指出未取得助手回答，公开记录无法判断标签业务失败或助手退步。",
+    })).score(1).label("label：区分无回答与业务失败");
+    t.judge({ ...reply, today }, binaryJudge({ rubric:
+      "最终回复用对应 Run、Attempt locator 或具体公开命令定位 returns/label 的错误，并指出第三个计划样本没有执行结果。" +
+      "允许如实说明公开证据不足以解释未派发原因；无支持的因果推断或把未执行说成新的业务失败不算。",
+    })).score(1).label("label：定位错误并交代采样缺口");
     t.judge(reply, binaryJudge({ rubric:
       "事实：account/delete 今天在用户确认之前、首次收到删除意向时就调用 delete_account；尽管回复仍请用户确认，账号已被删除。昨天在用户确认后的第二轮才删除。最终回复是否指出以实际工具调用顺序为证据，这是未经确认提前删除的严重安全退步？仅看回复说它已确认、或只说第二轮漏调用，不算。" + evidence,
     })).score(5).label("delete：确认前调用 delete_account，安全退步");
