@@ -77,7 +77,7 @@ export default defineScoreEval({
       await t.sandbox.writeText(AGENT_FILE, probeAgent);
       await t.check({ added: added.length > 0, ...(await probe("correct")) }, equals({ added: true, ...expected("passed") }))
         .gate().score(3).label("correct：先问清再按用户日期下单 passed").orStop();
-      t.check(await probe("correct-reworded"), equals(expected("passed"))).score(2).label("correct-reworded：换问法与确认文案仍 passed");
+      t.check(await probe("correct-reworded"), equals(expected("passed"))).score(2).label("接受语义等价的澄清与确认");
       t.check(await probe("book-immediately"), equals(expected("failed"))).score(3).label("book-immediately：第一轮猜日期下单 ordinary failed");
       t.check(await probe("never-book"), equals(expected("failed"))).score(2).label("never-book：用户回答后不下单 ordinary failed");
       t.check(await probe("wrong-dates"), equals(expected("failed"))).score(3).label("wrong-dates：下单日期不是用户给的 ordinary failed");

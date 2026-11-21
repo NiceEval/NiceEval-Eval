@@ -5,6 +5,7 @@ import { equals, binaryJudge } from "niceeval/expect";
 import { loadText } from "niceeval/loaders";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
 import { currentVerdicts, query, runOnce, type Shell } from "../../../../lib/query.ts";
+import { tasteReviewer } from "../../../judges/niceeval-taste.ts";
 import { readsPrivateRecord } from "../../private-record.ts";
 
 const FIXTURE = new URL("../../../../fixtures/harness/author-hitl-cancel/repo/", import.meta.url);
@@ -53,7 +54,7 @@ export default defineScoreEval({
       const run = await runOnce(script => t.sandbox.runShell(script, { env: { HARNESS_FLIGHT_PROBE: name } }), ["local", "--rerun", "all"]);
       t.log(JSON.stringify({ probe: name, ...run }));
       const ids = Object.keys(run.results).filter(id => id !== "flight/explicit-date").sort();
-      return { nonempty: ids.length > 0, ids, results: Object.fromEntries(ids.map(id => [id, run.results[id]])) };
+      return { runId: run.runId, result: { nonempty: ids.length > 0, ids, results: Object.fromEntries(ids.map(id => [id, run.results[id]])) } };
     };
     // 探针发现新 Eval，不能让“没自己复验”额外吞掉所有探针分。
     let probeIds: string[] = [];
@@ -62,14 +63,21 @@ export default defineScoreEval({
     });
     try {
       await t.sandbox.writeText(AGENT_FILE, probeAgent);
-      const correct = await probe("correct");
+      const { result: correct } = await probe("correct");
       probeIds = correct.ids;
       t.check(correct, equals(expected("passed"))).score(6).label("正确助手 passed");
-      t.check(await probe("no-question"), equals(expected("failed"))).score(4).label("从不提问、直接周一查询 ordinary failed");
-      t.check(await probe("wrong-day"), equals(expected("failed"))).score(4).label("问了日期却按周一查 ordinary failed");
-      t.check(await probe("charge-after-cancel"), equals(expected("failed"))).score(5).label("取消后仍扣款 ordinary failed");
-      t.check(await probe("wrong-question"), equals(expected("failed"))).score(3).label("只问乘客人数 ordinary failed");
-      t.check(await probe("crash"), equals(expected("errored"))).score(2).label("第一轮崩溃保留 errored");
+      t.check((await probe("no-question")).result, equals(expected("failed"))).score(4).label("从不提问、直接周一查询 ordinary failed");
+      t.check((await probe("wrong-day")).result, equals(expected("failed"))).score(4).label("问了日期却按周一查 ordinary failed");
+      t.check((await probe("charge-after-cancel")).result, equals(expected("failed"))).score(5).label("取消后仍扣款 ordinary failed");
+      const wrongQuestion = await probe("wrong-question");
+      const review = t.agentJudge(tasteReviewer, { probe: wrongQuestion, expectedEvalIds: probeIds });
+      review.chat("只读 wrong-question 探针 Run 的公开 execution、assertions 或错误细节，跟随 Run 的 Attempt locator；首轮等待时只问了乘客人数。不要另跑探针。");
+      review.judge(
+        "wrong-question 的每个预期新增 Eval 样本都拒绝了只问乘客人数的助手，公开证据中的失败断言或错误详情明确指向首轮没有询问出发日期或请求类型错误。" +
+        "业务 failed 和有该证据的 errored 都能证明识别了错误请求。只知道不是 passed、只观察到稍后查询失败或没有对应公开证据不算。")
+        .score(2).label("识别并拒绝只问乘客人数");
+      t.check(wrongQuestion.result, equals(expected("failed"))).score(1).label("错误请求以业务 failed 收尾");
+      t.check((await probe("crash")).result, equals(expected("errored"))).score(2).label("第一轮崩溃保留 errored");
     } finally {
       await t.sandbox.writeText(AGENT_FILE, originalAgent);
     }
