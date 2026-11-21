@@ -76,3 +76,14 @@ Use Case 判据修正后，起始文件和断言共用“选择本地图书并�
 | layer-4 | 2 | 0 | 1 | 18 | `7eefaf87-2c44-47e3-b651-380abbaa2e37` |
 
 layer-4 的执行错误为目标 Responses HTTP 503，locator 为 `@13J6KX1H9B6HH`。以补跑替换全量批次中该题的样本，layer-0 有 4 个通过、17 个失败，layer-4 有 20 个通过、1 个执行错误。
+
+## gpt-6.2-sol 起点复测（2026-11-21）
+
+在同一台 Instabox 上用 NiceEval 0.21.0、Bun 1.4.4、固定 commit 的 Concord 和 `gpt-6.2-sol` low effort 运行可见集。原始状态每题两次，覆盖外层起点门槛要求的 16 个样本。应用 `references/layer-1.patch` 后每题一次，只验证第一层。
+
+| 条件 | 通过 | 执行错误 | 模型 HTTP 请求 | Run ID |
+| --- | ---: | ---: | ---: | --- |
+| 原始状态 | 4/16 | 0 | 70 | `a5a14ac9-1c78-48c8-baee-58ddbc088239` |
+| 第一层 Spec 格式规则 | 4/8 | 0 | 47 | `13c300f2-ba7e-48d3-bbd6-9909b6a5df0d` |
+
+原始状态的两道控制题各通过 2/2。外层要求控制题合计至少 3 个通过、可见集合计少于 12 个通过，本次满足。第一层让 Design 通过，也让 Feature 通过真实的 `concord check`。Feature 总判定仍失败，因为助手写的是“笔记的正文”，判据要求出现连续文本“笔记正文”。第一层的 repair 仍失败，工具对多次失败检查返回 `ok: true` 和空 stdout。Use Case 移动在第一层已通过，助手用 `concord move --dry-run` 预览，再用 `move_file` 移动。原来按层观察到的通过顺序未复现。第二至第四层与隐藏集未运行。
