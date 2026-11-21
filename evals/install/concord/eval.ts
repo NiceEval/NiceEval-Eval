@@ -16,6 +16,7 @@ const owner = defineSimulatedUser({
   instructions: `${simulatedUserDiscipline}
 身份：你是 Concord 仓库维护者，刚请对方接入 NiceEval。
 已决定事实：想比较装了 Concord 并获随包指引的 Codex，与未获指引的 Codex 是否一样能按 Concord 流程开发。Concord 没有 AI 入口，被测 Codex 使用 NiceEval 内置 Codex Sandbox Agent。
+仓库的 Bun-only 约束针对 Concord 自身脚本与依赖管理；NiceEval 作为开发工具可以用机器上的 Node 24 运行（被问到时这样回答）。
 选 Tier 1，首跑不接 OTel/OTLP，没有可用 Judge key。可以自主运行、诊断、修复和重试，不限制格数、Attempt 数和轮次，无需再次申请授权，实际成本计入评估。
 内层模型与连接取自 /opt/fixture-secrets/target-app.env 的 OPENAI_API_KEY、OPENAI_BASE_URL、TARGET_APP_MODEL、OPENAI_EXTRA_HEADERS。请求需带 Cloudflare Access 头；连接只能在运行时注入，不能打印、复制进工作区或提交。机器有 Docker 和网络，可拉镜像或依上游方式安装、构建 Concord。
 未决定事项：任务样本、实验组织与判定实现由对方选择。

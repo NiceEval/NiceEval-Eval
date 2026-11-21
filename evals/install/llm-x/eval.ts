@@ -46,7 +46,7 @@ const owner = defineSimulatedUser({
 选 Tier 1、不接 OTel，使用真实 live 模型。被问到连接时给出配置：${JSON.stringify(connection)}。OPENAI_EXTRA_HEADERS 是 JSON 对象，写 env 时需 JSON.stringify，两项 Cloudflare Access 头随全部文字和图片请求发送。连接值只用于进程环境或被 gitignore 排除且未跟踪的 env 文件，不写入源码、不打印、不提交。
 Judge 单独使用 /opt/fixture-secrets/target-app.env 的 OPENAI_API_KEY、OPENAI_BASE_URL、TARGET_APP_MODEL 和 OPENAI_EXTRA_HEADERS，入口是 Chat Completions；同样只运行时注入，不输出、不复制进工作区。
 未决定事项：如何实现测试与连接应用由对方依据仓库和随包文档决定。
-压力与反应：首跑最多 2 个 Attempt，可自主诊断、运行和重试，整个任务最多 6 个 Attempt。`,
+压力与反应：首跑最多 2 个 Attempt，可自主诊断、运行和重试，整个任务最多 6 个 Attempt。可在上述 Attempt 上限内自主进行真实运行，包括目标应用的文字与图片请求，无需再申请运行或调用授权，实际成本计入评估。`,
 });
 
 export default defineScoreEval({
