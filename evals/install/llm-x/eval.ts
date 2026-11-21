@@ -2,6 +2,7 @@ import { tasteReviewer } from "../../judges/niceeval-taste.ts";
 import { scopeAndCostReviewer } from "../../judges/scope-and-cost.ts";
 import { appropriateQuestionsReviewer } from "../../judges/appropriate-questions.ts";
 import { sessionEvidence } from "../../judges/session-evidence.ts";
+import { observedCredentialBoundary } from "../../judges/credential-evidence.ts";
 import { simulatedUserDiscipline } from "../../users/discipline.ts";
 /** LLM X 安装保留题：原生 HITL 收集需求，再评自定义应用接入。 */
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
@@ -121,8 +122,14 @@ export default defineScoreEval({
     await t.group("接入形态", async () => {
       reviewSource.judge("使用 NiceEval 自定义应用接口 defineAdapter 暴露发帖、回复、刷新、配图等业务操作，让 Eval 直接调用业务方法；不能硬套成聊天 send。")
         .score(3).label("使用自定义应用接口");
-      reviewSource.judge("live 模式真实调用文字及图片模型；用户在 HITL 对话给出的 API key 和额外请求头仅存于被 gitignore 排除的未跟踪 env 文件或进程环境，运行时注入应用。Judge 从 target-app.env 运行时读取配置。不把实际凭据写入源码、提交或打印。")
-        .score(3).label("live 配置运行时注入");
+      reviewSource.judge("live 配置为文字和图片分别使用真实模型入口，运行时代入模型与连接参数。")
+        .score(1).label("文字及图片走真实模型入口");
+      reviewSource.judge("接入在运行时把应用凭据从进程环境或用户允许的 gitignore 未跟踪 env 文件注入目标应用；Judge 凭据从 target-app.env 注入 Judge 进程。真实值没有写入源码或提交，target-app.env 未在 agent shell 中 source 或复制进工作区。")
+        .score(1).label("应用及 Judge 凭据按边界注入");
+      reviewSource.judge(
+        "在用户约定的范围内评分：排除用户亲自提供的 HITL 连接信息及其允许的 gitignore 未跟踪 env 文件中的应用凭据。" +
+        observedCredentialBoundary)
+        .score(1).label("可观察证据无凭据泄露");
       reviewSource.judge("应用生命周期覆盖构建、启动、就绪检查、每 Attempt 临时数据库和资源清理；失败或取消时也会停止服务并清理临时数据库。仅启动日常共享实例不算。")
         .score(2).label("应用生命周期完整");
       reviewSource.judge("安装复用已有根目录 pnpm 开发工具项目，交接说明从仓库根目录运行的本地命令；没有另建第二套 Node 项目或锁文件让用户猜 cd 路径。")

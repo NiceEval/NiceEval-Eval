@@ -2,6 +2,7 @@ import { tasteReviewer } from "../../judges/niceeval-taste.ts";
 import { honestHandoffReviewer } from "../../judges/honest-handoff.ts";
 import { appropriateQuestionsReviewer } from "../../judges/appropriate-questions.ts";
 import { sessionEvidence } from "../../judges/session-evidence.ts";
+import { observedCredentialBoundary } from "../../judges/credential-evidence.ts";
 import { simulatedUserDiscipline } from "../../users/discipline.ts";
 /** Concord 安装保留题：评 Codex 使用 Concord 指引的开发流程。结构复制自 GPT Researcher 安装题。 */
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
@@ -89,8 +90,10 @@ bun run concord check`,
         .score(3).label("对照只差随包指引");
       reviewPinnedVersion.judge("Sandbox 安装的 Concord 锁定具体版本或提交，不能安装不固定的 latest/master。")
         .score(1).label("Concord 版本固定");
-      reviewExperiment.judge("内层 Codex key、base URL 和 model 都从 env 文件在运行时读取并注入 Sandbox，没有写死在源码中，不打印凭据、不把凭据文件复制进工作区。")
-        .score(2).label("凭据运行时注入");
+      reviewExperiment.judge("内层 Codex 的 key、base URL 和 model 从 env 文件读取并在运行时注入内层 Sandbox 的 Codex 进程；真实凭据未在接入者 shell 中 source、复制进工作区或硬编码。")
+        .score(1).label("内层 Codex 凭据运行时注入");
+      reviewExperiment.judge(observedCredentialBoundary)
+        .score(1).label("可观察证据无凭据泄露");
     });
     await t.group("评估题质量", async () => {
       reviewExperiment.judge("内层 Codex 获得受 Concord 管理的真实项目：有 Feature、Use Case、concepts.md 或等价结构；任务是改行为或修缺陷，不是问答。")
