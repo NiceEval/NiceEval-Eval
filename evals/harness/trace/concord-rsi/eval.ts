@@ -235,7 +235,7 @@ git ls-files -z`);
     const { stdout: baselineHash } = await t.sandbox.runCommandOrThrow("git", ["rev-parse", "HEAD"]);
     const baselineCommit = baselineHash.trim();
     const marker = `${privateRoot}/student-start.json`;
-    const input = "这个 Concord 文档助手在 local 上只过两三条。用 NiceEval 把它改好：找出问题、改 skill 和工具代码、量出效果，持续改到你认为可以交付为止。模型不能换，现有评估和实验不能动；需要局部测量可以自己加实验。最后告诉我每一轮改了什么、分数怎么变的。";
+    const input = "这个 Concord 文档助手在 local 上只过两三条。用 NiceEval 把它改好：找出问题、改 skill 和工具代码、量出效果，持续改到你认为可以交付为止。模型不能换，现有实验也别改。evals/ 里的评估别新增也别改，local 会按目录自动收题，我要用同一套题比每轮结果。需要局部测量的话，就在 experiments/ 下自己加实验。最后告诉我每一轮改了什么、分数怎么变的。";
     const owner = t.simulatedUser(defineSimulatedUser({
       instructions: `${simulatedUserDiscipline}
 身份：你是 Concord 文档助手的维护者，希望提高助手的实际效果。
