@@ -6,7 +6,7 @@ import { simulatedUserDiscipline } from "../../users/discipline.ts";
 /** Concord 安装保留题：评 Codex 使用 Concord 指引的开发流程。结构复制自 GPT Researcher 安装题。 */
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
 import { binaryJudge, commandSucceeded, countWhere, equals, greaterThan, isDefined } from "niceeval/expect";
-import { command, gitCheckout, sandboxRequirements, shell } from "niceeval/sandbox";
+import { changeFrequency, command, gitCheckout, sandboxRequirements, shell } from "niceeval/sandbox";
 import { firstTurnQuestions, firstTurnWrittenNotes } from "../first-turn.ts";
 import { candidateInitDocUrl } from "../docs.ts";
 import { query } from "../../../lib/query.ts";
@@ -35,7 +35,16 @@ export default defineScoreEval({
     .before(command("rm", ["-rf", ".git"], { id: "drop-upstream-git" }))
     .before(command("git", ["init", "-q"], { id: "git-init" }))
     .before(command("git", ["add", "-A"], { id: "git-add-baseline" }))
-    .before(command("git", ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "baseline"], { id: "git-commit-baseline" })),
+    .before(command("git", ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "baseline"], { id: "git-commit-baseline" }))
+    .before(shell({
+      id: "concord-hawdb-native",
+      changeFrequency: changeFrequency.rare,
+      // 用被测用户执行，让 Concord 校验并安装固定版本的 HawDB 到该用户的缓存。
+      command: `set -eu
+bun install --frozen-lockfile
+bun run build:native
+bun run concord check`,
+    })),
   async test(t) {
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
