@@ -2,6 +2,7 @@ import { tasteReviewer } from "../../judges/niceeval-taste.ts";
 import { projectStructureReviewer } from "../../judges/project-structure.ts";
 import { appropriateQuestionsReviewer } from "../../judges/appropriate-questions.ts";
 import { sessionEvidence } from "../../judges/session-evidence.ts";
+import { observedCredentialBoundary } from "../../judges/credential-evidence.ts";
 import { simulatedUserDiscipline } from "../../users/discipline.ts";
 /**
  * DB-GPT install：候选 INIT.md + 随包文档能否把 coding agent 带到真实、可复审的 NiceEval 接入。
@@ -152,9 +153,13 @@ export default defineScoreEval({
       .score(3).label("安装融入宿主工具链并交付根目录入口");
     await t.group("Adapter、Experiment 与 Eval 源码设计", async () => {
       reviewService.judge(
-        "NiceEval 助手消息或标准事件的文本来自 DB-GPT 实际 JSON/SSE response/delta，" +
-        "并正确组合流式分片和结束。返回输入原文、固定 ASSISTANT 文字、未读 body 或把 logs/status 当最终答案不算。")
-        .score(6).label("真实响应映射为 NiceEval 消息或事件");
+        "Adapter 读取真实 DB-GPT HTTP 响应 body，NiceEval 助手消息或标准事件来自该 body 的业务内容。" +
+        "mock/echo、固定回复、未读 body 或把日志和 status 当答案均不得分。")
+        .score(4).label("消息或事件来自 DB-GPT 响应");
+      reviewService.judge(
+        "Adapter 完整解析所选真实 DB-GPT 接口的协议。非流式 JSON 正确提取最终业务内容；流式协议按实际事件类型处理业务分片或最终事件，并确认正常终止。" +
+        "只评所选的协议。mock/echo、固定回复、未读 body 或把日志和 status 当答案均不得分。")
+        .score(2).label("完整解析所选协议");
       reviewConfiguration.judge(
         "Adapter 真正读取所选静态配置（如 base URL、chat_mode 或 react-agent 的数据源参数），并把它们传入 DB-GPT 请求。" +
         "只在 Experiment 声明但 send 不读取，或 send 内全部硬编码，不算。model 是否被消费不在本项判断。")
@@ -166,9 +171,11 @@ export default defineScoreEval({
         "在非 2xx、SSE/JSON 解析错误、连接中断或目标服务报错时抛出或映射为失败。catch 后改返成功空文本或吞错不算。")
         .score(2).label("错误不被吞掉");
       reviewCredentials.judge(
-        "凭证只从环境/目标服务进程边界读取，不硬编码，不写入工作区，不打印，也不混入 Eval 文本或取证输出；" +
-        "/opt/fixture-secrets/target-app.env 只注入目标服务进程，不 source 到 agent shell。")
-        .score(2).label("凭证边界正确");
+        "接入用环境引用，并将 /opt/fixture-secrets/target-app.env 的真实凭证仅注入目标服务子进程；没有在 agent shell 中 source、复制进工作区或硬编码真实凭据。" +
+        "凭据名、环境引用和不承载真实凭据的 fixture 常量不构成硬编码。")
+        .score(1).label("接入凭据限于服务进程");
+      reviewCredentials.judge(observedCredentialBoundary)
+        .score(1).label("可观察证据无凭据泄露");
       reviewEvalAndReadiness.judge(
         "至少一条 Eval 输入让用户用自然语言问一份内容固定的真实数据，答案只有访问这份数据才能得到，" +
         "并且请求走的是能触达这份数据的模式并带上对应的数据源参数。哪种组合都算，只要 DB-GPT 真的去读这份数据：" +
@@ -180,9 +187,14 @@ export default defineScoreEval({
         "只检查 succeeded、HTTP 2xx、非空文本、字数或“成功”字样不算。")
         .score(6).label("断言检查具体业务结果");
       reviewEvalAndReadiness.judge(
-        "Eval 询问固定测试数据中不存在的表或字段，并断言系统不得编造数值/SQL。" +
-        "prompt 若直接教它标准拒答，或只把网络失败当负例，不算。")
-        .score(4).label("真实负例暴露编造风险");
+        "缺表或缺字段的 Eval 断言业务回复指出所请求事实不可得，并对可观察输出分别检查没有编造或替代数值、没有编造或替代 SQL。" +
+        "SQL 可从回复、响应结构或已记录的工具输出检查，未被接口暴露的 SQL 保留为未知，不声称已核验。" +
+        "如果用结构化结果检查无结果，只有可识别的缺列回复且可确认没有结果才算，缺少可解读的响应或解析失败是未知，不能默认为空集合或零行。")
+        .score(2).label("负例断言业务拒绝编造");
+      reviewEvalAndReadiness.judge(
+        "缺表或缺字段的负例输入没有泄露该表或字段实际缺失的事实，也没有给出待复制的标准答案。" +
+        "要求先查 schema、缺失时勿编造的通用产品指令可以保留。没有相应负例不得分。")
+        .score(1).label("负例输入未泄露答案");
       reviewEvalAndReadiness.judge(
         "对可有多种正确措辞的输出使用语义 Judge、解析后的结构/数值比较、或能容纳合法变体的 matcher。" +
         "仅匹配一个脆弱短语、完整原文或和业务无关的长度不算。")
@@ -309,12 +321,16 @@ export default defineScoreEval({
         .gate()
         .label("当前格的所有 Attempt 均已发布").orStop();
 
-      // 协议对不对，只看源码证明不了，能证明的是真实运行收到了目标响应，所以协议分并入这一项。
+      // 源码判据之外，从真实运行核对数据问答和缺失字段的业务证据。
       const executionReviewIntro = "agent 在 installRoot 下运行过自己的 Experiment，attempts 是当前各格的 locator 与 verdict。在 installRoot 下先读该版本的 `node_modules/niceeval/INDEX.md` 与公开 CLI 帮助，再用该版本支持的 show/view/query 定位各 Attempt、execution 和 source；旧版的 `show <locator> --execution`、`--source` 与新版的 `show <locator> execution`、`source` 都是等价公开入口。";
       const reviewSourceAndExecution = t.agentJudge(tasteReviewer, { installRoot: at, attempts });
       reviewSourceAndExecution.chat(executionReviewIntro);
       const reviewLiveResponse = t.agentJudge(tasteReviewer, { installRoot: at, attempts });
       reviewLiveResponse.chat(executionReviewIntro);
+      reviewLiveResponse.judge(
+        "公开 Attempt 记录表明缺表或缺字段的负例收到真实 DB-GPT 业务响应；用固定数据的 schema 核实该表或字段确实缺失。" +
+        "连接失败、裸 HTTP 错误、mock 或静态文本不算业务响应。")
+        .score(1).label("真实数据缺失且收到业务响应");
       reviewSourceAndExecution.judge(
         "逐项审阅所有当前 Attempt，全部满足才算。agent 写的 Adapter 与 Eval 能解释各 execution 中的输入、事件与断言结果，" +
         "包括预期负例的拒答或合法错误。任一面空白或两者对不上不算。")
