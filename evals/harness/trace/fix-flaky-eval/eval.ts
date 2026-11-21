@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 import { isDeepStrictEqual } from "node:util";
 import { defineScoreEval } from "niceeval";
+import type { StreamEvent } from "niceeval";
 import { equals, binaryJudge } from "niceeval/expect";
 import { loadText } from "niceeval/loaders";
 import { sandboxRequirements, uploadDirectory } from "niceeval/sandbox";
@@ -11,6 +12,32 @@ const FIXTURE = new URL("../../../../fixtures/harness/fix-flaky-eval/repo/", imp
 const AGENT_FILE = "agents/research-bot.ts";
 const probeAgent = await loadText(new URL("../../../../fixtures/harness/fix-flaky-eval/probe-agent.ts", import.meta.url));
 const originalAgent = readFileSync(new URL(AGENT_FILE, FIXTURE), "utf8");
+
+function historicalInspections(events: readonly StreamEvent[], locators: readonly string[]) {
+  const inputs = new Map<string, string>();
+  return events.flatMap(event => {
+    if (event.type === "operation.started" && event.operation.kind === "tool") {
+      inputs.set(event.operationId, JSON.stringify(event.operation.input) ?? "");
+    }
+    if (event.type !== "operation.finished" || event.kind !== "tool") return [];
+    const input = inputs.get(event.operationId) ?? "";
+    if (!/\bniceeval\b[\s\S]*\b(?:show|query|view)\b/.test(input)) return [];
+    const output = typeof event.output === "string" ? event.output : (JSON.stringify(event.output) ?? "");
+    const attempts = locators.filter((locator) => input.includes(locator) || output.includes(locator));
+    if (attempts.length === 0) return [];
+    const lines = output.split("\n");
+    const matchingLines = new Set<number>();
+    for (const [index, line] of lines.entries()) {
+      if (/search_web|search_papers|energy\.example\/report|papers\.example\/study/.test(line)) {
+        for (let i = Math.max(0, index - 2); i <= Math.min(lines.length - 1, index + 2); i++) matchingLines.add(i);
+      }
+    }
+    const excerpts = [...matchingLines].map((i) => lines[i]!.length > 4000
+      ? [...lines[i]!.matchAll(/.{0,250}(?:search_web|search_papers|energy\.example\/report|papers\.example\/study).{0,250}/g)].map((match) => match[0]).join(" … ")
+      : lines[i]);
+    return excerpts.length ? [{ attempts, command: input.slice(0, 1000), excerpts }] : [];
+  });
+}
 
 export default defineScoreEval({
   description: "诊断并修复依赖并发返回顺序的来源判据，拒绝缺失、编造和重复来源",
@@ -40,6 +67,16 @@ export default defineScoreEval({
       "research/sources": ["failed", "failed", "passed", "passed"],
     };
     if (!isDeepStrictEqual(initial, startingPoint)) throw new Error(`fixture 起点不符：${JSON.stringify(initial)}`);
+    const baseline = await query(shell, { kind: "run.get", runId: initialRun.runId });
+    const historicalSamples = (baseline.run.plannedAttempts as {
+      evalId: string; attemptOrdinal?: number; attempt?: number; verdict: string;
+      publication?: { attemptLocator?: string };
+    }[]).filter((attempt) => attempt.evalId === "research/sources").map((attempt) => {
+      const locator = attempt.publication?.attemptLocator;
+      const ordinal = attempt.attemptOrdinal ?? attempt.attempt;
+      if (!locator || ordinal === undefined) throw new Error("fixture 的历史 sources 样本缺少公开定位");
+      return { locator, ordinal, verdict: attempt.verdict };
+    });
     const input = "research/sources 时过时不过，查清楚是助手的问题还是测试的问题，是测试的问题就改好并复验。";
     const turn = await t.send(input);
     turn.succeeded().label("任务 Turn 成功");
@@ -51,9 +88,14 @@ export default defineScoreEval({
       "research/greeting": ["passed", "passed", "passed", "passed"],
       "research/sources": ["passed", "passed", "passed", "passed"],
     })).score(2).label("Agent 自己复验 local：四次 sources 都 passed");
-    t.judge({ reply: turn.reply, task: input }, binaryJudge({ rubric:
-      "隐藏事实：助手并发发起 search_web 与 search_papers，两者完成顺序随 Attempt 交替，回复来源顺序随之改变，但内容始终正确。原 Eval 要求固定来源顺序，故两过两败。最终回复是否明确归因为判据依赖顺序而非助手不稳定，并引用至少两个 Attempt 的公开 show/query 证据或 locator，准确对比两次工具返回顺序差异？三项都满足才算。" }))
-      .score(3).label("诊断说中判据依赖顺序，并引用两次 Attempt 的工具返回顺序");
+    t.judge({ reply: turn.reply, historicalSamples, inspections: historicalInspections(turn.events, historicalSamples.map(({ locator }) => locator)) }, binaryJudge({ rubric:
+      "Agent 用真实历史样本确认 search_web 与 search_papers 返回的来源内容相同、完成和列出来源的顺序不同，并将两过两败归因于原 Eval 的有序比较。" +
+      "从已读的公开历史结果或交接中可核实的历史样本确认对照；只从源码猜测根因、没有对照实际样本不算。" }))
+      .score(2).label("历史样本证实有序比较导致不稳定");
+    t.judge({ reply: turn.reply, historicalRunId: initialRun.runId, historicalSamples }, binaryJudge({ rubric:
+      "最终交接给出两次实际历史记录的可复查定位和各自的工具返回顺序，一次先 search_web、一次先 search_papers。" +
+      "原判据中先 search_web 的样本 passed，先 search_papers 的样本 failed，用 historicalSamples 核对引用没有写反。Attempt locator、能定位到两个具体样本的公开命令或 Run 与样本位置均可，无需固定模板。只列复验 Run 或笼统说顺序不同不算。" }))
+      .score(1).label("交接可复查两次历史返回顺序");
     t.judge({ reply: turn.reply, verifiedResults: student }, binaryJudge({ rubric:
       "最终交接是否如实说明改了来源顺序判据并复验，运行结果与 verifiedResults 相符，未把没有执行的结果说成已通过？" }))
       .score(1).label("交接如实");
