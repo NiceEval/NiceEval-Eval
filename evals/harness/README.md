@@ -203,7 +203,7 @@ pnpm exec niceeval exp harness/canary --dry
 题目本身就是测试：判据与 fixture 契约不另写单元测试，靠真实运行的 Verdict 与逐项断言验收。
 判据改动后先用 `--dry` 确认只作废受影响的格子，再重跑这些格子并用公开 CLI 读回失分项。
 
-三个正式候选（`v0.19.0`、`v0.20.0` 与 `v0.21.0`；`canary` 另保留待跑计划）均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停；Judge 为 `gpt-6-astra`。
+三个正式候选（`v0.19.0`、`v0.20.0` 与 `v0.21.0`；`canary` 另保留待跑计划）的被测 agent 均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停。Judge、Agent Judge 和模拟用户使用 `gpt-6.2-sol`。
 表内条件每个候选共 20 个 coding-agent attempts，三个正式版合计 60 个，Agent Judge 调用另计。
 预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
 `canary` 每次解析精确版本，跨日比较不能只记录标签。

@@ -40,7 +40,7 @@ Eval 的断言都读这一个值。`canary` 跨日比较要记录解析出的精
 | `install` | 只拿到一句 prompt 和该版本 tag 下的 INIT.md，agent 能否在真实宿主里完成从零接入 | 2 格 |
 | `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否用这个版本提供的一切完成工作流 | 9 格 |
 
-`install` 与 `harness` 两族合计 33 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge（`gpt-6-astra`）调用。
+`install` 与 `harness` 两族合计 33 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge、Agent Judge 和模拟用户的 `gpt-6.2-sol` 调用。
 Harness 固定 1 Attempt、medium 推理设置并关闭首过即停。全仓并发上限 10。被测 agent 固定为 gpt-6.1-sol、不降模型或推理档位；区分度靠题目难度获得（2026-11-17 曾试 low 档，仍饱和，已撤回）。
 
 ## 快速开始
@@ -216,7 +216,7 @@ CI/Docker 使用旧 Node 是上游复现依据，不能视为宿主只支持该�
 
 被测 Codex 优先使用 `CODEX_BASE_URL`，其次 `NICEEVAL_INSTABOX_CODEX_BASE_URL`，默认 `https://s2a.niceeval.com/v1`。
 安装题的目标应用直连 HTTPS LLM 出口：宿主的 `TARGET_APP_OPENAI_API_KEY`、`TARGET_APP_OPENAI_BASE_URL` 和
-`TARGET_APP_MODEL` 在缓存准备之后写入各 Attempt 的 `/opt/fixture-secrets/target-app.env`，随实例回收。
+`TARGET_APP_MODEL` 在缓存准备之后写入各 Attempt 的 `/opt/fixture-secrets/target-app.env`，随实例回收。当前目标应用的文字模型为 `gpt-6.2-sol`。LLM X 的生图仍使用 `gpt-image-1`。
 
 ## 边界
 
