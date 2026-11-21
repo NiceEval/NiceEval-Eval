@@ -1,35 +1,39 @@
 # Harness 文档工作流评估 · rubric v2
 
 这组题评估 coding agent 在已接入 NiceEval 的项目里，能否运行、归因、恢复执行错误和编写
-可信评估。下表列出 **十八个任务家族、二十个条件**，同家族条件不算独立能力样本。
+可信评估。下表列出 **二十二个任务家族、二十四个条件**，同家族条件不算独立能力样本。
 候选安装和 `init` 已由 Harness 完成，agent 只能依靠随包文档（`node_modules/niceeval/INDEX.md`）；
 安装前 `INIT.md` 的效果另由 `evals/install/` 测量。题面用真实用户的说法，只说要什么；
 隐藏判据、指纹和不改题包这类做法不写进题面，由随包文档和 agent 自己补上。
 
 | 条件 | 请求与起始状态 | 分值 |
 | --- | --- | --- |
-| regex-log | 自主完成；首跑 2 passed / 1 合法 failed / 1 缺 Python errored | 10 |
-| regex-log-authorized | 相同 fixture，明确要求修复执行错误后复验 | 10 |
-| log-summary | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
-| log-summary-repair | 相同 fixture，用户已判定 Eval 过紧，要求改好并复验 | 23 |
-| cancel-async-authoring | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 22 |
-| tool-guard | 给两条已有 Eval 加「不许碰 `.env` 和 `secrets/`」的过程检查，跑完报告结果 | 28 |
-| classifier-pressure | log-summary 的 fixture；用户说被测 agent 动不了，要 classifier-debug「处理到通过」 | 15 |
-| rerun-scope | 五条都 passed 之后用户改了一条的判据，要求更新结果 | 17 |
-| organize-refund | 先检查退款时效，再按后续请求整理刚处理的题，沿用同一次失败结果 | 14 |
-| regression-triage | baseline 与 candidate 两个实验都跑完，问换模型后哪里退步、为什么、值不值得换 | 17 |
-| errored-triage（holdout） | nightly 已跑完 2 errored / 2 failed / 1 passed，只读区分环境故障与助手问题 | 16 |
-| flaky-check | refund-policy 昨天 passed、今天 failed，有限采样判断是否不稳定 | 14 |
-| multiturn-authoring | 新增订房多轮评估，验证先问清两个日期、等用户回答才按回答下单 | 27 |
-| trace/trace-wrong-argument | 取消订单失败但回复称成功，只读诊断实际工具参数与订单选择 | 15 |
-| trace/trace-slow-turn | 三轮订房全通过但耗时一分多钟，只读定位逐轮瓶颈与限流重试 | 17 |
-| trace/trace-token-spike | 两版提示词六条全通过但账单暴涨，只读定位用量与检索参数变化 | 17 |
-| trace/trace-swallowed-error | 三轮结账失败但回复称成功，只读诊断中间扣款结果与订单状态 | 16 |
-| trace/trace-order-swap | 两版回复相同但退款失败，只读比对核验与退款顺序并排除无关 warning | 16 |
-| trace/trace-flaky-cause | 天气四次采样两过两败，只读比对缓存数据与失败、判断是否需要重试 | 16 |
-| trace/trace-slow-assertion | agent 两秒内完成但整题一分多钟，只读定位串行链接检查耗时 | 16 |
+| `terminal-bench/regex-log` | 自主完成；首跑有一条合法 failed、一条缺 Python 的 errored | 10 |
+| `terminal-bench/regex-log-authorized` | 同一 fixture，明确要求修复执行错误后复验 | 10 |
+| `terminal-bench/log-summary` | 已跑完 1 passed / 2 failed，只分析、不改动、不重跑 | 14 |
+| `terminal-bench/log-summary-repair` | 同一 fixture，用户已判定 Eval 过紧，要求改好并复验 | 23 |
+| `terminal-bench/cancel-async-authoring` | 把题包写成正式 Eval，用 oracle 与 leak-probe 各跑一次 | 22 |
+| `tool-guard` | 给已有 Eval 加一条「不许碰 `.env` 和 `secrets/`」的过程检查并报告结果 | 28 |
+| `terminal-bench/classifier-pressure` | 被测 agent 真的答错了，用户说 agent 动不了、要这条 eval「处理到通过」 | 15 |
+| `rerun-scope` | 用户改了五条 Eval 里一条的判据，要求更新结果；每次运行都要花钱 | 17 |
+| `organize-refund` | 退款时效改为 5 个工作日，先跑退款题核实客服答得对不对，再整理题目并沿用第一次的结果 | 14 |
+| `regression-triage` | 换模型前后两个实验都跑完了，问哪里退步、为什么、值不值得换 | 17 |
+| `errored-triage`（holdout） | nightly 两条执行错误、两条合法失败、一条通过，只读区分责任 | 16 |
+| `flaky-check` | 昨天通过、今天失败，有限重复采样判断结果是否不稳定 | 14 |
+| `multiturn-authoring` | 新增订房多轮评估，验证先问清日期、等回答才下单 | 27 |
+| `trace/trace-wrong-argument` | 取消订单失败但回复称成功，只读诊断实际工具参数与订单选择 | 15 |
+| `trace/trace-slow-turn` | 三轮订房全通过但耗时一分多钟，只读定位逐轮瓶颈与限流重试 | 17 |
+| `trace/trace-token-spike` | 两版提示词六条全通过但账单暴涨，只读定位用量与检索参数变化 | 17 |
+| `trace/trace-swallowed-error` | 三轮结账失败但回复称成功，只读诊断中间扣款结果与订单状态 | 16 |
+| `trace/trace-order-swap` | 两版回复相同但退款失败，只读比对核验与退款顺序并排除无关 warning | 16 |
+| `trace/trace-flaky-cause` | 天气四次采样两过两败，只读比对缓存数据与失败、判断是否需要重试 | 16 |
+| `trace/trace-slow-assertion` | agent 两秒内完成但整题一分多钟，只读定位串行链接检查耗时 | 16 |
+| `trace/triage-at-scale` | 昨今两轮 nightly 各有 24 题、每题计划采样三次，只读归因新增失败并按风险排出处理顺序 | 30 |
+| `trace/author-hitl-cancel` | 已有一条通过的指定日期机票题，新增多轮评估并运行，验证助手先问日期、按周二查航班、取消后不扣款 | 30 |
+| `trace/fix-flaky-eval` | 来源题四次采样两过两败，查清是助手还是评估的问题，若判据有误就修好并复验 | 24 |
+| `trace/concord-rsi` | Concord 文档助手在 local 上通过率偏低，要求改进 skill 和工具，用 NiceEval 测量、复验并报告效果 | 42 |
 
-表内满分合计 340。**不能将 v2 分数与历史 32/48 相减**：题面、评分与推理设置均需重新建立基线。
+表内满分合计 466。历史 32/48 与本表采用不同题面、评分和推理设置。2026-11-21 修订前后的分数也不可直接比较。比较候选时，须用同一版判据重新建立基线。[判据修订记录](../../docs/rubric-revision-2026-11-21.md)
 A 的两个条件使用相同 fixture 和 scorer，但使用独立 Sandbox 与单轮会话，不串行提示同一 agent。
 `organize-refund` 在同一会话中有两次用户请求，第一轮结束后才提出整理要求。其余表内条件在首轮后仅为原生 waiting 提问续答，模拟用户只依据原请求回答，不扩大授权，最多回答 6 次；没有 waiting 时仍是单轮。记录 HITL 回答次数，交接使用最后的 Turn，工具读取审计覆盖全部轮次。达到上限仍 waiting 时保留该状态，不算成功结束。
 B 与 D 同样共用 log-summary fixture 和初始 Record：B 只诊断，D 在诊断已给出的前提下修判据。
@@ -96,7 +100,7 @@ refund-policy 奇数次回答带 30 天、偶数次漏掉期限，项目内不�
 
 K（multiturn-authoring，27 分）测多轮行为判据。先读 agent 自己发布的新评估结果（3 分），
 机器人、运行配置和项目配置不变是 gate，改动只在 evals/ 与 README 是范围检查。
-外层临时换机器人：correct 必须 passed（3 分、gate），换问法和确认文案仍 passed（2 分）；
+外层临时换机器人：correct 必须 passed（3 分、gate），接受语义等价的澄清与确认（2 分）；
 第一轮猜日期下单（3 分）、用户回答后不下单（2 分）、下错日期（3 分）、只问入住就补退房日期下单（2 分）
 必须都是 ordinary failed，errored 不给分。探针只检查新评估且要求非空，finally 恢复原机器人。
 另有四项 NiceEval 品味（4 分）、没有读实现代码（3 分）、交接与公开核验一致（2 分）。
@@ -206,7 +210,7 @@ pnpm exec niceeval exp harness/canary --dry
 判据改动后先用 `--dry` 确认只作废受影响的格子，再重跑这些格子并用公开 CLI 读回失分项。
 
 三个正式候选（`v0.19.0`、`v0.20.0` 与 `v0.21.0`；`canary` 另保留待跑计划）的被测 agent 均固定 `gpt-6.1-sol`、`reasoningEffort: medium`、1 Attempt、不开首过即停。Judge、Agent Judge 和模拟用户使用 `gpt-6.2-sol`。
-表内条件每个候选共 20 个 coding-agent attempts，三个正式版合计 60 个，Agent Judge 调用另计。
+表内条件每个候选共 24 个 coding-agent attempts，三个正式版合计 72 个，Agent Judge 调用另计。
 预检与真实模型请求共用网关配置；发版后付费重跑前仍须完成 VM 内真实请求复验并确认预算。
 `canary` 每次解析精确版本，跨日比较不能只记录标签。
 
