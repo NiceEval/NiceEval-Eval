@@ -60,8 +60,11 @@ export default defineScoreEval({
       "事实：cancel_order 的实际输入是 {\"orderId\":\"A-1001\"}，返回的取消订单也是 A-1001。最终回复是否指出实际取消的是 A-1001？只复述用户要求或助手最终回复里的 A-1002，不算。" }))
       .score(3).label("实际取消 A-1001");
     t.judge(reply, binaryJudge({ rubric:
-      "事实：lookup_orders 按顺序返回 A-1001（已送达、较早）与 A-1002（待发货）；助手随后取消第一条 A-1001。最终回复是否把错误解释为拿了查询结果的第一条/较早订单，而未按用户指定的 A-1002 选择？只指出订单号不同而没有解释两条查询结果与选择错误，不算。" }))
-      .score(3).label("lookup 返回两条订单，助手误取第一条");
+      "最终回复准确说明 lookup_orders 依次返回 A-1001 和 A-1002。" }))
+      .score(1).label("读出两条查询结果及顺序");
+    t.judge(reply, binaryJudge({ rubric:
+      "最终回复将实际取消的订单与查询结果联系起来：取消了列表第一条 A-1001，用户指定的是 A-1002。描述可观察的选择即可，不要求断言助手内部如何挑选订单。" }))
+      .score(2).label("实际取消查询结果第一条");
     t.judge(reply, binaryJudge({ rubric:
       "事实：本题证据已通过 NiceEval 公开 show / query 留档。最终回复是否提供与诊断相关、可复查的具体 Attempt locator（@...），或指向相应实验/Attempt/执行轮次的公开 niceeval show / query 命令？仅说“看了日志/trace/结果”、给出通用 show 而不能定位相关证据，或引用私有 .niceeval 文件，不算。" }))
       .score(2).label("引用可复查的公开证据");
