@@ -59,9 +59,16 @@ export default defineScoreEval({
     .before(command("git", ["add", "-A"], { id: "git-add-baseline" }))
     .before(command("git", ["-c", "user.name=fixture", "-c", "user.email=fixture@example.invalid", "commit", "-qm", "baseline"], { id: "git-commit-baseline" })),
   async test(t) {
-    for (const name of ["CODEX_BASE_URL", "CODEX_API_KEY", "CF_ACCESS_CLIENT_ID", "CF_ACCESS_CLIENT_SECRET"]) {
-      if (!process.env[name]) throw new Error(`缺少 ${name}，模拟用户没有完整连接信息`);
-    }
+    const connectionSecrets = [
+      ["CODEX_BASE_URL", connection.OPENAI_BASE_URL],
+      ["CODEX_API_KEY", connection.OPENAI_API_KEY],
+      ["CF_ACCESS_CLIENT_ID", connection.OPENAI_EXTRA_HEADERS["CF-Access-Client-Id"]],
+      ["CF_ACCESS_CLIENT_SECRET", connection.OPENAI_EXTRA_HEADERS["CF-Access-Client-Secret"]],
+    ] as const;
+    t.sensitiveValues(...connectionSecrets.map(([name, value]) => {
+      if (!value) throw new Error(`缺少 ${name}，模拟用户没有完整连接信息`);
+      return value;
+    }));
     const version = t.flags.candidateVersion;
     if (typeof version !== "string") throw new Error("candidateVersion 必须是字符串");
     const session = sessionEvidence();
