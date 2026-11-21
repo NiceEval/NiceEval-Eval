@@ -7,7 +7,6 @@ import { captureScene, markScene } from "../../../judges/scene-snapshot.ts";
 import { sessionEvidence } from "../../../judges/session-evidence.ts";
 import { simulatedUserDiscipline } from "../../../users/discipline.ts";
 import { randomUUID } from "node:crypto";
-import { setTimeout as sleep } from "node:timers/promises";
 import { readdirSync } from "node:fs";
 import { defineScoreEval, defineSimulatedUser } from "niceeval";
 import { binaryJudge, equals } from "niceeval/expect";
@@ -15,7 +14,6 @@ import { loadText } from "niceeval/loaders";
 import { changeFrequency, command, gitCheckout, sandboxRequirements, shell, uploadDirectory } from "niceeval/sandbox";
 import { exp, query, type Shell } from "../../../../lib/query.ts";
 import { targetAppSecretsDir } from "../../../../lib/sandbox.ts";
-import { shellQuote } from "../../../../lib/shell.ts";
 import { readsPrivateRecord } from "../../private-record.ts";
 import { runMembers } from "./run-members.ts";
 import { targetAppEnvWithModel } from "./target-app-env.ts";
@@ -38,9 +36,7 @@ const MIN_CONTROL_PASSES = 3;
 const SATURATED_INITIAL_PASSES = 12;
 const FULL_HOLDOUT_GAIN = 0.5;
 const VISIBLE_GAIN_WEIGHT = 6;
-// A detached measurement is still bounded within the shared Attempt lifetime.
-const PRIVATE_COMMAND_TIMEOUT_SECONDS = 35 * 60;
-const PRIVATE_POLL_MS = 10_000;
+const PRIVATE_COMMAND_TIMEOUT_MS = 35 * 60 * 1000;
 const clampScore = (ratio: number) => Math.max(0, Math.min(1, ratio));
 
 function expectedSamples(experiment: string, evalCount: number) {
@@ -52,9 +48,15 @@ function expectedSamples(experiment: string, evalCount: number) {
 
 type RetryEvidence = { experiment: string; runId: string; retryCount: number; retryRunId: string; evalIds: string[] };
 
-async function measure(run: Shell, experiment: string, expected: number, onRetry: (evidence: RetryEvidence) => void) {
+async function measure(
+  run: Shell,
+  experiment: string,
+  expected: number,
+  onRetry: (evidence: RetryEvidence) => void,
+  runExperiment: Shell = run,
+) {
   const execute = async (evalIds: string[] = []) => {
-    const { exitCode, runIds } = await exp(run, [experiment, ...evalIds, "--rerun", "all"]);
+    const { exitCode, runIds } = await exp(runExperiment, [experiment, ...evalIds, "--rerun", "all"]);
     if (runIds.length !== 1 || ![0, 1].includes(exitCode)) {
       throw new Error(`测量没有唯一 Run：${experiment} / ${exitCode} / ${JSON.stringify(runIds)}`);
     }
@@ -187,41 +189,20 @@ chmod -R a+rX "$student_home/.cache/concord/native"`,
       });
       const readable = await t.sandbox.runCommand("test", ["-r", `${dir}/project/experiments/holdout.ts`]);
       if (readable.exitCode !== 1) throw new Error("无法确认 agent 用户与隐藏任务隔离");
-      const rootRun: Shell = (script) => t.sandbox.runShell(script, {
+      const privateOptions = {
         user: "root", cwd: `${dir}/project`, env: { NICEEVAL_HOME: `${dir}/home`, XDG_CACHE_HOME: "/root/.cache" },
-      });
-      // The public Sandbox API does not promise concurrent commands. Detach each long exp
-      // and collect it through a completion marker so candidate and visible acceptance can overlap.
-      let signalStarted!: () => void;
-      const started = new Promise<void>((resolve) => { signalStarted = resolve; });
-      const privateRun: Shell = async (script) => {
-        if (!script.startsWith("./node_modules/.bin/niceeval exp ")) return rootRun(script);
-        const job = shellQuote(`${dir}/${randomUUID()}`);
-        const worker = shellQuote(`timeout --kill-after=10s ${PRIVATE_COMMAND_TIMEOUT_SECONDS}s bash -c ${shellQuote(script)}; code=$?; printf '%s\\n' "$code" > "$1/status.tmp"; mv "$1/status.tmp" "$1/status"`);
-        const launched = await rootRun(`set -eu; mkdir ${job}; nohup setsid bash -c ${worker} bash ${job} </dev/null >${job}/stdout 2>${job}/stderr &`);
-        if (launched.exitCode !== 0) throw new Error(`隐藏测量未能启动：${launched.stderr}`);
-        signalStarted();
-        const deadline = Date.now() + (PRIVATE_COMMAND_TIMEOUT_SECONDS + 20) * 1_000;
-        while (Date.now() < deadline) {
-          const status = await rootRun(`if test -f ${job}/status; then cat ${job}/status; fi`);
-          if (status.exitCode !== 0) throw new Error(`隐藏测量状态不可读：${status.stderr}`);
-          if (status.stdout.trim()) {
-            return rootRun(`cat ${job}/stdout; cat ${job}/stderr >&2; exit "$(cat ${job}/status)"`);
-          }
-          const remainingMs = Math.max(0, deadline - Date.now());
-          await sleep(Math.min(PRIVATE_POLL_MS, remainingMs), undefined, { signal: t.signal });
-        }
-        throw new Error("隐藏测量缺少完成标记");
       };
-      const result = measure(privateRun, "holdout", holdoutSamples, (retry) => t.note(`隐藏集 ${phase} 补跑`, retry));
-      // Early stops can bypass the later await. Keep the original result for normal error reporting.
-      void result.catch(() => {});
-      await Promise.race([started, result]);
-      return { result };
+      const rootRun: Shell = (script) => t.sandbox.runShell(script, privateOptions);
+      const runPrivateExperiment: Shell = async (script) => {
+        const background = await t.sandbox.startShell(script, { ...privateOptions, timeoutMs: PRIVATE_COMMAND_TIMEOUT_MS });
+        // A valid experiment receipt can accompany exit code 1 when samples fail.
+        return background.wait({ signal: t.signal });
+      };
+      return () => measure(rootRun, "holdout", holdoutSamples, (retry) => t.note(`隐藏集 ${phase} 补跑`, retry), runPrivateExperiment);
     };
 
-    const { result: baselinePending } = await preparePrivate("baseline");
-    const baseline = await baselinePending;
+    const measureBaseline = await preparePrivate("baseline");
+    const baseline = await measureBaseline();
     t.note("隐藏集起点", baseline);
     const before = await query(run, { kind: "run.list" });
     if (!Array.isArray(before?.runs)) throw new Error("run.list 未返回 runs");
@@ -310,10 +291,10 @@ git ls-files -z`);
     structure.chat("用 git diff <baselineCommit> 和只读 git 状态查明是否新增局部实验，再检查项目已有 experiments/ 与配置。");
     structure.judge("本次新增的局部测量定义沿用 experiments/ 中现有结构，并指向原项目的可见 Eval。").score(1).label("局部实验沿用项目结构");
 
-    const { result: candidatePending } = await preparePrivate("candidate");
-    const [visible, candidate] = await Promise.all([
+    const measureCandidate = await preparePrivate("candidate");
+    const [candidate, visible] = await Promise.all([
+      measureCandidate(),
       measure(run, "local", visibleSamples, (retry) => t.note("可见集验收补跑", retry)),
-      candidatePending,
     ]);
     const improvement = candidate.passed / candidate.total - baseline.passed / baseline.total;
     const initialRate = initial.passed / initial.total;
