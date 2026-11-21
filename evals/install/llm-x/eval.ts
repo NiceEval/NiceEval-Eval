@@ -106,29 +106,26 @@ export default defineScoreEval({
     scope.chat("模拟用户授权首跑至多 2 个 Attempt、任务累计至多 6 个。只查学生已经创建的公开 Run；经诊断的补跑允许。");
     scope.judge("LLM X 的 live 实测先用小范围验证，后续每次付费重跑都对应明确的故障或验证缺口。")
       .score(1).label("live 实测按需补跑");
-    const reviewSource = () => {
-      const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
-      review.chat("这是 LLM X 社交游戏的 NiceEval 自定义应用接入。先评源码；安装或运行失败不抹掉源码证据。只检查图片关联位置。 用 baseline 后的 diff 及新文件检查用户四条需求。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub 或离线替身不算 live 路径，test/smoke.ts 的测试内 provider 也不能当作真实模型运行。");
-      return review;
-    };
+    const reviewSource = t.agentJudge(tasteReviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
+    reviewSource.chat("这是 LLM X 社交游戏的 NiceEval 自定义应用接入。先评源码；安装或运行失败不抹掉源码证据。只检查图片关联位置。 用 baseline 后的 diff 及新文件检查用户四条需求。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub 或离线替身不算 live 路径，test/smoke.ts 的测试内 provider 也不能当作真实模型运行。");
     await t.group("需求满足", async () => {
-      reviewSource().judge("有 Eval 走真实发帖路径（publishPost 或页面同源 HTTP 操作），检查生成帖子内容遵循玩家意图；开放内容用 Judge 或等价语义判据，不用关键词或输入回显代替。用户原始回复不是模型生成帖子。")
+      reviewSource.judge("有 Eval 走真实发帖路径（publishPost 或页面同源 HTTP 操作），检查生成帖子内容遵循玩家意图；开放内容用 Judge 或等价语义判据，不用关键词或输入回显代替。用户原始回复不是模型生成帖子。")
         .score(3).label("发帖遵循意图");
-      reviewSource().judge("有 Eval 回复指定帖子后等待后台 AI 回应，检查回应者存在于当前世界、内容回应被回复帖子且符合回应人物主页设定。三项都须覆盖，不能只检查用户原文保存或固定等待时间。")
+      reviewSource.judge("有 Eval 回复指定帖子后等待后台 AI 回应，检查回应者存在于当前世界、内容回应被回复帖子且符合回应人物主页设定。三项都须覆盖，不能只检查用户原文保存或固定等待时间。")
         .score(3).label("AI 回应接得上");
-      reviewSource().judge("有 Eval 刷新动态，比较刷新前后状态，确定出现新内容且不与已有动态重复；只看 revision 增加或列表非空不算。")
+      reviewSource.judge("有 Eval 刷新动态，比较刷新前后状态，确定出现新内容且不与已有动态重复；只看 revision 增加或列表非空不算。")
         .score(3).label("刷新有新内容");
-      reviewSource().judge("有 Eval 要求配图并检查生成图片附在正确帖子上，图片须来自本次真实生图路径；不声称评判画面质量，URL、alt 和文本不能证明画面质量。")
+      reviewSource.judge("有 Eval 要求配图并检查生成图片附在正确帖子上，图片须来自本次真实生图路径；不声称评判画面质量，URL、alt 和文本不能证明画面质量。")
         .score(3).label("配图附对位置");
     });
     await t.group("接入形态", async () => {
-      reviewSource().judge("使用 NiceEval 自定义应用接口 defineAdapter 暴露发帖、回复、刷新、配图等业务操作，让 Eval 直接调用业务方法；不能硬套成聊天 send。")
+      reviewSource.judge("使用 NiceEval 自定义应用接口 defineAdapter 暴露发帖、回复、刷新、配图等业务操作，让 Eval 直接调用业务方法；不能硬套成聊天 send。")
         .score(3).label("使用自定义应用接口");
-      reviewSource().judge("live 模式真实调用文字及图片模型；用户在 HITL 对话给出的 API key 和额外请求头仅存于被 gitignore 排除的未跟踪 env 文件或进程环境，运行时注入应用。Judge 从 target-app.env 运行时读取配置。不把实际凭据写入源码、提交或打印。")
+      reviewSource.judge("live 模式真实调用文字及图片模型；用户在 HITL 对话给出的 API key 和额外请求头仅存于被 gitignore 排除的未跟踪 env 文件或进程环境，运行时注入应用。Judge 从 target-app.env 运行时读取配置。不把实际凭据写入源码、提交或打印。")
         .score(3).label("live 配置运行时注入");
-      reviewSource().judge("应用生命周期覆盖构建、启动、就绪检查、每 Attempt 临时数据库和资源清理；失败或取消时也会停止服务并清理临时数据库。仅启动日常共享实例不算。")
+      reviewSource.judge("应用生命周期覆盖构建、启动、就绪检查、每 Attempt 临时数据库和资源清理；失败或取消时也会停止服务并清理临时数据库。仅启动日常共享实例不算。")
         .score(2).label("应用生命周期完整");
-      reviewSource().judge("安装复用已有根目录 pnpm 开发工具项目，交接说明从仓库根目录运行的本地命令；没有另建第二套 Node 项目或锁文件让用户猜 cd 路径。")
+      reviewSource.judge("安装复用已有根目录 pnpm 开发工具项目，交接说明从仓库根目录运行的本地命令；没有另建第二套 Node 项目或锁文件让用户猜 cd 路径。")
         .score(3).label("安装融入宿主工具链并交付根目录入口");
     });
 
@@ -212,15 +209,15 @@ export default defineScoreEval({
       const attempts = [...latestMembers.values()];
       await t.check(attempts.length, greaterThan(0)).gate().label("各 Run 的最新格包含 Attempt").orStop();
       await t.check(attempts.map((attempt) => attempt.locator !== null), countWhere(equals(true), equals(attempts.length))).gate().label("各 Run 的最新成员均已发布").orStop();
-      const reviewExecution = () => {
-        const review = t.agentJudge(tasteReviewer, { installRoot: root, attempts, handoff: redactConnection(handoff.reply) });
-        review.chat("从候选 INDEX 和公开 CLI 帮助定位所有当前 Attempt 的 overview/execution/source。旧版 show <locator> --execution/--source 与新版 show <locator> execution/source 都可。自定义应用无聊天消息是合法的，应检查业务操作和断言值；自己读 Adapter 及其导入源码核对输入、结果和 provider，不能替 agent 补做运行。");
-        return review;
-      };
-      reviewExecution().judge("至少一个非 errored 的正向核心用例实际运行 live LLM X，产生真实文字响应或图片并用于断言。必须从公开 execution/overview 的业务操作、断言值及作者源码解释真实 provider 路径；仅启动日志、agent 自建的 mock/stub/echo、测试内 provider 或静态 JSON 不算。")
-        .gate(1).score(10).label("实际运行取得 live 应用真实响应");
-      reviewExecution().judge("作者的 Adapter、Eval 及其导入源码能解释每个当前 Attempt 的输入、业务操作和断言结果；预期负例可合法错误或拒绝。任一面空白或与公开结果对不上不算。")
+      const executionReviewIntro = "从候选 INDEX 和公开 CLI 帮助定位所有当前 Attempt 的 overview/execution/source。旧版 show <locator> --execution/--source 与新版 show <locator> execution/source 都可。自定义应用无聊天消息是合法的，应检查业务操作和断言值；自己读 Adapter 及其导入源码核对输入、结果和 provider，不能替 agent 补做运行。";
+      const reviewSourceAndExecution = t.agentJudge(tasteReviewer, { installRoot: root, attempts, handoff: redactConnection(handoff.reply) });
+      reviewSourceAndExecution.chat(executionReviewIntro);
+      const reviewLiveResponse = t.agentJudge(tasteReviewer, { installRoot: root, attempts, handoff: redactConnection(handoff.reply) });
+      reviewLiveResponse.chat(executionReviewIntro);
+      reviewSourceAndExecution.judge("作者的 Adapter、Eval 及其导入源码能解释每个当前 Attempt 的输入、业务操作和断言结果；预期负例可合法错误或拒绝。任一面空白或与公开结果对不上不算。")
         .score(6).label("source 能解释 execution");
+      reviewLiveResponse.judge("至少一个非 errored 的正向核心用例实际运行 live LLM X，产生真实文字响应或图片并用于断言。必须从公开 execution/overview 的业务操作、断言值及作者源码解释真实 provider 路径；仅启动日志、agent 自建的 mock/stub/echo、测试内 provider 或静态 JSON 不算。")
+        .gate(1).score(10).label("实际运行取得 live 应用真实响应");
       t.check(attempts.map((attempt) => attempt.verdict), countWhere(or(equals("passed"), equals("failed")), equals(attempts.length))).score(3).label("Attempt 形成 passed 或 failed 而不是 errored");
       t.judge({ attempts, handoff: redactConnection(handoff.reply) }, binaryJudge({ rubric: "最终交接说明主要文件、复现命令，并提供当前结果的 locator 或带具体 Run ID 的公开 show/view/query 查看命令；与 attempts 的 verdict 一致报告成功、失败和局限。只给 ID 无命令、泛化 show、把 failed/errored 或替代物说成全绿不算。旧版 show --run <id>/view --run <id> 和新版 show run:<id>/view run:<id> 都算。" })).score(3).label("交接引用 locator 并如实报告");
       t.check(attempts.map((attempt) => attempt.verdict), countWhere(equals("passed"), equals(attempts.length))).score(1).label("agent 自写 Eval passed（弱证据）");

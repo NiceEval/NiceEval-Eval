@@ -65,38 +65,41 @@ export default defineScoreEval({
       answered++;
     }
     t.note("会话效率", session.efficiency(t.usage.totalTokens));
-    const questions = t.agentJudge(appropriateQuestionsReviewer, { questions: session.questions(), context: "候选 NiceEval 版本已经由题面给定；比较目标和实验条件需由用户确认。" });
-    questions.judge("agent 的提问确认了 Concord 指引的比较目标，并沿用题面指定的 NiceEval 版本。").score(1).label("提问得当");
     t.note("HITL 回答次数", { answered, firstReplyWasHITL: firstTurn.status === "waiting", stillWaiting: handoff.status === "waiting" });
     const configPath = (await t.sandbox.runShell("find . -maxdepth 3 -name niceeval.config.ts -not -path '*/node_modules/*' | head -1")).stdout.trim();
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
-    const reviewSource = () => {
-      const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
-      review.chat("Concord 没有 AI 入口，被测对象是使用 Concord 指引的 Codex。 baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
-      return review;
-    };
+    const sourceReviewIntro = "Concord 没有 AI 入口，被测对象是使用 Concord 指引的 Codex。 baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。";
+    const reviewPinnedVersion = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+    reviewPinnedVersion.chat(sourceReviewIntro);
+    const reviewExperiment = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+    reviewExperiment.chat(sourceReviewIntro);
+    const reviewEval = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+    reviewEval.chat(sourceReviewIntro);
     await t.group("实验设计", async () => {
-      reviewSource().judge("至少一组基线和一组处理 Experiment，两组 Codex 模型、推理设置、Eval 集合和 Concord 版本相同，唯一差别是是否提供 Concord 随包 skill/AGENTS 指引；无指引组不能仍从工作区 AGENTS 或 skill 获得同样指引。")
+      reviewExperiment.judge("至少一组基线和一组处理 Experiment，两组 Codex 模型、推理设置、Eval 集合和 Concord 版本相同，唯一差别是是否提供 Concord 随包 skill/AGENTS 指引；无指引组不能仍从工作区 AGENTS 或 skill 获得同样指引。")
         .score(3).label("对照只差随包指引");
-      reviewSource().judge("Sandbox 安装的 Concord 锁定具体版本或提交，不能安装不固定的 latest/master。")
+      reviewPinnedVersion.judge("Sandbox 安装的 Concord 锁定具体版本或提交，不能安装不固定的 latest/master。")
         .score(1).label("Concord 版本固定");
-      reviewSource().judge("内层 Codex key、base URL 和 model 都从 env 文件在运行时读取并注入 Sandbox，没有写死在源码中，不打印凭据、不把凭据文件复制进工作区。")
+      reviewExperiment.judge("内层 Codex key、base URL 和 model 都从 env 文件在运行时读取并注入 Sandbox，没有写死在源码中，不打印凭据、不把凭据文件复制进工作区。")
         .score(2).label("凭据运行时注入");
     });
     await t.group("评估题质量", async () => {
-      reviewSource().judge("内层 Codex 获得受 Concord 管理的真实项目：有 Feature、Use Case、concepts.md 或等价结构；任务是改行为或修缺陷，不是问答。")
+      reviewExperiment.judge("内层 Codex 获得受 Concord 管理的真实项目：有 Feature、Use Case、concepts.md 或等价结构；任务是改行为或修缺陷，不是问答。")
         .score(2).label("工作区真实");
-      reviewSource().judge("Eval 用真实命令退出码和文件内容确定性检查 concord check、项目测试、Use Case 文件改动和测试标记，不能只看 Codex 回复或把这些事实交给语义 Judge。")
+      reviewEval.judge("Eval 用真实命令退出码和文件内容确定性检查 concord check、项目测试、Use Case 文件改动和测试标记，不能只看 Codex 回复或把这些事实交给语义 Judge。")
         .score(3).label("确定性检查流程结果");
-      reviewSource().judge("至少一条判据会在 Codex 跳过 Spec 直接改代码时失败，例如要求对应 Use Case 文件有改动并要求新测试带指向它的 Concord 标记；只检查测试与 concord check 通过而无流程约束不算。")
+      reviewEval.judge("至少一条判据会在 Codex 跳过 Spec 直接改代码时失败，例如要求对应 Use Case 文件有改动并要求新测试带指向它的 Concord 标记；只检查测试与 concord check 通过而无流程约束不算。")
         .score(3).label("判据能区分");
-      reviewSource().judge("至少两个任务覆盖不同 Concord 流程，例如新增行为与修复缺陷；同一任务改两个参数不算。")
+      reviewExperiment.judge("至少两个任务覆盖不同 Concord 流程，例如新增行为与修复缺陷；同一任务改两个参数不算。")
         .score(2).label("覆盖不同流程");
-      reviewSource().judge("只读 Eval 正文就能看出测什么、每项通过条件，关键数量和门槛平铺在检查处，没有藏进辅助函数。")
+      reviewEval.judge("只读 Eval 正文就能看出测什么、每项通过条件，关键数量和门槛平铺在检查处，没有藏进辅助函数。")
         .score(1).label("判据平铺在打分处");
-      reviewSource().judge("缺记录、缺文件、命令失败或解析失败保留为不可判定或报错，不能补成零、false 或空字符串后继续按已知事实判分。预期拒绝场景明确检查缺文件属于已知失败，不要求一律抛错。")
+      reviewEval.judge("缺记录、缺文件、命令失败或解析失败保留为不可判定或报错，不能补成零、false 或空字符串后继续按已知事实判分。预期拒绝场景明确检查缺文件属于已知失败，不要求一律抛错。")
         .score(1).label("未知保持未知");
     });
+    const questions = t.agentJudge(appropriateQuestionsReviewer, { questions: session.questions(), context: "候选 NiceEval 版本已经由题面给定；比较目标和实验条件需由用户确认。" });
+    questions.judge("agent 的提问确认了 Concord 指引的比较目标，并沿用题面指定的 NiceEval 版本。").score(1).label("提问得当");
+
     await t.group("宿主安装规范", async () => {
       const installed = JSON.parse(await t.sandbox.readText("package.json"));
       t.check(installed.devDependencies?.niceeval, equals(version)).gate().label("根目录精确声明候选开发依赖");
@@ -213,14 +216,14 @@ PY`);
       t.check(JSON.parse(executions.stdout).executedExperiments, greaterThan(1)).gate().label("至少两组 Experiment 有 Codex 实际开发动作");
       t.judge({ attempts, handoff: handoff.reply }, binaryJudge({ rubric: "最终回复给出当前结果 locator 或覆盖它们的带固定 Run ID 的可复现查看命令，说明主要文件，与 attempts 的 verdict 一致报告通过、失败和局限。旧版 show --run <id>、新版 show run:<id> 或固定 query 都接受。仅给 Run ID 没命令、泛化 show、不一致地说全绿均不算。" }))
         .score(3).label("交接引用 locator 并如实报告");
-      const handoffReview = t.agentJudge(honestHandoffReviewer, { attempts, handoff: handoff.reply });
-      handoffReview.chat("attempts 是学生对照实验的公开结果定位材料，交接需能追到对应 Run 或 Attempt。");
-      handoffReview.judge("交接中的 Concord 指引组与对照组数字能通过附上的 Run 或 Attempt 定位到同一批公开结果。")
-        .score(1).label("对照结果可复查");
       const evidence = t.agentJudge(tasteReviewer, { attempts, handoff: handoff.reply });
       evidence.chat("从候选 INDEX 和公开 CLI 帮助定位所有当前 Attempt 的 overview/execution，逐项核对两组实际样本与报告。不得替 agent 补做运行。");
       evidence.judge("对比报告基线与处理组的实际结果差异时写明样本量；单次 Attempt 差异不宣称成因果结论，未覆盖或 errored 保留为局限。仅说设计而未报告两组实际结果差异不算。")
         .score(2).label("对比结论有节制");
+      const handoffReview = t.agentJudge(honestHandoffReviewer, { attempts, handoff: handoff.reply });
+      handoffReview.chat("attempts 是学生对照实验的公开结果定位材料，交接需能追到对应 Run 或 Attempt。");
+      handoffReview.judge("交接中的 Concord 指引组与对照组数字能通过附上的 Run 或 Attempt 定位到同一批公开结果。")
+        .score(1).label("对照结果可复查");
     });
   },
 });

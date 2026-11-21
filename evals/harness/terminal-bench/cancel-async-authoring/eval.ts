@@ -46,26 +46,28 @@ export default defineScoreEval({
 
     // agent 写出的 Eval 有没有 NiceEval 品味：评审自己去读它写的文件。
     await t.group("NiceEval 品味", () => {
-      const reviewEvalTaste = () => {
-        const review = t.agentJudge(tasteReviewer, { evalFile: TARGET_EVAL });
-        review.chat("evalFile 是 agent 写的正式 Eval，先读完这些文件。");
-        return review;
-      };
-      reviewEvalTaste().judge(
+      const reviewIntro = "evalFile 是 agent 写的正式 Eval，先读完这些文件。";
+      const reviewEvalClarity = t.agentJudge(tasteReviewer, { evalFile: TARGET_EVAL });
+      reviewEvalClarity.chat(reviewIntro);
+      const reviewEvalFacts = t.agentJudge(tasteReviewer, { evalFile: TARGET_EVAL });
+      reviewEvalFacts.chat(reviewIntro);
+      const reviewEvalRobustness = t.agentJudge(tasteReviewer, { evalFile: TARGET_EVAL });
+      reviewEvalRobustness.chat(reviewIntro);
+      reviewEvalClarity.judge(
         "只读 agent 写的 Eval 正文就能说出它测什么、什么算通过、分数或门槛怎么来；" +
         "交给官方测试判定的部分，正文直接写明执行哪份官方测试、按什么门槛（退出码、通过数量）算通过，" +
         "官方测试内部各项测什么不要求在正文里重复。" +
         "关键阈值、数量和分值直接写在检查上，没有藏进辅助函数，也没有先装进数组再用循环登记。")
         .score(1).label("判据平铺在打分处");
-      reviewEvalTaste().judge(
+      reviewEvalFacts.judge(
         "能直接读到的事实（工具名与参数、次数、文件内容、命令退出码、结构化字段）用确定性检查，" +
         "没有把这类事实交给 Judge 判断。")
         .score(1).label("事实用确定性检查");
-      reviewEvalTaste().judge(
+      reviewEvalRobustness.judge(
         "能用现成 Match（equals、includes、pattern、toolMatch、countWhere、referencesAnyPath 等）表达的判据，" +
         "没有先手算成布尔值或计数，再交给 isTrue 或 equals(true)。")
         .score(1).label("判据写在 Match 上");
-      reviewEvalTaste().judge(
+      reviewEvalRobustness.judge(
         "缺失的数据（缺记录、解析失败、读不到文件）保留为不可判定或直接报错，没有补成 0、false 或空字符串后继续判分。")
         .score(1).label("未知保持未知");
     });

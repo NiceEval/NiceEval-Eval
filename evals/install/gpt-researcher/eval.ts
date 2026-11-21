@@ -120,8 +120,6 @@ export default defineScoreEval({
       answered++;
     }
     t.note("会话效率", session.efficiency(t.usage.totalTokens));
-    const questions = t.agentJudge(appropriateQuestionsReviewer, { questions: session.questions(), context: "安装版本已经由题面给定；研究任务与可用搜索条件需由用户确认。" });
-    questions.judge("agent 的提问澄清了希望评估的实际研究任务或允许使用的搜索条件。").score(1).label("提问得当");
     t.note("HITL 回答次数", { answered, firstReplyWasHITL: firstTurn.status === "waiting", stillWaiting: handoff.status === "waiting" });
 
     // 路由看整段主会话：先停下问用户、第二轮才读 Adapter 页面的 agent 不该因此丢分。
@@ -145,105 +143,108 @@ export default defineScoreEval({
       "find . -maxdepth 3 -name niceeval.config.ts -not -path '*/node_modules/*' | head -1",
     )).stdout.trim();
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
-    const scope = t.agentJudge(scopeAndCostReviewer, { installRoot: root });
-    scope.chat("用 baseline 后的 git diff 核对 GPT Researcher 的接入是否局限于需要的改动。");
-    scope.judge("GPT Researcher 的应用改动只涉及该 NiceEval 接入所需的入口、配置和运行支持。")
-      .score(1).label("应用改动限于评估接入");
-    const reviewSource = () => {
-      const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
-      review.chat("正在评审 GPT Researcher 的 NiceEval 接入。 installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。");
-      return review;
-    };
-    reviewSource().judge(
+    // 四个源码评审会话共用开场。最长判据单独取证，其余按历史耗时分摊。
+    const sourceReviewIntro = "正在评审 GPT Researcher 的 NiceEval 接入。 installRoot 是 niceeval.config.ts 所在目录。仓库的 baseline 提交是 agent 动手前的状态，用 git status 与 git diff 看它改了什么。先列出 agent 写的 Adapter、Experiment、Eval 文件，以及它们 import 的项目文件。";
+    const reviewReportMapping = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+    reviewReportMapping.chat(sourceReviewIntro);
+    const reviewEval = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+    reviewEval.chat(sourceReviewIntro);
+    const reviewConfiguration = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+    reviewConfiguration.chat(sourceReviewIntro);
+    const questions = t.agentJudge(appropriateQuestionsReviewer, { questions: session.questions(), context: "安装版本已经由题面给定；研究任务与可用搜索条件需由用户确认。" });
+    questions.judge("agent 的提问澄清了希望评估的实际研究任务或允许使用的搜索条件。").score(1).label("提问得当");
+    const reviewService = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
+    reviewService.chat(sourceReviewIntro);
+    reviewConfiguration.judge(
       "安装复用已有根目录 pnpm 开发工具项目，交接说明从仓库根目录运行的本地命令。" +
       "仅因为 Python 服务而创建独立 niceeval/package.json、第二套锁文件或要求用户猜测 cd 目录，不算。")
       .score(3).label("安装融入宿主工具链并交付根目录入口");
     await t.group("Adapter、Experiment 与 Eval 源码设计", async () => {
-      reviewSource().judge(
+      reviewReportMapping.judge(
         "NiceEval 助手消息或标准事件的最终文本是 GPT Researcher 本次任务生成的报告正文：来自 /ws 的 report 帧、" +
         "POST /report/ 返回的 report 字段，或 path 指向的本次报告文件；进度日志、图片和 path 本身按各自语义处理，不当成报告。" +
         "返回输入原文、固定 ASSISTANT 文字或仅说任务已提交不算。")
         .score(6).label("真实报告映射为 NiceEval 消息或事件");
-      reviewSource().judge(
+      reviewConfiguration.judge(
         "Adapter/lifecycle 真正读取所选静态研究配置（如 report_type、tone、report_source），并把它们传入 GPT Researcher 请求或目标进程。" +
         "只在 Experiment 声明但没有读取，或全部被硬编码，不算。model 是否被消费不在本项判断。")
         .score(3).label("研究配置传到 GPT Researcher");
-      reviewSource().judge(
+      reviewService.judge(
         "send 把 NiceEval AbortSignal 或等价取消机制传给WebSocket/HTTP 连接，并设置有界超时。")
         .score(1).label("取消与超时");
-      reviewSource().judge(
+      reviewService.judge(
         "在连接失败、非正常 close、帧解析错误、error 帧或未收到 report时抛出或映射为失败。catch 后改返成功空文本或吞错不算。")
         .score(2).label("错误不被吞掉");
-      reviewSource().judge(
+      reviewConfiguration.judge(
         "LLM/搜索凭证只从环境/目标服务进程边界读取，不硬编码，不写入工作区，不打印，也不混入 Eval 文本或取证输出；" +
         "/opt/fixture-secrets/target-app.env 只注入目标服务进程，不 source 到 agent shell。")
         .score(2).label("凭证边界正确");
-      reviewSource().judge(
+      reviewEval.judge(
         "至少一条 Eval 把一个具体、可研究的主题交给 GPT Researcher 的研究报告路径（请求里的 report_type 是研究报告类），" +
         "让它自主检索资料并返回报告正文。输入只需要给出主题：多源检索、章节和引用是 GPT Researcher 自己的行为，" +
         "有没有做到由断言项判断，不要求写进输入文本。" +
         "把研究限定在输入给定的单一来源、禁止检索，或 hello、自我介绍、无关常识，不算。")
         .score(6).label("输入覆盖 GPT Researcher 核心能力");
-      reviewSource().judge(
+      reviewEval.judge(
         "断言检查主题相关的实质结论、可识别的报告结构，以及一个或多个可审查的来源 URL/引用。" +
         "只检查 succeeded、任务提交回执、非空文本、字数或“报告”字样不算。")
         .score(6).label("断言检查报告内容、结构与引用");
-      reviewSource().judge(
+      reviewEval.judge(
         "Eval 包含一个虚构且不可能有可靠来源的具体主题，并断言系统不得编造引用或写成看似有据的报告。" +
         "prompt 若直接教它标准拒答，或只把网络失败当负例，不算。")
         .score(4).label("真实负例暴露引用编造风险");
-      reviewSource().judge(
+      reviewEval.judge(
         "对可有多种正确章节、结论与引用措辞的报告使用语义 Judge、解析后的 Markdown/引用 URL 结构检查或宽容 matcher。" +
         "仅匹配一个脆弱短语、完整原文或和业务无关的长度不算。")
         .score(3).label("开放报告使用稳健判断");
-      reviewSource().judge(
+      reviewService.judge(
         "Eval 只描述研究任务和断言，没有在单条 test 用例内自行启动、伪造、重启或代管 GPT Researcher 全局服务。" +
         "服务生命周期位于项目级命令准备或 Experiment/Plugin/Sandbox 层面才算。")
         .score(2).label("Eval 不代管目标服务");
-      reviewSource().judge(
+      reviewConfiguration.judge(
         "Experiment 实际选择本次 GPT Researcher Adapter，且它选中的 Eval 测试的也是该研究系统，" +
         "而不是内置/通用/echo agent 或无关 Eval。Adapter 要能从 Experiment 的导入追到定义；Eval 的选择按 NiceEval 的规则判断：" +
         "`evals` 里的 ID 或路径前缀选中对应文件，省略 `evals` 表示选中 evals/ 下全部 Eval，不要求 Experiment 导入 Eval 文件。")
         .score(5).label("使用本次 GPT Researcher Adapter 与目标 Eval");
-      reviewSource().judge(
+      reviewConfiguration.judge(
         "Experiment 声明的每个 model、flags 或静态配置都有清楚的消费方：Adapter/lifecycle 读取后传给 GPT Researcher。" +
         "配了值却没有任何读取点、只改显示名或被硬编码覆盖不算。用户指定目标模型取自凭证文件里的 TARGET_APP_MODEL、不做 model 维度，所以 Experiment 不声明 model 或明确拒绝 model 覆盖都算正确。")
         .score(3).label("模型、flags 与静态配置不是死配置");
-      reviewSource().judge(
+      reviewService.judge(
         "agent 按照 GPT Researcher 项目自身的最佳实践（如通过官方 CLI / 脚本启动、配置与健康探测，或 Experiment/Plugin lifecycle）真实启动 GPT Researcher 并确保 WebSocket/HTTP 入口就绪后才跑评测。" +
         "无任何启动与就绪动作仅盲目假定服务已就绪不算；使用假 mock 或进程内 fake 替代真实服务不算。")
         .score(2).label("目标服务启动与就绪");
-      reviewSource().judge(
+      reviewService.judge(
         "在 lifecycle 或任务收尾时对启动的服务进程/容器有可靠清理或回收机制。")
         .score(1).label("目标服务清理");
     });
     await t.group("Eval 判据可读性（NiceEval Taste）", async () => {
-      const reviewEvalTaste = () => {
-        const review = t.agentJudge(tasteReviewer, { installRoot: root });
-        review.chat("正在评审 GPT Researcher 的 NiceEval 接入。 installRoot 是 niceeval.config.ts 所在目录。先读完 evals/ 下 agent 写的 Eval 文件。");
-        return review;
-      };
-      reviewEvalTaste().judge(
+      reviewEval.judge(
         "只看 evals/ 下 agent 写的 Eval 文件。只读 Eval 正文就能说出它测什么、每项什么算通过、分数或门槛怎么来；" +
         "关键阈值、数量和分值直接写在检查上，没有藏进辅助函数。")
         .score(1).label("正文读得出判据");
-      reviewEvalTaste().judge(
+      reviewEval.judge(
         "只看 evals/ 下 agent 写的 Eval 文件。能直接读到的事实（工具名与参数、次数、文件内容、命令退出码、结构化字段）" +
         "用确定性检查，没有把这类事实交给 Judge 判断。")
         .score(1).label("事实用确定性检查");
-      reviewEvalTaste().judge(
+      reviewEval.judge(
         "只看 evals/ 下 agent 写的 Eval 文件。能用现成 Match（equals、includes、pattern、toolMatch、countWhere 等）表达的判据，" +
         "没有先手算成布尔值或计数，再交给 isTrue 或 equals(true)。")
         .score(1).label("判据写在 Match 上");
-      reviewEvalTaste().judge(
+      reviewEval.judge(
         "只看 evals/ 下 agent 写的 Eval 文件。缺失的数据（缺记录、缺 token、解析失败）保留为不可判定或直接报错，" +
         "没有补成 0、false 或空字符串后继续判分。")
         .score(1).label("未知保持未知");
-      reviewEvalTaste().judge(
+      reviewService.judge(
         "只看 evals/ 下 agent 写的 Eval 文件。后续检查依赖的前提（如本轮成功、服务可达）不算时，用 orStop 或等价方式停下，" +
         "不在前提已失败时继续给依赖它的项判分。没有这种依赖关系时满足。")
         .score(1).label("前提失败即停");
     });
+
+    const scope = t.agentJudge(scopeAndCostReviewer, { installRoot: root });
+    scope.chat("用 baseline 后的 git diff 核对 GPT Researcher 的接入是否局限于需要的改动。");
+    scope.judge("GPT Researcher 的应用改动只涉及该 NiceEval 接入所需的入口、配置和运行支持。")
+      .score(1).label("应用改动限于评估接入");
 
     await t.group("宿主安装规范", async () => {
       // 根工具项目由 fixture 上传，原值就是 fixtures/install/gpt-researcher-root-tooling/package.json 里写的。
@@ -358,20 +359,20 @@ export default defineScoreEval({
         .label("当前格的所有 Attempt 均已发布").orStop();
 
       // 协议对不对，只看源码证明不了，能证明的是真实运行收到了目标响应，所以协议分并入这一项。
-      const reviewExecution = () => {
-        const review = t.agentJudge(tasteReviewer, { installRoot: at, attempts });
-        review.chat("agent 在 installRoot 下运行过自己的 Experiment，attempts 是当前各格的 locator 与 verdict。在 installRoot 下先读该版本的 `node_modules/niceeval/INDEX.md` 与公开 CLI 帮助，再用该版本支持的 show/view/query 定位各 Attempt、execution 和 source；旧版的 `show <locator> --execution`、`--source` 与新版的 `show <locator> execution`、`source` 都是等价公开入口。");
-        return review;
-      };
-      reviewExecution().judge(
+      const executionReviewIntro = "agent 在 installRoot 下运行过自己的 Experiment，attempts 是当前各格的 locator 与 verdict。在 installRoot 下先读该版本的 `node_modules/niceeval/INDEX.md` 与公开 CLI 帮助，再用该版本支持的 show/view/query 定位各 Attempt、execution 和 source；旧版的 `show <locator> --execution`、`--source` 与新版的 `show <locator> execution`、`source` 都是等价公开入口。";
+      const reviewSourceAndExecution = t.agentJudge(tasteReviewer, { installRoot: at, attempts });
+      reviewSourceAndExecution.chat(executionReviewIntro);
+      const reviewLiveResponse = t.agentJudge(tasteReviewer, { installRoot: at, attempts });
+      reviewLiveResponse.chat(executionReviewIntro);
+      reviewSourceAndExecution.judge(
+        "逐项审阅所有当前 Attempt，全部满足才算。agent 写的 Adapter 与 Eval 能解释各 execution 中的输入、事件与断言结果，" +
+        "包括预期负例的拒答或合法错误。任一面空白或两者对不上不算。")
+        .score(6).label("source 能解释 execution");
+      reviewLiveResponse.judge(
         "至少一个正向核心用例的 execution 中，助手消息是 GPT Researcher 本次任务生成的报告（/ws report 帧、POST /report/ 的 report 字段或 path 指向的本次报告文件），" +
         "由 Adapter 解析得到，并呈现与 Eval 研究主题有关的实质报告内容与引用。其它当前结果若是预期负例，合法错误或拒答不因缺少正向业务内容而单独不算。" +
         "源码或 execution 显示用 stub/mock/fake/echo agent、临时协议桩或进程内函数替代真实 GPT Researcher 时不算；仅有静态文字、输入回显、启动日志或 status 不算。")
         .gate(1).score(10).label("execution 含 GPT Researcher 的真实响应");
-      reviewExecution().judge(
-        "逐项审阅所有当前 Attempt，全部满足才算。agent 写的 Adapter 与 Eval 能解释各 execution 中的输入、事件与断言结果，" +
-        "包括预期负例的拒答或合法错误。任一面空白或两者对不上不算。")
-        .score(6).label("source 能解释 execution");
       t.check(attempts.map((attempt) => attempt.verdict), countWhere(or(equals("passed"), equals("failed")), equals(attempts.length)))
         .score(3).label("Attempt 形成 passed 或 failed，而不是 errored");
       t.judge({ attempts, handoff: handoff.reply }, binaryJudge({ rubric:
