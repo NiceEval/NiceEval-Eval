@@ -89,3 +89,20 @@ layer-4 的执行错误为目标 Responses HTTP 503，locator 为 `@13J6KX1H9B6H
 | 第一层 Spec 格式规则 | 4/8 | 0 | 47 | `13c300f2-ba7e-48d3-bbd6-9909b6a5df0d` |
 
 原始状态的两道控制题各通过 2/2。外层要求控制题合计至少 3 个通过、可见集合计少于 12 个通过，本次满足。第一层让 Design 通过，也让 Feature 通过真实的 `concord check`。Feature 总判定仍失败，因为助手写的是“笔记的正文”，判据要求出现连续文本“笔记正文”。第一层的 repair 仍失败，工具对多次失败检查返回 `ok: true` 和空 stdout。Use Case 移动在第一层已通过，助手用 `concord move --dry-run` 预览，再用 `move_file` 移动。原来按层观察到的通过顺序未复现。第二至第四层与隐藏集未运行。
+
+## Codex 网关内层模型校准（2026-11-21）
+
+本次建议将 `CONCORD_RSI_MODEL` 设为 `gpt-6-luna`。在同一台临时 Instabox、同一份 fixture 上，通过 Codex 网关运行 NiceEval 0.21.0、Bun 1.4.4 和上述固定 commit 的 Concord。模型使用 low effort。原始状态每题两次，依次叠加 `layer-1.patch` 和 `layer-2.patch` 后各跑每题一次。首个候选出现 HTTP 429 后，`gpt-6-luna` 的三批均改为串行。
+
+| 模型与条件 | 通过 | 执行错误 | 模型 HTTP 请求 | Run ID |
+| --- | ---: | ---: | ---: | --- |
+| `gpt-5.4-mini` 原始状态 | 无有效样本 | 16 | 52 | `95b94ac5-88ca-480b-8835-39e1c1fe42ed` |
+| `gpt-6-luna` 原始状态 | 4/16 | 0 | 55 | `8c05d56a-9052-4eca-88a3-09c6b297ee74` |
+| `gpt-6-luna` 第一层 Spec 格式规则 | 4/8 | 0 | 29 | `b24af4c9-826a-48a7-91aa-38bd8097257e` |
+| `gpt-6-luna` 第二层 CLI 失败信息 | 5/8 | 0 | 33 | `604b6ef6-ad7e-464f-b7ae-e2e53f1d40db` |
+
+`gpt-5.4-mini` 有四个样本收到 HTTP 400 模型拒绝，其余十二个样本在 HTTP 429 后耗尽重试，随即转测第二候选。模型 HTTP 请求计数包含失败与重试，共 169/500 次。
+
+`gpt-6-luna` 原始状态仅两道控制题通过，各为 2/2，满足控制题至少通过 3 次、16 个样本中通过少于 12 次的门槛。第一层后，Design 和 Feature 不再复制旧模板的 frontmatter，两题均通过，其余未通过题保持原判定。第二层才让 `repair-findings` 通过。第一层样本 `@1FC3SVY1H7W9N` 的检查返回 `ok: true` 和空 stdout，第二层样本 `@11VKKG9SHK0KV` 收到退出码 1 和实际 finding，修改文档后复验通过。两道移动题和 `maintenance-note` 在三个条件下均未通过。
+
+补丁条件每题只有一个样本。`gpt-6-luna` 的并发表现、隐藏集、第三至第四层及外层 Harness 的区分度仍待验证。
