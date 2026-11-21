@@ -22,7 +22,7 @@ loadRepoEnv();
 const connection = {
   OPENAI_BASE_URL: process.env.CODEX_BASE_URL,
   OPENAI_API_KEY: process.env.CODEX_API_KEY,
-  OPENAI_MODEL: "gpt-6.2-sol",
+  OPENAI_MODEL: "gpt-6.1-sol",
   OPENAI_IMAGE_MODEL: "gpt-image-1",
   OPENAI_IMAGE_QUALITY: "low",
   OPENAI_EXTRA_HEADERS: {

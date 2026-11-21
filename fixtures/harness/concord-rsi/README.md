@@ -6,7 +6,7 @@
 
 `repo/` 是本题上传给被测 agent 的项目。Concord 使用 install/concord 相同仓库和 commit，在 `vendor/concord/` 检出 `17a161f27e072d6f01270d01acac890135b61bec`，用 Bun 1.4.4 安装依赖。干净环境还需运行该 commit 的 `bun run build:native`。它按同一 commit 的 `native-release.json` 校验并安装官方 HawDB v0.31.0 预编译库。缺这一步时，Linux 上的 `concord init` 会报 `HawdbUnavailable`。之前的校准环境已经具备原生产物。外层在 root 的 `/root/.cache/concord/native/` 准备产物，并给 agent 用户的 `~/.cache/concord/native/` 安装同一份产物。macOS 上的 Linux x64 仿真容器冷缓存实测 `bun run build:native` 用时 22.66 秒。
 
-内层 adapter 从 `/opt/fixture-secrets/target-app.env` 读取模型、连接和凭据，使用 Responses API 与真实工具循环。当前 `TARGET_APP_MODEL` 为 `gpt-6.2-sol`。adapter 在运行时读取 SKILL，Eval 在发现期用受管 loader 登记 SKILL 内容。临时题目先运行真实 `concord init`，再移除其附带的完整指南和模板。
+内层 adapter 从 `/opt/fixture-secrets/target-app.env` 读取模型、连接和凭据，使用 Responses API 与真实工具循环。当前 `TARGET_APP_MODEL` 已恢复为 DeepSeek 中转 `deepseek-v4.1-flash`，与原始校准一致。adapter 在运行时读取 SKILL，Eval 在发现期用受管 loader 登记 SKILL 内容。临时题目先运行真实 `concord init`，再移除其附带的完整指南和模板。
 
 `holdout/`、`holdout-experiment.ts`、参考答案与本文均由外层持有。外层将原始助手、改后助手及各自依赖的项目运行文件分别复制到 root-only 工作区，再放入外层持有的隐藏实验。每份副本使用独立结果 home。私有副本和任务临时项目由 Attempt 的沙箱生命周期回收。原始隐藏集在学生会话前测完，改后隐藏集与学生工作区的可见集验收并行。学生开工前提交 Git 基线并创建时间标记，供评审查阅 diff 与交付现场。会话结束后、外层验收前记录学生用户新启动的存活进程、临时文件及工作区交付范围外的新文件。隐藏题只在这些副本中加载。外层按公开 Run 证据区分业务失败和执行故障，记录定向补跑结果。开工前冻结受保护源码、配置与凭据的摘要，允许学生增设局部测量实验。候选隐藏集在 root 进程中执行学生修改过的工具代码。Agent Judge 审查改动是否特判，以及 skill 和工具是否只访问任务根内的文件，避开 Eval 源码、fixture、holdout、私有 Record 与根外路径。这项审查和工具调用检查依赖可观察证据，运行进程仍有读取私有测量文件的权限。
 
@@ -80,6 +80,8 @@ layer-4 的执行错误为目标 Responses HTTP 503，locator 为 `@13J6KX1H9B6H
 ## gpt-6.2-sol 起点复测（2026-11-21）
 
 在同一台 Instabox 上用 NiceEval 0.21.0、Bun 1.4.4、固定 commit 的 Concord 和 `gpt-6.2-sol` low effort 运行可见集。原始状态每题两次，覆盖外层起点门槛要求的 16 个样本。应用 `references/layer-1.patch` 后每题一次，只验证第一层。
+
+以上是 2026-11-21 的历史复测记录；当前内层模型已恢复为 DeepSeek 中转 `deepseek-v4.1-flash`，与原始校准一致。
 
 | 条件 | 通过 | 执行错误 | 模型 HTTP 请求 | Run ID |
 | --- | ---: | ---: | ---: | --- |

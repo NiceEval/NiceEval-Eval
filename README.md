@@ -220,7 +220,7 @@ CI/Docker 使用旧 Node 是上游复现依据，不能视为宿主只支持该�
 
 被测 Codex 优先使用 `CODEX_BASE_URL`，其次 `NICEEVAL_INSTABOX_CODEX_BASE_URL`，默认 `https://s2a.niceeval.com/v1`。
 安装题的目标应用直连 HTTPS LLM 出口：宿主的 `TARGET_APP_OPENAI_API_KEY`、`TARGET_APP_OPENAI_BASE_URL` 和
-`TARGET_APP_MODEL` 在缓存准备之后写入各 Attempt 的 `/opt/fixture-secrets/target-app.env`，随实例回收。当前目标应用的文字模型为 `gpt-6.2-sol`。LLM X 的生图仍使用 `gpt-image-1`。
+`TARGET_APP_MODEL` 在缓存准备之后写入各 Attempt 的 `/opt/fixture-secrets/target-app.env`，随实例回收。考虑成本和 Codex key 的账号并发限流，当前目标应用已恢复为经 DeepSeek 中转使用 `deepseek-v4.1-flash`，与原始校准一致。LLM X 的生图仍使用 `gpt-image-1`。
 
 ## 边界
 
