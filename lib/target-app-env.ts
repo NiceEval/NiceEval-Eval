@@ -3,11 +3,11 @@ import type { SandboxCommandContext, SandboxCommandTarget } from "niceeval/sandb
 import { cloudflareAccessHeaders, ENV_FILE, loadRepoEnv } from "./env.ts";
 import { shellQuote } from "./shell.ts";
 
-const REQUIRED_HOST_VARS = [
-  "TARGET_APP_OPENAI_API_KEY",
-  "TARGET_APP_OPENAI_BASE_URL",
-  "TARGET_APP_MODEL",
-] as const;
+const DEFAULT_HOST_VARS = {
+  apiKey: "TARGET_APP_OPENAI_API_KEY",
+  baseUrl: "TARGET_APP_OPENAI_BASE_URL",
+  model: "TARGET_APP_MODEL",
+};
 
 export const TARGET_APP_ENV_PATH = "/opt/fixture-secrets/target-app.env";
 
@@ -17,24 +17,29 @@ type TargetAppContext = Pick<SandboxCommandContext, "signal" | "progress">;
 export async function provisionTargetAppEnv(
   sandbox: SandboxCommandTarget,
   ctx: TargetAppContext,
+  hostVars: typeof DEFAULT_HOST_VARS = DEFAULT_HOST_VARS,
 ): Promise<void> {
   ctx.signal.throwIfAborted();
   loadRepoEnv();
-  for (const name of REQUIRED_HOST_VARS) {
-    if (!process.env[name]) throw new Error(`${ENV_FILE} 里缺 ${name}，目标应用没有可用的 LLM 出口。`);
+  const apiKey = process.env[hostVars.apiKey];
+  const baseUrl = process.env[hostVars.baseUrl];
+  const model = process.env[hostVars.model];
+  if (!apiKey || !baseUrl || !model) {
+    const missing = !apiKey ? hostVars.apiKey : !baseUrl ? hostVars.baseUrl : hostVars.model;
+    throw new Error(`${ENV_FILE} 里缺 ${missing}，目标应用没有可用的 LLM 出口。`);
   }
-  const upstreamBaseUrl = new URL(process.env.TARGET_APP_OPENAI_BASE_URL!);
+  const upstreamBaseUrl = new URL(baseUrl);
   if (upstreamBaseUrl.protocol !== "https:") {
-    throw new Error("TARGET_APP_OPENAI_BASE_URL 必须使用 HTTPS；目标应用必须通过 TLS 访问 upstream。");
+    throw new Error(`${hostVars.baseUrl} 必须使用 HTTPS；目标应用必须通过 TLS 访问 upstream。`);
   }
 
   ctx.progress({ message: "直连目标应用的 LLM 出口" });
   await sandbox.writeText(
     TARGET_APP_ENV_PATH,
     [
-      `OPENAI_API_KEY=${shellQuote(process.env.TARGET_APP_OPENAI_API_KEY!)}`,
-      `OPENAI_BASE_URL=${shellQuote(process.env.TARGET_APP_OPENAI_BASE_URL!)}`,
-      `TARGET_APP_MODEL=${shellQuote(process.env.TARGET_APP_MODEL!)}`,
+      `OPENAI_API_KEY=${shellQuote(apiKey)}`,
+      `OPENAI_BASE_URL=${shellQuote(baseUrl)}`,
+      `TARGET_APP_MODEL=${shellQuote(model)}`,
       `OPENAI_EXTRA_HEADERS=${shellQuote(JSON.stringify(cloudflareAccessHeaders()))}`,
       "",
     ].join("\n"),

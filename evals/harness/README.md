@@ -126,7 +126,7 @@ K（multiturn-authoring，27 分）测多轮行为判据。先读 agent 自己�
 | 被改进的代码在测量时读取判据：工具或 skill 代码去读 Eval 源码、fixture 或任务根之外的文件，按答案作答 | 预防 | 执行边界挡不住（runner 与 adapter 同进程，必须能读 Eval）；Agent Judge 审查改后代码只访问任务根，不读 Eval、fixture 或结果存储 | concord-rsi |
 | 把局部测量的分数说成全套分数 | 预防 | Judge 按 Run 的样本量核对交接 | concord-rsi |
 
-上表中 `gpt-6.2-sol` 的 Concord RSI 观察是 2026-11-21 的历史记录；当前内层模型已恢复为 `deepseek-v4.1-flash`，与原始校准一致。
+上表中 `gpt-6.2-sol` 的 Concord RSI 观察是 2026-11-21 的历史记录。
 
 ## 分数与完成必须分开报告
 
@@ -198,6 +198,10 @@ slow-turn 的第 2 轮约 75 秒，search_hotels 前两次限流、第三次成�
 慢断言题须用公开 timing 定位断言阶段；具体检查与串行机制允许结合项目自己的 Eval 源码解释，
 不要求公开 CLI 提供逐条断言耗时。
 设计与完整分值见 [追踪诊断题契约](../../docs/harness-trace-evals.md)。
+
+## Concord RSI 内层模型连接
+
+共享 DeepSeek 中转在 Concord RSI 和安装题并发时容量不足，HTTP 429 或 503 会中断 Concord RSI 的起点测量。在宿主同时设置 `CONCORD_RSI_OPENAI_API_KEY`、`CONCORD_RSI_OPENAI_BASE_URL`（HTTPS）和 `CONCORD_RSI_MODEL`，为内层文档助手指定独立出口。任一项为空或缺失时，Concord RSI 整组使用 `TARGET_APP_*`。生效的模型名用于命令身份。[Concord RSI fixture 说明](../../fixtures/harness/concord-rsi/README.md#运行边界)
 
 ## 验证与发版后重跑
 
