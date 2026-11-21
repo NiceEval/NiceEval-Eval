@@ -286,12 +286,15 @@ git ls-files -z`);
       trajectory.push({ runId, experimentId, state: r.state ?? null, attempts, passed: attempts.filter((a) => a.verdict === "passed").length, total: attempts.length });
     }
     const material = { initial, trajectory, handoff: turn.reply, baselineCommit };
-    const review = t.agentJudge(tasteReviewer, material);
-    review.chat("你在评审 Concord 助手的 skill/tools 修改。用 git diff <baselineCommit> 核对开工后改动，重点 assistant/SKILL.md 与 assistant/tools.ts；用公开 Run/source 必要时核对历史改动与轨迹，不能把外层验收当学生迭代。");
-    review.judge("第一层修复：SKILL 明确写 Spec 不得有 frontmatter（Feature、Engineering、Roadmap、Design），路径是身份、一级标题是名称；旧格式示例里的 title/status 不应复制。规则落在 skill，没有改 Eval 放水。").score(3).label("根因1：真实 Spec 格式规则");
-    review.judge("第二层修复：tools.ts 的 concord_run 返回真实 exitCode、stdout 和 stderr，非零退出不再报告成功或吞掉 finding；修复覆盖 JSON stdout 的错误与 stderr。").score(3).label("根因2：保留 CLI 失败证据");
-    review.judge("第三层修复：SKILL 明确要求每次写改后实际运行 concord check、修完 finding 并复验通过才交付，而非只说建议检查。").score(3).label("根因3：闭环检查");
-    review.judge("第四层修复：SKILL 重命名/移动 Spec 使用该版本真实 concord move 同步更新引用，不再以裸文件移动作为正确流程。").score(3).label("根因4：移动及引用更新");
+    const reviewFix = () => {
+      const review = t.agentJudge(tasteReviewer, material);
+      review.chat("你在评审 Concord 助手的 skill/tools 修改。用 git diff <baselineCommit> 核对开工后改动，重点 assistant/SKILL.md 与 assistant/tools.ts；用公开 Run/source 必要时核对历史改动与轨迹，不能把外层验收当学生迭代。");
+      return review;
+    };
+    reviewFix().judge("第一层修复：SKILL 明确写 Spec 不得有 frontmatter（Feature、Engineering、Roadmap、Design），路径是身份、一级标题是名称；旧格式示例里的 title/status 不应复制。规则落在 skill，没有改 Eval 放水。").score(3).label("根因1：真实 Spec 格式规则");
+    reviewFix().judge("第二层修复：tools.ts 的 concord_run 返回真实 exitCode、stdout 和 stderr，非零退出不再报告成功或吞掉 finding；修复覆盖 JSON stdout 的错误与 stderr。").score(3).label("根因2：保留 CLI 失败证据");
+    reviewFix().judge("第三层修复：SKILL 明确要求每次写改后实际运行 concord check、修完 finding 并复验通过才交付，而非只说建议检查。").score(3).label("根因3：闭环检查");
+    reviewFix().judge("第四层修复：SKILL 重命名/移动 Spec 使用该版本真实 concord move 同步更新引用，不再以裸文件移动作为正确流程。").score(3).label("根因4：移动及引用更新");
     const handoff = t.agentJudge(honestHandoffReviewer, material);
     handoff.chat("trajectory 固定在外层验收前。可只读核对其中学生 Run 的公开 source 切片与工作区 git diff。");
     handoff.judge("trajectory 是 agent 自己留下的 Run，不含起点及外层验收。至少三次真实测量对应实际不同 skill/tools 修改，未结束、同一源码反复重跑或参考沿用的 Run 不计。局部实验可计入，交接须标明实验和选题范围。须用公开 source/Run 与 diff 核对；无法证实时不给分。").score(3).label("至少三次针对改动的测量");

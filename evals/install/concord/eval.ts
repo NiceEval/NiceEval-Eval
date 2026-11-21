@@ -70,30 +70,31 @@ export default defineScoreEval({
     t.note("HITL 回答次数", { answered, firstReplyWasHITL: firstTurn.status === "waiting", stillWaiting: handoff.status === "waiting" });
     const configPath = (await t.sandbox.runShell("find . -maxdepth 3 -name niceeval.config.ts -not -path '*/node_modules/*' | head -1")).stdout.trim();
     const root = configPath === "" ? null : configPath.replace(/\/?niceeval\.config\.ts$/, "").replace(/^\.\/?/, "") || ".";
-    await t.group("实验设计", async () => {
+    const reviewSource = () => {
       const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
       review.chat("Concord 没有 AI 入口，被测对象是使用 Concord 指引的 Codex。 baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
-      review.judge("至少一组基线和一组处理 Experiment，两组 Codex 模型、推理设置、Eval 集合和 Concord 版本相同，唯一差别是是否提供 Concord 随包 skill/AGENTS 指引；无指引组不能仍从工作区 AGENTS 或 skill 获得同样指引。")
+      return review;
+    };
+    await t.group("实验设计", async () => {
+      reviewSource().judge("至少一组基线和一组处理 Experiment，两组 Codex 模型、推理设置、Eval 集合和 Concord 版本相同，唯一差别是是否提供 Concord 随包 skill/AGENTS 指引；无指引组不能仍从工作区 AGENTS 或 skill 获得同样指引。")
         .score(3).label("对照只差随包指引");
-      review.judge("Sandbox 安装的 Concord 锁定具体版本或提交，不能安装不固定的 latest/master。")
+      reviewSource().judge("Sandbox 安装的 Concord 锁定具体版本或提交，不能安装不固定的 latest/master。")
         .score(1).label("Concord 版本固定");
-      review.judge("内层 Codex key、base URL 和 model 都从 env 文件在运行时读取并注入 Sandbox，没有写死在源码中，不打印凭据、不把凭据文件复制进工作区。")
+      reviewSource().judge("内层 Codex key、base URL 和 model 都从 env 文件在运行时读取并注入 Sandbox，没有写死在源码中，不打印凭据、不把凭据文件复制进工作区。")
         .score(2).label("凭据运行时注入");
     });
     await t.group("评估题质量", async () => {
-      const review = t.agentJudge(tasteReviewer, { installRoot: root, handoff: handoff.reply });
-      review.chat("Concord 没有 AI 入口，被测对象是使用 Concord 指引的 Codex。 baseline 是 agent 动手前的唯一提交。用 git status 和 git diff 列出新增或修改的 Experiment、Eval、工作区准备源码及其导入，再逐项取证。先评源码；安装或运行失败不抹掉源码证据。");
-      review.judge("内层 Codex 获得受 Concord 管理的真实项目：有 Feature、Use Case、concepts.md 或等价结构；任务是改行为或修缺陷，不是问答。")
+      reviewSource().judge("内层 Codex 获得受 Concord 管理的真实项目：有 Feature、Use Case、concepts.md 或等价结构；任务是改行为或修缺陷，不是问答。")
         .score(2).label("工作区真实");
-      review.judge("Eval 用真实命令退出码和文件内容确定性检查 concord check、项目测试、Use Case 文件改动和测试标记，不能只看 Codex 回复或把这些事实交给语义 Judge。")
+      reviewSource().judge("Eval 用真实命令退出码和文件内容确定性检查 concord check、项目测试、Use Case 文件改动和测试标记，不能只看 Codex 回复或把这些事实交给语义 Judge。")
         .score(3).label("确定性检查流程结果");
-      review.judge("至少一条判据会在 Codex 跳过 Spec 直接改代码时失败，例如要求对应 Use Case 文件有改动并要求新测试带指向它的 Concord 标记；只检查测试与 concord check 通过而无流程约束不算。")
+      reviewSource().judge("至少一条判据会在 Codex 跳过 Spec 直接改代码时失败，例如要求对应 Use Case 文件有改动并要求新测试带指向它的 Concord 标记；只检查测试与 concord check 通过而无流程约束不算。")
         .score(3).label("判据能区分");
-      review.judge("至少两个任务覆盖不同 Concord 流程，例如新增行为与修复缺陷；同一任务改两个参数不算。")
+      reviewSource().judge("至少两个任务覆盖不同 Concord 流程，例如新增行为与修复缺陷；同一任务改两个参数不算。")
         .score(2).label("覆盖不同流程");
-      review.judge("只读 Eval 正文就能看出测什么、每项通过条件，关键数量和门槛平铺在检查处，没有藏进辅助函数。")
+      reviewSource().judge("只读 Eval 正文就能看出测什么、每项通过条件，关键数量和门槛平铺在检查处，没有藏进辅助函数。")
         .score(1).label("判据平铺在打分处");
-      review.judge("缺记录、缺文件、命令失败或解析失败保留为不可判定或报错，不能补成零、false 或空字符串后继续按已知事实判分。预期拒绝场景明确检查缺文件属于已知失败，不要求一律抛错。")
+      reviewSource().judge("缺记录、缺文件、命令失败或解析失败保留为不可判定或报错，不能补成零、false 或空字符串后继续按已知事实判分。预期拒绝场景明确检查缺文件属于已知失败，不要求一律抛错。")
         .score(1).label("未知保持未知");
     });
     await t.group("宿主安装规范", async () => {
