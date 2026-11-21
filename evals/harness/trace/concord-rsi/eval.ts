@@ -40,7 +40,7 @@ const FULL_HOLDOUT_GAIN = 0.5;
 const VISIBLE_GAIN_WEIGHT = 6;
 // A detached measurement is still bounded within the shared Attempt lifetime.
 const PRIVATE_COMMAND_TIMEOUT_SECONDS = 35 * 60;
-const PRIVATE_POLL_MS = 2_000;
+const PRIVATE_POLL_MS = 10_000;
 const clampScore = (ratio: number) => Math.max(0, Math.min(1, ratio));
 
 function expectedSamples(experiment: string, evalCount: number) {
@@ -208,7 +208,8 @@ chmod -R a+rX "$student_home/.cache/concord/native"`,
           if (status.stdout.trim()) {
             return rootRun(`cat ${job}/stdout; cat ${job}/stderr >&2; exit "$(cat ${job}/status)"`);
           }
-          await sleep(PRIVATE_POLL_MS, undefined, { signal: t.signal });
+          const remainingMs = Math.max(0, deadline - Date.now());
+          await sleep(Math.min(PRIVATE_POLL_MS, remainingMs), undefined, { signal: t.signal });
         }
         throw new Error("隐藏测量缺少完成标记");
       };
