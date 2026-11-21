@@ -76,7 +76,7 @@ concord-rsi 单独列出：v0.19.0 首跑 `@1RAPYNHEY5KWM` 因 3 次 Agent Judge
 
 ## 已知缺口与未完成
 
-- `equals` 门槛失败时，Record 只存 `equals-mismatch`，`show` 看不到实际值（例如 concord-rsi 是哪些受保护文件被改了），只能借 `diff` 切片推断。
+- `equals` 门槛失败时，Record 只存 `equals-mismatch`，`show` 看不到实际值（例如 concord-rsi 是哪些受保护文件被改了），只能借 `diff` 切片推断。核心已有本地 Issue `check-actual-value-hidden` 记录同一缺口，本轮 `@19JQHV6SS1P9G` 是新的复现。
 - 收尾 Agent Judge 是最长的非 agent 阶段：DB-GPT 505 秒，其中一个会话串行处理 6 条判据用了 500 秒。拆分并发会话的改动正在进行。
 - DB-GPT 的 `workspace.baseline` 有一条 21.5 秒的 `rm`；Agent Judge 的每次 `judge.request` 都被标为 failed，疑似误标。两项正在核心修复。
 - README 的 Harness 题表仍是 20 个条件、340 分，缺 `organize-refund`、`triage-at-scale`、`author-hitl-cancel`、`fix-flaky-eval`、`concord-rsi`。
