@@ -135,7 +135,7 @@ bun run concord check`,
     await t.check(plan.matrix, isDefined<typeof plan.matrix>()).gate().label("dry 提供 matrix").orStop();
     const matrix = plan.matrix!;
     await t.check(new Set(matrix.map((cell) => cell.evalId)).size, greaterThan(0)).gate().label("发现至少一个 Eval").orStop();
-    await t.check(new Set(matrix.map((cell) => cell.experimentId)).size, greaterThan(1)).gate().label("发现至少两个 Experiment").orStop();
+    await t.check(new Set(matrix.map((cell) => cell.experimentId)).size, greaterThan(1)).label("发现至少两个 Experiment");
     const experiments = await t.sandbox.runCommand("./node_modules/.bin/niceeval", ["exp", "list", "--json"]);
     await t.check(experiments, commandSucceeded()).gate().label("公开 Experiment discovery 成功").orStop();
     const discovered = JSON.parse(experiments.stdout) as { experiments: { adapter: string }[] };

@@ -114,32 +114,36 @@ export default defineScoreEval({
     scope.chat("模拟用户授权首跑至多 2 个 Attempt、任务累计至多 6 个。只查学生已经创建的公开 Run；经诊断的补跑允许。");
     scope.judge("LLM X 的 live 实测先用小范围验证，后续每次付费重跑都对应明确的故障或验证缺口。")
       .score(1).label("live 实测按需补跑");
-    const reviewSource = t.agentJudge(tasteReviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
-    reviewSource.chat("这是 LLM X 社交游戏的 NiceEval 自定义应用接入。先评源码；安装或运行失败不抹掉源码证据。只检查图片关联位置。 用 baseline 后的 diff 及新文件检查用户四条需求。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub 或离线替身不算 live 路径，test/smoke.ts 的测试内 provider 也不能当作真实模型运行。");
+    const reviewRequirements = t.agentJudge(tasteReviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
+    reviewRequirements.chat("这是 LLM X 社交游戏的 NiceEval 自定义应用接入。先评源码；安装或运行失败不抹掉源码证据。用 baseline 后的 diff 及新文件核对四条业务需求各自的 Eval，尤其确认图片检查关联到正确帖子。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub、离线替代物和 test/smoke.ts 的测试内 provider 都不算 live 路径。");
+    const reviewIntegration = t.agentJudge(tasteReviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
+    reviewIntegration.chat("这是 LLM X 社交游戏的 NiceEval 自定义应用接入。先评源码；安装或运行失败不抹掉源码证据。用 baseline 后的 diff 及新文件检查业务操作如何经 Adapter 和 Eval 接入，以及文字、图片模型和运行时凭据路径。应用只有真实 OpenAI-compatible provider；agent 自建的 mock、stub、离线替代物和 test/smoke.ts 的测试内 provider 都不算 live 路径。");
+    const reviewDelivery = t.agentJudge(tasteReviewer, { installRoot: root, handoff: redactConnection(handoff.reply) });
+    reviewDelivery.chat("这是 LLM X 社交游戏的 NiceEval 自定义应用接入。先评源码；安装或运行失败不抹掉源码证据。用 baseline 后的 diff 及新文件检查凭据边界证据、服务生命周期与宿主安装入口；用户提供的连接信息及允许的 gitignore 未跟踪 env 文件不算泄漏。");
     await t.group("需求满足", async () => {
-      reviewSource.judge("有 Eval 走真实发帖路径（publishPost 或页面同源 HTTP 操作），检查生成帖子内容遵循玩家意图；开放内容用 Judge 或等价语义判据，不用关键词或输入回显代替。用户原始回复不是模型生成帖子。")
+      reviewRequirements.judge("有 Eval 走真实发帖路径（publishPost 或页面同源 HTTP 操作），检查生成帖子内容遵循玩家意图；开放内容用 Judge 或等价语义判据，不用关键词或输入回显代替。用户原始回复不是模型生成帖子。")
         .score(3).label("发帖遵循意图");
-      reviewSource.judge("有 Eval 回复指定帖子后等待后台 AI 回应，检查回应者存在于当前世界、内容回应被回复帖子且符合回应人物主页设定。三项都须覆盖，不能只检查用户原文保存或固定等待时间。")
+      reviewRequirements.judge("有 Eval 回复指定帖子后等待后台 AI 回应，检查回应者存在于当前世界、内容回应被回复帖子且符合回应人物主页设定。三项都须覆盖，不能只检查用户原文保存或固定等待时间。")
         .score(3).label("AI 回应接得上");
-      reviewSource.judge("有 Eval 刷新动态，比较刷新前后状态，确定出现新内容且不与已有动态重复；只看 revision 增加或列表非空不算。")
+      reviewRequirements.judge("有 Eval 刷新动态，比较刷新前后状态，确定出现新内容且不与已有动态重复；只看 revision 增加或列表非空不算。")
         .score(3).label("刷新有新内容");
-      reviewSource.judge("有 Eval 要求配图并检查生成图片附在正确帖子上，图片须来自本次真实生图路径；不声称评判画面质量，URL、alt 和文本不能证明画面质量。")
+      reviewRequirements.judge("有 Eval 要求配图并检查生成图片附在正确帖子上，图片须来自本次真实生图路径；不声称评判画面质量，URL、alt 和文本不能证明画面质量。")
         .score(3).label("配图附对位置");
     });
     await t.group("接入形态", async () => {
-      reviewSource.judge("使用 NiceEval 自定义应用接口 defineAdapter 暴露发帖、回复、刷新、配图等业务操作，让 Eval 直接调用业务方法；不能硬套成聊天 send。")
+      reviewIntegration.judge("使用 NiceEval 自定义应用接口 defineAdapter 暴露发帖、回复、刷新、配图等业务操作，让 Eval 直接调用业务方法；不能硬套成聊天 send。")
         .score(3).label("使用自定义应用接口");
-      reviewSource.judge("live 配置为文字和图片分别使用真实模型入口，运行时代入模型与连接参数。")
+      reviewIntegration.judge("live 配置为文字和图片分别使用真实模型入口，运行时代入模型与连接参数。")
         .score(1).label("文字及图片走真实模型入口");
-      reviewSource.judge("接入在运行时把应用凭据从进程环境或用户允许的 gitignore 未跟踪 env 文件注入目标应用；Judge 凭据从 target-app.env 注入 Judge 进程。真实值没有写入源码或提交，target-app.env 未在 agent shell 中 source 或复制进工作区。")
+      reviewIntegration.judge("接入在运行时把应用凭据从进程环境或用户允许的 gitignore 未跟踪 env 文件注入目标应用；Judge 凭据从 target-app.env 注入 Judge 进程。真实值没有写入源码或提交，target-app.env 未在 agent shell 中 source 或复制进工作区。")
         .score(1).label("应用及 Judge 凭据按边界注入");
-      reviewSource.judge(
+      reviewDelivery.judge(
         "在用户约定的范围内评分：排除用户亲自提供的 HITL 连接信息及其允许的 gitignore 未跟踪 env 文件中的应用凭据。" +
         observedCredentialBoundary)
         .score(1).label("可观察证据无凭据泄露");
-      reviewSource.judge("应用生命周期覆盖构建、启动、就绪检查、每 Attempt 临时数据库和资源清理；失败或取消时也会停止服务并清理临时数据库。仅启动日常共享实例不算。")
+      reviewDelivery.judge("应用生命周期覆盖构建、启动、就绪检查、每 Attempt 临时数据库和资源清理；失败或取消时也会停止服务并清理临时数据库。仅启动日常共享实例不算。")
         .score(2).label("应用生命周期完整");
-      reviewSource.judge("安装复用已有根目录 pnpm 开发工具项目，交接说明从仓库根目录运行的本地命令；没有另建第二套 Node 项目或锁文件让用户猜 cd 路径。")
+      reviewDelivery.judge("安装复用已有根目录 pnpm 开发工具项目，交接说明从仓库根目录运行的本地命令；没有另建第二套 Node 项目或锁文件让用户猜 cd 路径。")
         .score(3).label("安装融入宿主工具链并交付根目录入口");
     });
 
