@@ -9,6 +9,8 @@
 
 Invocation `s_8ef1683a-286e-4983-b34c-f8961ec18e5f` 的墙钟时间为 38 分 52.501 秒。下表的 Install 分母包含 ComfyUI 占位格。两个 Run 与 Invocation 的分母、候选、费用及时间都可用下文命令复算。
 
+> **2026-11-28 起 Judge 不再整体缺价。** NiceEval 的 Judge 内置目录估价（commit `feat(judge): estimate missing call costs from the built-in catalog`）让 Judge 与模拟用户在没有供应商报告费用和 `defineConfig.pricing` 时按内置目录估价，`gpt-6.2-sol` 为输入 $2、输出 $10 每百万 token。同日日常初筛 Run `01f7199a-ab85-45ab-bb53-21d363d8b59f`（6 格，`0.22.2-canary.135`）6/6 passed，槽位估价合计约 $1.27，墙钟 10 分 24 秒。抽查 `show @1RFTGK2Q99CWR usage --json`：Judge 10 次调用全部估价，合计 $0.0125，状态仍为 partial（`token-buckets-incomplete`），application 仍为 `usage-not-recorded`。11 月 25 日的历史账本不改写，需要时按[按历史价目试算](#按历史价目试算)重计价。
+
 ## 按题型与端点查看费用覆盖
 
 | 题型 | 有槽位估价 / 总格数 | 槽位估价 USD | 外层 Codex 上报请求 | Judge 有价 / 未计价 | 模拟用户未计价 |
