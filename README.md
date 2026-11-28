@@ -76,6 +76,7 @@ pnpm --silent exec niceeval compare run:<baseline-run-id> -- run:<candidate-run-
 
 从仓库根目录运行，沿用上面的 `NICEEVAL_HOME`。以下命令只预览计划。确认范围和费用授权后，移除 `--dry` 才会执行。
 无人值守和后台调用保留 `--no-pause`。 [安装题自主运行](docs/install-autonomous-runs.md#后台运行时关闭失败挂起)
+[运行费用覆盖、实例耗时与止损规则](docs/run-cost-coverage.md)
 
 ### 日常 Harness 初筛
 
