@@ -2,6 +2,21 @@
 
 安装题允许被测 coding agent 自主选择格数、Attempt 数及运行轮次，诊断和修复后无需再次申请运行授权。外层每个候选采样一次的设置保持原义；它不是内层运行预算。首轮仍检验 agent 是否询问未知的运行边界，回答明确给出自主运行授权。
 
+## 后台运行时关闭失败挂起
+
+无人值守或后台调用 `niceeval exp` 时，必须显式加 `--no-pause`，包括由 `hc` 启动的命令。
+仓库配置 `pauseOnFailure: !process.env.CI`。未设置 `CI` 时默认在失败后等待 Enter，后台终端也可能是 TTY。
+显式关闭挂起可让失败的 Attempt 继续清理，避免卡在无人回应的提示上。人工排障时仍可用挂起保留现场。
+
+```sh
+export NICEEVAL_HOME="$PWD/.niceeval-local/homes/current"
+pnpm --silent exec niceeval exp install/canary \
+  install/db-gpt install/gpt-researcher install/concord install/llm-x \
+  --no-pause --dry --json
+```
+
+## 评分与取证
+
 首轮评分材料包含对话、首轮说明文件 `writtenNotes` 与原生提问 `questions`；进入 waiting 并提出需要用户决定的问题也算停下等用户。模拟用户仍在首轮后回复一次，随后仅在 waiting 时继续回答，HITL 回答上限为 6 次（含首轮那次若它回答 waiting），最终交接取循环结束后的 Turn，并记录回答次数。达到上限仍 waiting 时保留该状态，不当成完成。
 
 `exp --dry --json` 只要求命令成功并包含非空 matrix，不再要求单格单次。真实运行证据由公开 `run.list` 确认存在，再从各 Run 的公开 `run.get` 成员，按 experimentId、evalId 与 attemptOrdinal 选取最新运行结果；局部补跑不丢弃其它格，较早成功也不能掩盖后来的失败。最新成员必须发布 Attempt，取其 locator 读取 overview、execution、source。每项判据仍只计一次分，Judge 同时审阅所有当前结果，完成状态与弱 passed 分要求所有当前结果满足对应判据。

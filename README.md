@@ -24,24 +24,25 @@ CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档�
 
 ## 候选与实验矩阵
 
-`install` 与 `harness` 两个族各有三个候选，文件名就是被测版本：
+`install` 与 `harness` 两个族提供相同的实验入口。默认发版矩阵选 `v0.19.0`、`v0.20.0` 和 `canary`。
 
 | 候选 | 含义 |
 | --- | --- |
-| `v0.19.0` | 历史对照 |
-| `v0.20.0` | 稳定版 |
-| `canary` | 每次加载时从 npm 全部已发布版本按 semver 取最大值（含预发布版），不依赖 dist-tag |
+| `v0.19.0`、`v0.20.0`、`v0.21.0` | 固定版本对照 |
+| `canary` | 默认从 npm 全部已发布版本按 semver 取最大值（含预发布版），不依赖 dist-tag |
+| `v0.21.0-gpt-6.2-sol` | 固定 `v0.21.0` 的被测模型对照 |
 
 加载时 `resolveCandidate()` 把候选解析成精确版本，写进 `flags.candidateVersion`；sandbox 里的安装与
 Eval 的断言都读这一个值。`canary` 跨日比较要记录解析出的精确版本，不能只记标签。
 
-| 族 | 回答的问题 | 每个候选 |
-| --- | --- | --- |
-| `install` | 只拿到一句 prompt 和该版本 tag 下的 INIT.md，agent 能否在真实宿主里完成从零接入 | 2 格 |
-| `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否用这个版本提供的一切完成工作流 | 9 格 |
+| 族 | 回答的问题 |
+| --- | --- |
+| `install` | 只拿到一句 prompt 和该版本 tag 下的 INIT.md，agent 能否在真实宿主里完成从零接入 |
+| `harness` | 项目已装好候选并跑过 `niceeval init`，agent 能否用这个版本提供的一切完成工作流 |
 
-`install` 与 `harness` 两族合计 33 个 coding-agent Attempt（被测 agent 为 `gpt-6.1-sol`），另计 Judge、Agent Judge 和模拟用户的 `gpt-6.2-sol` 调用。
-Harness 固定 1 Attempt、medium 推理设置并关闭首过即停。全仓并发上限 10。被测 agent 固定为 gpt-6.1-sol、不降模型或推理档位；区分度靠题目难度获得（2026-11-17 曾试 low 档，仍饱和，已撤回）。
+计划格数以所选范围的 `exp --dry --json` 返回的 `total` 为准，`reused` 是其中可沿用结果的格数。
+默认发版矩阵每格设 1 个 Attempt，被测 agent 为 `gpt-6.1-sol`。Judge、Agent Judge 和模拟用户的 `gpt-6.2-sol` 调用另计。
+Harness 使用 medium 推理档位并关闭首过即停。全仓并发上限 10。需要提高区分度时调整题目难度（2026-11-17 曾试 low 档，仍饱和，已撤回）。
 
 ## 快速开始
 
@@ -58,19 +59,6 @@ pnpm exec niceeval list
 
 运行和读结果前都要设好 `NICEEVAL_HOME`。不设的话会落到默认的 `~/.niceeval`，那里的用户数据库是更早版本写入的，会被当前 NiceEval 拒绝：Instabox 的 before 缓存账本因此不可用，每个 Attempt 都从头准备环境，也不会发布新的 snapshot。
 
-只看计划、不启动付费 agent：
-
-```sh
-pnpm --silent exec niceeval exp harness/canary --dry
-```
-
-真实运行花的是真钱，明确决定后再跑；换候选、作废结果或批量重跑前先确认成本：
-
-```sh
-pnpm exec niceeval exp install/v0.20.0
-pnpm exec niceeval exp harness/v0.20.0 harness/tool-guard   # 只跑一道题
-```
-
 读结果只走公开 CLI，不读 `.niceeval/` 下的文件：
 
 ```sh
@@ -82,6 +70,49 @@ pnpm exec niceeval show exp:harness/v0.20.0 exp:harness/canary assertions   # �
 pnpm exec niceeval invocation show <invocation-id>     # 运行中：每个 Attempt 的阶段、沙箱实例名与最近动作
 pnpm exec niceeval view run:<baseline-run-id> run:<candidate-run-id>   # 两次运行逐题并排
 pnpm --silent exec niceeval compare run:<baseline-run-id> -- run:<candidate-run-id> --json
+```
+
+## 运行范围
+
+从仓库根目录运行，沿用上面的 `NICEEVAL_HOME`。以下命令只预览计划。确认范围和费用授权后，移除 `--dry` 才会执行。
+无人值守和后台调用保留 `--no-pause`。 [安装题自主运行](docs/install-autonomous-runs.md#后台运行时关闭失败挂起)
+
+### 日常 Harness 初筛
+
+一般 Harness 变更先用 canary 检查六格。`organize-refund` 测题目整理，`triage-at-scale` 测批量分诊，
+`tool-guard` 测工具调用边界，`trace-token-spike` 测用量诊断。两道 `regex-log` 共用 fixture，成对检查不同修复授权下的行为。
+涉及安装、重试等特定功能时，直接选择对应题。初筛总分仅用于这六格，禁止与正式矩阵总分直接比较。
+
+```sh
+pnpm --silent exec niceeval exp harness/canary \
+  harness/organize-refund harness/trace/triage-at-scale \
+  harness/tool-guard harness/trace/trace-token-spike \
+  harness/terminal-bench/regex-log harness/terminal-bench/regex-log-authorized \
+  --no-pause --dry --json
+```
+
+### 安装有效题
+
+用四道有效题检查从零接入。需要定向验证某个宿主时，只保留该题的选择器。
+`install/comfyui` 等占位题仅保留在开发清单，日常和发版运行均排除。
+
+```sh
+pnpm --silent exec niceeval exp install/canary \
+  install/db-gpt install/gpt-researcher install/concord install/llm-x \
+  --no-pause --dry --json
+```
+
+### 正式发版矩阵
+
+发版时用同一批候选比较完整 Harness 和四道有效 Install 题。命令中的 Harness 范围包含保留题 `harness/errored-triage`。
+候选选择、覆盖分母和预览实测见[发版评估协议](docs/harness-release-evaluation.md#选择运行范围)。
+
+```sh
+pnpm --silent exec niceeval exp \
+  --experiment harness/v0.19.0 --experiment harness/v0.20.0 --experiment harness/canary \
+  --experiment install/v0.19.0 --experiment install/v0.20.0 --experiment install/canary \
+  harness/ install/db-gpt install/gpt-researcher install/concord install/llm-x \
+  --no-pause --dry --json
 ```
 
 ## Harness 题
@@ -135,7 +166,7 @@ pnpm --silent exec niceeval compare run:<baseline-run-id> -- run:<candidate-run-
 
 ## 安装题
 
-DB-GPT（`v0.8.1`）与 GPT Researcher（`v3.6.0`）两个真实项目，fixture 锁定具体 commit。
+DB-GPT（`v0.8.1`）、GPT Researcher（`v3.6.0`）和 Concord 锁定宿主 commit，LLM X 使用本仓库的 fixture。
 agent 收到官网首页那句 prompt，URL 指向候选 tag 下的 INIT.md，另加一句版本要求（INIT.md 默认安装 npm latest）。
 它必须自行安装候选与应用依赖、启动真实服务、编写 config / Adapter / Eval / Experiment 并实际运行。
 
@@ -171,8 +202,8 @@ Install 与 Harness 都使用 Instabox `minimal` 模板，每个 Attempt 独立�
 1–3 都是声明式步骤，由 Instabox 远端快照按 BeforeCache 复用，改哪一步只重做这一步及之后。
 minimal 实测基线（2026-11-16）：Debian 13、Node 22/npm/corepack、Python 3.13/pip/venv、git/curl、unzip 与 C 编译工具，
 没有 pnpm、Docker/Compose、uv 或 bun。系统准备脚本在 [`fixtures/sandbox/prepare-system.sh`](fixtures/sandbox/prepare-system.sh)。
-被测 Codex CLI 预装进快照；`codexAgent` 仍负责探测，锁定版本变化后由它补装。本地默认失败挂起以便排查，`CI=true` 时禁用；
-挂起或保留的实例需要另行回收。
+被测 Codex CLI 预装进快照；`codexAgent` 仍负责探测，锁定版本变化后由它补装。本地默认失败挂起以便排查。
+后台运行显式加 `--no-pause`。挂起或保留的实例需要另行回收。 [后台运行说明](docs/install-autonomous-runs.md#后台运行时关闭失败挂起)
 
 ### 逐题 Node 版本依据（2026-11-16）
 
