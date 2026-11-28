@@ -32,8 +32,8 @@ CLI 与它的 `--help`、类型声明、报错文案、INIT.md 和随包文档�
 | `canary` | 默认从 npm 全部已发布版本按 semver 取最大值（含预发布版），不依赖 dist-tag |
 | `v0.21.0-gpt-6.2-sol` | 固定 `v0.21.0` 的被测模型对照 |
 
-加载时 `resolveCandidate()` 把候选解析成精确版本，写进 `flags.candidateVersion`；sandbox 里的安装与
-Eval 的断言都读这一个值。`canary` 跨日比较要记录解析出的精确版本，不能只记标签。
+实验加载时确定精确版本，写入 `flags.candidateVersion`。Harness 的安装也使用该版本。
+初筛、正式批次和跨日补跑沿用同一个精确版本。[固定 canary 候选](docs/inspection-candidates.md#固定一批-canary-的候选版本)
 
 | 族 | 回答的问题 |
 | --- | --- |
